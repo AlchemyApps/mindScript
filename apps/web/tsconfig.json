@@ -7,15 +7,37 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"],
-      "@mindscript/ui": ["../../packages/ui"],
-      "@mindscript/ui/*": ["../../packages/ui/*"],
-      "@mindscript/types": ["../../packages/types"],
-      "@mindscript/types/*": ["../../packages/types/*"],
-      "@mindscript/schemas": ["../../packages/schemas"],
-      "@mindscript/schemas/*": ["../../packages/schemas/*"]
-    }
+      "@/*": [
+        "./src/*"
+      ],
+      "@mindscript/ui": [
+        "../../packages/ui"
+      ],
+      "@mindscript/ui/*": [
+        "../../packages/ui/*"
+      ],
+      "@mindscript/types": [
+        "../../packages/types"
+      ],
+      "@mindscript/types/*": [
+        "../../packages/types/*"
+      ],
+      "@mindscript/schemas": [
+        "../../packages/schemas"
+      ],
+      "@mindscript/schemas/*": [
+        "../../packages/schemas/*"
+      ]
+    },
+    "incremental": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }

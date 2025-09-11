@@ -4,7 +4,8 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "build": "eas build",
+    "build": "tsc --noEmit",
+    "build:prod": "eas build",
     "dev": "expo start",
     "start": "expo start",
     "android": "expo start --android",

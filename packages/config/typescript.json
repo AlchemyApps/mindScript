@@ -21,7 +21,6 @@
     "lib": ["es2022", "dom", "dom.iterable"],
     "allowJs": true,
     "noEmit": true,
-    "incremental": true,
     "resolveJsonModule": true,
     "jsx": "preserve",
     "plugins": [
