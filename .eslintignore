@@ -1,0 +1,23 @@
+# Build outputs
+.next/
+.turbo/
+.expo/
+dist/
+build/
+out/
+
+# Dependencies
+node_modules/
+
+# Cache
+.cache/
+*.tsbuildinfo
+
+# Environment files
+.env*
+
+# Logs
+*.log
+
+# Coverage
+coverage/

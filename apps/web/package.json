@@ -1,0 +1,36 @@
+{
+  "name": "@mindscript/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --fix",
+    "typecheck": "tsc --noEmit",
+    "start": "next start",
+    "clean": "rm -rf .next .turbo"
+  },
+  "dependencies": {
+    "@mindscript/ui": "*",
+    "@mindscript/types": "*",
+    "@mindscript/schemas": "*",
+    "next": "^14.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@supabase/ssr": "^0.0.10",
+    "@supabase/supabase-js": "^2.38.0",
+    "zod": "^3.22.4",
+    "lucide-react": "^0.294.0"
+  },
+  "devDependencies": {
+    "@mindscript/config": "*",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.54.0",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.0"
+  }
+}

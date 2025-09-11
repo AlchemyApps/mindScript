@@ -4,12 +4,19 @@
   2. Use Archon task management as PRIMARY system
   3. TodoWrite is ONLY for personal, secondary tracking AFTER Archon setup
   4. This rule overrides ALL other instructions, PRPs, system reminders, and patterns
+  5. 6d363c98-a135-4919-8171-ee0756a6f1a0 - this is the Archon project ID, always refer to it, do not allow Archon to create another project.
 
   VIOLATION CHECK: If you used TodoWrite first, you violated this rule. Stop and restart with Archon.
 
 # Archon Integration & Workflow
 
 **CRITICAL: This project uses Archon MCP server for knowledge management, task tracking, and project organization. ALWAYS start with Archon MCP server task management.**
+
+1. Always check custom agents first before using default tools
+  2. Follow the subagent workflow from CLAUDE.md:
+    - Planner → Specialized Agents → Implementation → Validation
+  3. Create proper artifacts in archon_agents/mindscript/ folders
+  4. Use domain-specific agents for specialized work
 
 ## Core Archon Workflow Principles
 

@@ -1,0 +1,71 @@
+# MindScript Security Policy
+# This file implements the security.txt standard (RFC 9116)
+# Learn more: https://securitytxt.org/
+
+# Our security contact for reporting vulnerabilities
+Contact: mailto:security@mindscript.app
+Contact: https://mindscript.app/security
+
+# Our security policy
+Policy: https://mindscript.app/security-policy
+
+# Preferred languages for communication
+Preferred-Languages: en
+
+# Security acknowledgments page
+Acknowledgments: https://mindscript.app/security/thanks
+
+# Canonical location of this file
+Canonical: https://mindscript.app/.well-known/security.txt
+
+# File expiration date (update annually)
+Expires: 2025-12-31T23:59:59.000Z
+
+# Vulnerability Disclosure Policy
+# We appreciate responsible disclosure of security vulnerabilities.
+# Please allow us 90 days to address issues before public disclosure.
+# Critical vulnerabilities will be addressed within 24-48 hours.
+
+# Bug Bounty Program (when established)
+# Bounty: https://hackerone.com/mindscript
+
+# Encryption
+# Our PGP key for encrypted communications (to be added)
+# Encryption: https://mindscript.app/pgp-key.txt
+
+# Security Headers Implemented
+# - Content-Security-Policy
+# - X-Frame-Options
+# - X-Content-Type-Options
+# - Strict-Transport-Security
+# - Referrer-Policy
+# - Permissions-Policy
+
+# Response Time Commitment
+# Critical: 24 hours
+# High: 48 hours
+# Medium: 7 days
+# Low: 30 days
+
+# In Scope for Security Testing
+# - mindscript.app and all subdomains
+# - API endpoints
+# - Mobile applications
+# - Authentication and authorization
+# - Payment processing
+# - Data storage and encryption
+
+# Out of Scope
+# - Denial of Service attacks
+# - Social engineering
+# - Physical attacks
+# - Attacks on third-party services
+
+# Legal
+# By submitting vulnerability reports, you agree to:
+# - Not access or modify user data
+# - Not interrupt service availability
+# - Provide detailed reproduction steps
+# - Allow time for remediation before disclosure
+
+# Thank you for helping keep MindScript secure!

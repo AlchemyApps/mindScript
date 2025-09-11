@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "Default",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "inlineSources": false,
+    "isolatedModules": true,
+    "moduleResolution": "node",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "preserveWatchOutput": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "strictNullChecks": true,
+    "target": "es2022",
+    "module": "esnext",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "allowJs": true,
+    "noEmit": true,
+    "incremental": true,
+    "resolveJsonModule": true,
+    "jsx": "preserve",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@mindscript/ui": ["./packages/ui"],
+      "@mindscript/ui/*": ["./packages/ui/*"],
+      "@mindscript/types": ["./packages/types"],
+      "@mindscript/types/*": ["./packages/types/*"],
+      "@mindscript/schemas": ["./packages/schemas"],
+      "@mindscript/schemas/*": ["./packages/schemas/*"],
+      "@mindscript/audio-engine": ["./packages/audio-engine"],
+      "@mindscript/audio-engine/*": ["./packages/audio-engine/*"],
+      "@mindscript/config": ["./packages/config"],
+      "@mindscript/config/*": ["./packages/config/*"]
+    }
+  },
+  "exclude": ["node_modules"]
+}
