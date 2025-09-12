@@ -1,39 +1,15 @@
 {
   "mcpServers": {
-    "supabase-dev": {
+    "filesystem": {
       "command": "npx",
       "args": [
         "-y",
-        "@supabase/mcp-server-supabase",
-        "--read-only",
-        "--project-ref=byicqjniboevzbhbfxui"
-      ],
-      "env": {
-        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_ACCESS_TOKEN}"
-      }
-    },
-    "supabase-prod": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@supabase/mcp-server-supabase",
-        "--read-only",
-        "--project-ref=uykxlvsqbfnfhrgcpnvn"
-      ],
-      "env": {
-        "SUPABASE_ACCESS_TOKEN": "${SUPABASE_PROD_ACCESS_TOKEN}"
-      }
-    },
-    "stripe": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@stripe/mcp",
-        "--tools=all"
-      ],
-      "env": {
-        "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}"
-      }
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/chrisschrade/Documents",
+        "/Users/chrisschrade/Desktop",
+        "/Users/chrisschrade/Downloads",
+        "/Users/chrisschrade/development"
+      ]
     }
   }
 }

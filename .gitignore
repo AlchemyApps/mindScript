@@ -33,6 +33,8 @@ private_keys/
 config/secrets.yaml
 config/secrets.yml
 .secrets
+.mcp.json.local
+mcp-env.sh
 
 # Testing
 coverage/
