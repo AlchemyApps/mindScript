@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { createServerClient } from '@supabase/ssr';
 
 // Security headers configuration
 const securityHeaders = {
@@ -124,9 +125,109 @@ setInterval(() => {
   }
 }, 60 * 1000); // Clean up every minute
 
-export function middleware(request: NextRequest) {
+// Auth route configuration
+const publicRoutes = [
+  '/',
+  '/login',
+  '/signup',
+  '/reset-password',
+  '/auth/callback',
+  '/api/auth/callback',
+];
+
+const protectedRoutes = [
+  '/dashboard',
+  '/builder',
+  '/library',
+  '/settings',
+  '/admin',
+];
+
+export async function middleware(request: NextRequest) {
   // Apply security headers to all responses
-  const response = NextResponse.next();
+  let response = NextResponse.next({
+    request,
+  });
+
+  // Set up Supabase client with cookie handling
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // Refresh session if it exists
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const pathname = request.nextUrl.pathname;
+  const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith(`${route}/`));
+  const isProtectedRoute = protectedRoutes.some(route => pathname === route || pathname.startsWith(`${route}/`));
+  const isApiRoute = pathname.startsWith('/api/');
+
+  // Protected API routes
+  if (isApiRoute && pathname !== '/api/auth/callback') {
+    const protectedApiRoutes = ['/api/builder', '/api/library', '/api/admin', '/api/user'];
+    const isProtectedApiRoute = protectedApiRoutes.some(route => pathname.startsWith(route));
+    
+    if (isProtectedApiRoute && !user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: response.headers }
+      );
+    }
+  }
+
+  // Admin route protection
+  if (pathname.startsWith('/admin') || pathname.startsWith('/api/admin')) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('redirectTo', pathname);
+      return NextResponse.redirect(url);
+    }
+
+    // Check admin role
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role_flags')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile?.role_flags?.is_admin) {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
+
+  // Protected route handling
+  if (isProtectedRoute && !user) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('redirectTo', pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Redirect authenticated users away from auth pages
+  if (user && (pathname === '/login' || pathname === '/signup')) {
+    const redirectTo = request.nextUrl.searchParams.get('redirectTo');
+    return NextResponse.redirect(new URL(redirectTo || '/dashboard', request.url));
+  }
   
   // Add security headers
   Object.entries(securityHeaders).forEach(([key, value]) => {
