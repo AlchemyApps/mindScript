@@ -14,12 +14,7 @@ export type UserProfile = {
   socialLinks?: Record<string, string>;
 } & Timestamps;
 
-export type SellerAgreement = {
-  profileId: UserId;
-  acceptedAt: string;
-  stripeConnectId?: string;
-  status: "pending" | "active" | "suspended" | "rejected";
-} & Timestamps;
+// SellerAgreement is now defined in auth.ts to avoid duplicates
 
 export type UserVoice = {
   id: string;

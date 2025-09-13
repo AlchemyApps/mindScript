@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
+    },
+    "./constants": {
+      "types": "./dist/constants.d.ts",
+      "import": "./dist/constants.mjs",
+      "require": "./dist/constants.js"
     }
   },
   "files": [
@@ -21,19 +26,29 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "worker": "tsx src/worker.ts",
+    "worker:dev": "tsx watch src/worker.ts"
   },
   "dependencies": {
     "@mindscript/types": "*",
     "@mindscript/schemas": "*",
     "@supabase/supabase-js": "^2.39.0",
-    "zod": "^3.22.4"
+    "fluent-ffmpeg": "^2.1.2",
+    "openai": "^4.52.0",
+    "elevenlabs": "^0.17.0",
+    "zod": "^3.22.4",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@mindscript/config": "*",
+    "@types/fluent-ffmpeg": "^2.1.24",
+    "@types/node": "^20.10.0",
+    "msw": "^2.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.3.0",
     "vitest": "^1.0.0",
-    "@vitest/coverage-v8": "^1.0.0"
+    "@vitest/coverage-v8": "^1.0.0",
+    "tsx": "^4.7.0"
   }
 }

@@ -101,7 +101,7 @@ export const profileUpdateSchema = z.object({
   notification_settings: notificationSettingsSchema.partial().optional(),
   privacy_settings: privacySettingsSchema.partial().optional()
 })
-export type ProfileUpdate = z.infer<typeof profileUpdateSchema>
+export type ProfileUpdateData = z.infer<typeof profileUpdateSchema>
 
 // Settings update schema
 export const settingsUpdateSchema = z.object({

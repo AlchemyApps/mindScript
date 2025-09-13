@@ -4,6 +4,21 @@ import type { AudioJobSchema } from "@mindscript/schemas";
 // Export the inferred AudioJob type
 export type AudioJob = z.infer<typeof AudioJobSchema>;
 
+// Result type for functional error handling
+export type Result<T, E = Error> = 
+  | { isOk: true; value: T }
+  | { isOk: false; error: E };
+
+export const Ok = <T>(value: T): Result<T> => ({
+  isOk: true,
+  value,
+});
+
+export const Err = <E = Error>(error: E): Result<never, E> => ({
+  isOk: false,
+  error,
+});
+
 // FFmpeg command builder types
 export interface FFmpegCommand {
   inputs: FFmpegInput[];

@@ -16,13 +16,13 @@
     "lint": "eslint \"src/**/*.ts\""
   },
   "dependencies": {
-    "@mindscript/schemas": "workspace:*",
-    "@mindscript/types": "workspace:*",
+    "@mindscript/schemas": "*",
+    "@mindscript/types": "*",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10"
   },
   "devDependencies": {
-    "@mindscript/config": "workspace:*",
+    "@mindscript/config": "*",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^20.17.9",
     "@types/react": "^19.0.7",

@@ -19,8 +19,8 @@ export const ProfileSchema = z.object({
   onboardingCompleted: z.boolean().default(false),
 }).merge(TimestampsSchema);
 
-// User preferences
-export const UserPreferencesSchema = z.object({
+// User app preferences (different from auth preferences)
+export const AppUserPreferencesSchema = z.object({
   emailNotifications: z.boolean().default(true),
   pushNotifications: z.boolean().default(true),
   marketingEmails: z.boolean().default(false),
@@ -51,8 +51,8 @@ export const UserVoiceSchema = z.object({
   active: z.boolean().default(true),
 }).merge(TimestampsSchema);
 
-// Update profile schema
-export const UpdateProfileSchema = z.object({
+// User profile update schema
+export const UserProfileUpdateSchema = z.object({
   displayName: z.string().min(1).max(100).optional(),
   bio: z.string().max(500).optional(),
   profileImageUrl: z.string().url().optional(),
