@@ -21,7 +21,12 @@
     "@supabase/ssr": "^0.0.10",
     "@supabase/supabase-js": "^2.38.0",
     "zod": "^3.22.4",
-    "lucide-react": "^0.294.0"
+    "lucide-react": "^0.294.0",
+    "react-hook-form": "^7.48.0",
+    "@hookform/resolvers": "^3.3.2",
+    "sonner": "^1.2.0",
+    "date-fns": "^2.30.0",
+    "sharp": "^0.33.0"
   },
   "devDependencies": {
     "@mindscript/config": "*",
