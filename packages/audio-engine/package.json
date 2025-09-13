@@ -26,6 +26,7 @@
   "dependencies": {
     "@mindscript/types": "*",
     "@mindscript/schemas": "*",
+    "@supabase/supabase-js": "^2.39.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

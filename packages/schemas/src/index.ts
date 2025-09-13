@@ -6,3 +6,4 @@ export * from "./payments";
 export * from "./user";
 export * from "./common";
 export * from "./profile";
+export * from "./queue";

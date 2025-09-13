@@ -145,3 +145,102 @@ export type Render = {
 
 // Duration options as defined in PRD
 export type Duration = 5 | 10 | 15;
+
+// Job queue types
+export type JobStatus = "pending" | "processing" | "completed" | "failed" | "cancelled";
+export type JobPriority = "low" | "normal" | "high" | "urgent";
+
+export interface AudioJobQueue {
+  id: string;
+  userId: string;
+  projectId?: string;
+  renderId?: string;
+  status: JobStatus;
+  priority: JobPriority;
+  payload: AudioJobPayload;
+  progress: number;
+  progressMessage?: string;
+  createdAt: Date;
+  startedAt?: Date;
+  completedAt?: Date;
+  retryCount: number;
+  maxRetries: number;
+  errorMessage?: string;
+  errorDetails?: Record<string, unknown>;
+  lockedAt?: Date;
+  lockedBy?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AudioJobPayload {
+  type: "render" | "preview" | "export";
+  projectData: {
+    scriptText: string;
+    voiceRef: string;
+    durationMin: number;
+    pauseSec: number;
+    loopMode: "repeat" | "interval";
+    intervalSec?: number;
+    layers: AudioJobLayers;
+  };
+  outputOptions: {
+    format: "mp3" | "wav";
+    quality?: "draft" | "standard" | "high";
+    storageLocation?: "public" | "private";
+  };
+}
+
+export interface AudioJobLayers {
+  voice: {
+    enabled: boolean;
+    provider?: "openai" | "elevenlabs" | "uploaded";
+    voiceCode?: string;
+    voiceUrl?: string;
+  };
+  background: {
+    enabled: boolean;
+    trackUrl?: string;
+  };
+  solfeggio?: {
+    enabled: boolean;
+    hz?: number;
+    wave?: "sine" | "triangle" | "square";
+  };
+  binaural?: {
+    enabled: boolean;
+    band?: "delta" | "theta" | "alpha" | "beta" | "gamma";
+    beatHz?: number;
+    carrierHz?: number;
+  };
+  gains: {
+    voiceDb: number;
+    bgDb: number;
+    solfeggioDb?: number;
+    binauralDb?: number;
+  };
+}
+
+export interface CreateAudioJobInput {
+  userId: string;
+  projectId?: string;
+  priority?: JobPriority;
+  payload: AudioJobPayload;
+  metadata?: Record<string, unknown>;
+}
+
+export interface JobProgressUpdate {
+  jobId: string;
+  progress: number;
+  message?: string;
+}
+
+export interface JobResult {
+  jobId: string;
+  status: JobStatus;
+  outputUrl?: string;
+  metadata?: Record<string, unknown>;
+  error?: {
+    message: string;
+    details?: Record<string, unknown>;
+  };
+}
