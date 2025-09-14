@@ -1,5 +1,6 @@
 // Design tokens
 export * from "./tokens";
+export { colors, typography, spacing, borderRadius, shadows, animation } from "./tokens";
 
 // Components
 export * from "./components/Button";

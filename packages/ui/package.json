@@ -11,10 +11,16 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
-    "./styles": "./dist/styles.css"
+    "./tokens": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./styles": "./dist/styles/index.css"
   },
   "files": [
-    "dist/**"
+    "dist/**",
+    "tokens.js"
   ],
   "scripts": {
     "build": "tsup",

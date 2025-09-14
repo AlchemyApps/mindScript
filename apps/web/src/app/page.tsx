@@ -1,3 +1,5 @@
+'use client';
+
 import { Button } from "@mindscript/ui";
 
 export default function HomePage() {

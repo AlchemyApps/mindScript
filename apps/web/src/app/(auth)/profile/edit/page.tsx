@@ -1,6 +1,6 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
-import { createServerClient } from '@mindscript/auth/server';
+import { getSupabaseServerClient } from '@mindscript/auth/server';
 import { ProfileEdit } from '@/components/profile';
 
 export const metadata: Metadata = {
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ProfileEditPage() {
-  const supabase = await createServerClient();
+  const supabase = await getSupabaseServerClient();
   
   // Check authentication
   const { data: { user }, error } = await supabase.auth.getUser();

@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (profileData) {
       const userWithProfile: AuthUserWithProfile = {
-        id: userId,
+        id: userId as any,
         email: profileData.email,
         emailVerified: user?.email_confirmed_at !== undefined,
         role: user?.role,

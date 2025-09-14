@@ -27,7 +27,7 @@ import type {
  * Supports all 6 OpenAI voices with TTS-1 and TTS-1-HD models
  */
 export class OpenAIProvider extends BaseTTSProvider {
-  private client: OpenAI | null = null;
+  private client: typeof OpenAI | null = null;
   private static readonly VOICES: Record<OpenAIVoice, Partial<TTSVoice>> = {
     alloy: { 
       name: "Alloy", 

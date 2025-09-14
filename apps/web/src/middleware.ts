@@ -116,14 +116,19 @@ function checkRateLimit(request: NextRequest): boolean {
 }
 
 // Clean up old rate limit entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, limit] of rateLimitStore.entries()) {
-    if (now > limit.resetTime) {
-      rateLimitStore.delete(key);
+// Note: In production, use Redis or similar for rate limiting
+// setInterval doesn't work well in serverless/edge environments
+if (typeof global !== 'undefined' && !global.rateLimitCleanupStarted) {
+  global.rateLimitCleanupStarted = true;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, limit] of rateLimitStore.entries()) {
+      if (now > limit.resetTime) {
+        rateLimitStore.delete(key);
+      }
     }
-  }
-}, 60 * 1000); // Clean up every minute
+  }, 60 * 1000); // Clean up every minute
+}
 
 // Auth route configuration
 const publicRoutes = [
@@ -149,32 +154,36 @@ export async function middleware(request: NextRequest) {
     request,
   });
 
-  // Set up Supabase client with cookie handling
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
+  // Set up Supabase client with cookie handling (skip if env vars not set)
+  let user = null;
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) =>
+              request.cookies.set(name, value)
+            );
+            response = NextResponse.next({
+              request,
+            });
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options)
+            );
+          },
         },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
-          response = NextResponse.next({
-            request,
-          });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
-        },
-      },
-    }
-  );
+      }
+    );
 
-  // Refresh session if it exists
-  const { data: { user } } = await supabase.auth.getUser();
+    // Refresh session if it exists
+    const { data } = await supabase.auth.getUser();
+    user = data?.user;
+  }
 
   const pathname = request.nextUrl.pathname;
   const isPublicRoute = publicRoutes.some(route => pathname === route || pathname.startsWith(`${route}/`));
@@ -203,15 +212,34 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Check admin role
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role_flags')
-      .eq('id', user.id)
-      .single();
+    // Check admin role (only if Supabase is configured)
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      const supabase = createServerClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        {
+          cookies: {
+            getAll() {
+              return request.cookies.getAll();
+            },
+            setAll(cookiesToSet) {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                response.cookies.set(name, value, options)
+              );
+            },
+          },
+        }
+      );
 
-    if (!profile?.role_flags?.is_admin) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role_flags')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.role_flags?.is_admin) {
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      }
     }
   }
 

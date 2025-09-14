@@ -1,0 +1,6 @@
+/* MindScript UI Component Styles */
+/* This file provides Tailwind utilities for component library */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

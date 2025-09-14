@@ -23,13 +23,13 @@
   "dependencies": {
     "@mindscript/schemas": "*",
     "@supabase/supabase-js": "^2.39.7",
-    "stripe": "^17.3.1"
+    "stripe": "^17.7.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.10",
+    "@vitest/coverage-v8": "^1.2.2",
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vitest": "^1.2.2",
-    "@vitest/coverage-v8": "^1.2.2"
+    "vitest": "^1.2.2"
   }
 }

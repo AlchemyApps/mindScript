@@ -29,7 +29,7 @@ interface ElevenLabsConfig extends TTSProviderConfig {
  * Supports custom voice cloning and advanced voice settings
  */
 export class ElevenLabsProvider extends BaseTTSProvider {
-  private client: ElevenLabsClient | null = null;
+  private client: typeof ElevenLabsClient | null = null;
   private voiceSettings: ElevenLabsVoiceSettings;
   private static readonly MAX_CHUNK_SIZE = 5000; // ElevenLabs character limit
 

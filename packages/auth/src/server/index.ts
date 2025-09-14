@@ -1,4 +1,8 @@
-export { getSupabaseServerClient, getSupabaseServerComponentClient } from './supabase-server';
+export {
+  getSupabaseServerClient,
+  getSupabaseServerComponentClient,
+  getSupabaseServerClient as createServerClient
+} from './supabase-server';
 export { 
   getServerSession, 
   getServerUser, 

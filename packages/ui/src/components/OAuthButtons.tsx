@@ -22,7 +22,7 @@ export function OAuthButtons({
       {onGoogleClick && (
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="lg"
           className="w-full"
           onClick={onGoogleClick}
@@ -53,7 +53,7 @@ export function OAuthButtons({
       {onGitHubClick && (
         <Button
           type="button"
-          variant="outline"
+          variant="ghost"
           size="lg"
           className="w-full"
           onClick={onGitHubClick}

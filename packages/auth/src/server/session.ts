@@ -62,7 +62,7 @@ export async function getServerUserWithProfile(): Promise<AuthUserWithProfile | 
   const sellerAgreement = sellerData ? SellerAgreementRowSchema.parse(sellerData) : undefined;
 
   return {
-    id: user.id,
+    id: user.id as any,
     email: user.email!,
     emailVerified: user.email_confirmed_at !== null,
     appMetadata: user.app_metadata,
@@ -71,7 +71,7 @@ export async function getServerUserWithProfile(): Promise<AuthUserWithProfile | 
     createdAt: user.created_at,
     updatedAt: user.updated_at || user.created_at,
     profile: profile ? {
-      id: profile.id,
+      id: profile.id as any,
       email: profile.email,
       displayName: profile.display_name || undefined,
       avatarUrl: profile.avatar_url || undefined,
@@ -85,7 +85,7 @@ export async function getServerUserWithProfile(): Promise<AuthUserWithProfile | 
       updatedAt: profile.updated_at,
     } : undefined,
     preferences: preferences ? {
-      userId: preferences.user_id,
+      userId: preferences.user_id as any,
       theme: preferences.theme,
       notificationsEnabled: preferences.notifications_enabled,
       emailUpdates: preferences.email_updates,
@@ -99,8 +99,8 @@ export async function getServerUserWithProfile(): Promise<AuthUserWithProfile | 
       updatedAt: preferences.updated_at,
     } : undefined,
     sellerAgreement: sellerAgreement ? {
-      id: sellerAgreement.id,
-      userId: sellerAgreement.user_id,
+      id: sellerAgreement.id as any,
+      userId: sellerAgreement.user_id as any,
       acceptedAt: sellerAgreement.accepted_at,
       agreementVersion: sellerAgreement.agreement_version,
       stripeConnectId: sellerAgreement.stripe_connect_id || undefined,

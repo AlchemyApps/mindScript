@@ -107,7 +107,7 @@ export async function createStripeLineItems(
     // Create product
     const product = await stripe.products.create({
       name: item.title,
-      description: item.description,
+      description: `Track: ${item.title} by ${item.artistName}`,
       metadata: {
         trackId: item.trackId,
         sellerId: item.sellerId,

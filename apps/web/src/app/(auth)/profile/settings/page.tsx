@@ -2,7 +2,8 @@ import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@mindscript/auth/server';
 import { SettingsForm, AccountManagement } from '@/components/profile';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@mindscript/ui';
+// TODO: Add Tabs component to UI package
+// import { Tabs, TabsContent, TabsList, TabsTrigger } from '@mindscript/ui';
 
 export const metadata: Metadata = {
   title: 'Settings | MindScript',

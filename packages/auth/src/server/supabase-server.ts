@@ -6,7 +6,7 @@ export async function getSupabaseServerClient(
   options: {
     serviceRole?: boolean;
   } = {}
-): Promise<SupabaseClient> {
+): Promise<SupabaseClient<any, 'public', any>> {
   const cookieStore = await cookies();
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -40,7 +40,7 @@ export async function getSupabaseServerClient(
   );
 }
 
-export async function getSupabaseServerComponentClient(): Promise<SupabaseClient> {
+export async function getSupabaseServerComponentClient(): Promise<SupabaseClient<any, 'public', any>> {
   const cookieStore = await cookies();
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;

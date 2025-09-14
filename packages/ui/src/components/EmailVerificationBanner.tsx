@@ -69,7 +69,7 @@ export function EmailVerificationBanner({
               ) : (
                 <Button
                   size="sm"
-                  variant="outline"
+                  variant="ghost"
                   onClick={handleResend}
                   disabled={resending}
                 >

@@ -1,4 +1,4 @@
-import ffmpeg from "fluent-ffmpeg";
+import ffmpeg, { FfprobeData } from "fluent-ffmpeg";
 import { Result, Ok, Err, AudioAnalysis } from "../types";
 
 interface AnalyzerConfig {
@@ -23,25 +23,6 @@ interface AudioLevels {
   lufs: number;
 }
 
-interface ProbeData {
-  format: {
-    duration?: number;
-    bit_rate?: string;
-    format_name?: string;
-    size?: string;
-    tags?: Record<string, string>;
-  };
-  streams: Array<{
-    codec_type: string;
-    codec_name?: string;
-    channels?: number;
-    channel_layout?: string;
-    sample_rate?: number;
-    bit_rate?: string;
-    duration?: number;
-  }>;
-}
-
 /**
  * Audio analyzer for extracting metadata and validating audio properties.
  * Provides stereo compliance validation and audio level analysis.
@@ -61,7 +42,7 @@ export class AudioAnalyzer {
   }
 
   /**
-   * Analyze audio file and extract comprehensive metadata.
+   * Analyze audio file and extract comprehensive data.
    */
   async analyze(audioPath: string): Promise<Result<AudioAnalysis>> {
     // Check cache first
@@ -71,24 +52,24 @@ export class AudioAnalyzer {
     }
 
     return new Promise((resolve) => {
-      ffmpeg.ffprobe(audioPath, (err, metadata: ProbeData) => {
+      ffmpeg.ffprobe(audioPath, (err, data) => {
         if (err) {
           resolve(Err(new Error(`Failed to analyze audio: ${err.message}`)));
           return;
         }
 
-        const audioStream = metadata.streams.find(s => s.codec_type === "audio");
+        const audioStream = data.streams.find(s => s.codec_type === "audio");
         if (!audioStream) {
           resolve(Err(new Error("No audio stream found")));
           return;
         }
 
         const analysis: AudioAnalysis = {
-          durationMs: (metadata.format.duration || 0) * 1000,
+          durationMs: (data.format.duration || 0) * 1000,
           channels: audioStream.channels || 0,
           sampleRate: audioStream.sample_rate || 0,
-          bitrate: parseInt(metadata.format.bit_rate || "0", 10),
-          format: metadata.format.format_name || "unknown",
+          bitrate: parseInt(String(data.format.bit_rate || "0"), 10),
+          format: data.format.format_name || "unknown",
           isStereo: audioStream.channels === 2,
         };
 
@@ -105,13 +86,13 @@ export class AudioAnalyzer {
    */
   async getDuration(audioPath: string): Promise<Result<number>> {
     return new Promise((resolve) => {
-      ffmpeg.ffprobe(audioPath, (err, metadata: ProbeData) => {
+      ffmpeg.ffprobe(audioPath, (err, data) => {
         if (err) {
           resolve(Err(new Error(`Failed to get duration: ${err.message}`)));
           return;
         }
 
-        const duration = metadata.format.duration;
+        const duration = data.format.duration;
         if (duration === undefined) {
           resolve(Err(new Error("Could not determine duration")));
           return;
@@ -127,20 +108,20 @@ export class AudioAnalyzer {
    */
   async getFormat(audioPath: string): Promise<Result<FormatInfo>> {
     return new Promise((resolve) => {
-      ffmpeg.ffprobe(audioPath, (err, metadata: ProbeData) => {
+      ffmpeg.ffprobe(audioPath, (err, data) => {
         if (err) {
           resolve(Err(new Error(`Failed to get format: ${err.message}`)));
           return;
         }
 
-        const audioStream = metadata.streams.find(s => s.codec_type === "audio");
+        const audioStream = data.streams.find(s => s.codec_type === "audio");
         if (!audioStream) {
           resolve(Err(new Error("No audio stream found")));
           return;
         }
 
         resolve(Ok({
-          format: metadata.format.format_name || "unknown",
+          format: data.format.format_name || "unknown",
           codecName: audioStream.codec_name || "unknown",
         }));
       });
@@ -152,13 +133,13 @@ export class AudioAnalyzer {
    */
   async validateStereo(audioPath: string): Promise<Result<StereoValidation>> {
     return new Promise((resolve) => {
-      ffmpeg.ffprobe(audioPath, (err, metadata: ProbeData) => {
+      ffmpeg.ffprobe(audioPath, (err, data) => {
         if (err) {
           resolve(Err(new Error(`Failed to validate stereo: ${err.message}`)));
           return;
         }
 
-        const audioStream = metadata.streams.find(s => s.codec_type === "audio");
+        const audioStream = data.streams.find(s => s.codec_type === "audio");
         if (!audioStream) {
           resolve(Err(new Error("No audio stream found")));
           return;
@@ -203,7 +184,7 @@ export class AudioAnalyzer {
       // For full implementation, we would use FFmpeg with ebur128 filter
       // This is a simplified version that would need actual FFmpeg execution
       
-      ffmpeg.ffprobe(audioPath, (err, metadata: ProbeData) => {
+      ffmpeg.ffprobe(audioPath, (err, data) => {
         if (err) {
           resolve(Err(new Error(`Failed to analyze levels: ${err.message}`)));
           return;
@@ -229,14 +210,19 @@ export class AudioAnalyzer {
    */
   async getMetadata(audioPath: string): Promise<Result<Record<string, string>>> {
     return new Promise((resolve) => {
-      ffmpeg.ffprobe(audioPath, (err, metadata: ProbeData) => {
+      ffmpeg.ffprobe(audioPath, (err, data) => {
         if (err) {
           resolve(Err(new Error(`Failed to get metadata: ${err.message}`)));
           return;
         }
 
-        const tags = metadata.format.tags || {};
-        resolve(Ok(tags));
+        const tags = data.format.tags || {};
+        // Ensure all values are strings
+        const stringTags: Record<string, string> = {};
+        for (const [key, value] of Object.entries(tags)) {
+          stringTags[key] = String(value);
+        }
+        resolve(Ok(stringTags));
       });
     });
   }
