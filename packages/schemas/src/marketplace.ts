@@ -8,18 +8,14 @@ import {
 } from "./common";
 import { SolfeggioFrequencySchema, BinauralBandSchema } from "./audio";
 
-// Category enum
+// Category enum (updated to match PRD)
 export const CategorySchema = z.enum([
-  "confidence",
-  "stress_relief",
-  "healing",
-  "focus",
-  "sleep",
   "meditation",
-  "motivation",
-  "abundance",
-  "relationships",
-  "fitness",
+  "sleep",
+  "focus",
+  "relaxation",
+  "energy",
+  "healing",
 ]);
 
 // Publication status
@@ -116,6 +112,86 @@ export const MarketplaceSearchSchema = z.object({
 // Feed types
 export const FeedTypeSchema = z.enum(["trending", "for_you", "featured", "new"]);
 
+// Marketplace-specific sort options
+export const MarketplaceSortSchema = z.enum([
+  "popular",
+  "newest",
+  "price_low",
+  "price_high",
+  "rating",
+]);
+
+// Seller badge types
+export const SellerBadgeSchema = z.enum([
+  "verified",
+  "top_seller",
+  "new",
+]);
+
+// Enhanced marketplace listing parameters
+export const MarketplaceListingParamsSchema = z.object({
+  // Pagination
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(50).default(20),
+  
+  // Search & filters
+  search: z.string().max(100).optional(),
+  category: CategorySchema.optional(),
+  categories: z.array(CategorySchema).optional(),
+  tags: z.array(z.string()).max(10).optional(),
+  priceRange: z.object({
+    min: z.number().min(0).optional(),
+    max: z.number().min(0).optional(),
+  }).optional(),
+  durationRange: z.object({
+    min: z.number().min(0).optional(),
+    max: z.number().min(0).optional(),
+  }).optional(),
+  
+  // Sorting
+  sort: MarketplaceSortSchema.default("popular"),
+  
+  // Only show published tracks
+  includePreview: z.boolean().default(false),
+});
+
+// Category with count for filters
+export const CategoryWithCountSchema = z.object({
+  name: CategorySchema,
+  label: z.string(),
+  count: z.number().int().min(0),
+  icon: z.string().optional(),
+});
+
+// Paginated marketplace response
+export const MarketplaceResponseSchema = z.object({
+  tracks: z.array(PublicationSchema),
+  pagination: z.object({
+    cursor: z.string().optional(),
+    has_next: z.boolean(),
+    has_prev: z.boolean(),
+    total_count: z.number().int().optional(),
+  }),
+  filters: z.object({
+    categories: z.array(CategoryWithCountSchema),
+    price_range: z.object({
+      min: z.number(),
+      max: z.number(),
+    }),
+    duration_range: z.object({
+      min: z.number(),
+      max: z.number(),
+    }),
+  }).optional(),
+});
+
+// Featured tracks response
+export const FeaturedTracksSchema = z.object({
+  featured: z.array(PublicationSchema),
+  popular: z.array(PublicationSchema),
+  new_releases: z.array(PublicationSchema),
+});
+
 // Review/rating schemas
 export const CreateReviewSchema = z.object({
   publicationId: PublicationIdSchema,
@@ -131,3 +207,50 @@ export const ReviewSchema = z.object({
   comment: z.string().max(500).optional(),
   isVerifiedPurchase: z.boolean(),
 }).merge(TimestampsSchema);
+
+// Export types
+export type MarketplaceCategory = z.infer<typeof CategorySchema>;
+export type MarketplaceSort = z.infer<typeof MarketplaceSortSchema>;
+export type MarketplaceListingParams = z.infer<typeof MarketplaceListingParamsSchema>;
+export type MarketplaceResponse = z.infer<typeof MarketplaceResponseSchema>;
+export type FeaturedTracks = z.infer<typeof FeaturedTracksSchema>;
+export type CategoryWithCount = z.infer<typeof CategoryWithCountSchema>;
+export type Publication = z.infer<typeof PublicationSchema>;
+
+// Helper functions
+export const formatPrice = (cents: number): string => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format(cents / 100);
+};
+
+export const formatDuration = (seconds: number): string => {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+};
+
+export const getCategoryLabel = (category: MarketplaceCategory): string => {
+  const labels: Record<MarketplaceCategory, string> = {
+    meditation: "Meditation",
+    sleep: "Sleep",
+    focus: "Focus",
+    relaxation: "Relaxation",
+    energy: "Energy",
+    healing: "Healing",
+  };
+  return labels[category];
+};
+
+export const getCategoryIcon = (category: MarketplaceCategory): string => {
+  const icons: Record<MarketplaceCategory, string> = {
+    meditation: "🧘",
+    sleep: "😴",
+    focus: "🎯",
+    relaxation: "🌊",
+    energy: "⚡",
+    healing: "💚",
+  };
+  return icons[category];
+};
