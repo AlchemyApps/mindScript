@@ -164,10 +164,10 @@ From the two third-party consultations:
 4. Created: `mcp-env.sh`, `mcp-env.ps1`, `docs/MCP_SETUP.md`
 
 ## Credentials Status
-⚠️ **URGENT**: The following tokens were exposed and need rotation:
-- Supabase Dev PAT: `sbp_ec7832b4df757394b2795a480b38fd8ee377b742`
-- Supabase Prod PAT: `sbp_94bb672c6f380866e71410574be8580513a4f153`
-- Stripe Test Key: `sk_test_51Py91NF91eBZ5qduJgcAWJz66XSBjTJ3AaasNBZWaOo4rV6n046SnsFITioyV2jnLU3DygEVl3WvSLjecb9TXXpe00kb7PQZsL`
+⚠️ **URGENT**: The following tokens were exposed and have been rotated:
+- Supabase Dev PAT: `[REDACTED - rotated]`
+- Supabase Prod PAT: `[REDACTED - rotated]`
+- Stripe Test Key: `[REDACTED - rotated]`
 
 ## Debug Commands
 ```bash
