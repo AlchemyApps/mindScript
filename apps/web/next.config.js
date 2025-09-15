@@ -1,8 +1,15 @@
 /** @type {import('next').NextConfig} */
+const { withSentryConfig } = require('@sentry/nextjs');
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+})
+
 const nextConfig = {
   transpilePackages: ["@mindscript/ui", "@mindscript/types", "@mindscript/schemas"],
   experimental: {
     typedRoutes: true,
+    optimizePackageImports: ['lucide-react', '@heroicons/react', '@radix-ui/*'],
+    instrumentationHook: true, // Enable instrumentation for Sentry
   },
   images: {
     remotePatterns: [
@@ -17,8 +24,17 @@ const nextConfig = {
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
     minimumCacheTTL: 60, // 1 minute
-    formats: ['image/webp'],
+    formats: ['image/webp', 'image/avif'],
+    // Performance: Optimize image loading
+    dangerouslyAllowSVG: false,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
+
+  // Performance optimizations
+  compress: true,
+  generateEtags: true,
+  productionBrowserSourceMaps: false, // Disable source maps in production for smaller bundle
   
   // Security configurations
   poweredByHeader: false, // Remove X-Powered-By header
@@ -104,4 +120,34 @@ const nextConfig = {
   },
 };
 
-module.exports = nextConfig;
+// Sentry configuration options
+const sentryWebpackPluginOptions = {
+  org: process.env.SENTRY_ORG || 'mindscript',
+  project: process.env.SENTRY_PROJECT || 'mindscript-web',
+
+  // Only upload source maps in production
+  silent: true,
+
+  // Upload source maps during production build
+  widenClientFileUpload: true,
+
+  // Automatically instrument your code for performance monitoring
+  reactComponentAnnotation: {
+    enabled: true,
+  },
+
+  // Route errors to the correct transaction
+  tunnelRoute: "/monitoring",
+
+  // Hide source maps from being visible in production
+  hideSourceMaps: true,
+
+  // Disable source map uploading in development
+  disableLogger: true,
+};
+
+// Export with Sentry wrapper for automatic error tracking
+module.exports = withSentryConfig(
+  withBundleAnalyzer(nextConfig),
+  sentryWebpackPluginOptions
+);

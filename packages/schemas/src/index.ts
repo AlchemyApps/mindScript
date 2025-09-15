@@ -78,3 +78,6 @@ export {
 
 // Seller exports (main source for SellerAgreementSchema)
 export * from "./seller";
+
+// Voice cloning exports
+export * from "./voice-cloning";

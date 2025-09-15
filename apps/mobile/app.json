@@ -16,14 +16,23 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mindscript.app"
+      "bundleIdentifier": "com.mindscript.app",
+      "jsEngine": "hermes",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio", "fetch", "remote-notification"],
+        "NSMicrophoneUsageDescription": "MindScript needs access to your microphone to record custom voice affirmations."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F7F8FC"
       },
-      "package": "com.mindscript.app"
+      "package": "com.mindscript.app",
+      "jsEngine": "hermes",
+      "permissions": ["RECORD_AUDIO", "VIBRATE"],
+      "enableProguardInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true
     },
     "web": {
       "favicon": "./assets/favicon.png"

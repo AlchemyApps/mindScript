@@ -24,6 +24,7 @@ export default defineConfig({
       "@mindscript/types": path.resolve(__dirname, "../../packages/types/src"),
       "@mindscript/ui": path.resolve(__dirname, "../../packages/ui/src"),
       "@mindscript/auth": path.resolve(__dirname, "../../packages/auth/src"),
+      "@mindscript/seo": path.resolve(__dirname, "../../packages/seo/src"),
     },
   },
 });

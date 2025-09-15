@@ -7,16 +7,17 @@ const securityHeaders = {
   // Content Security Policy - Strict policy with nonces for scripts
   'Content-Security-Policy': [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel-scripts.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel-scripts.com https://*.sentry.io https://*.posthog.com https://js.stripe.com",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://*.supabase.co https://lh3.googleusercontent.com",
+    "img-src 'self' data: blob: https://*.supabase.co https://lh3.googleusercontent.com https://*.stripe.com",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.elevenlabs.io https://api.openai.com",
-    "media-src 'self' https://*.supabase.co",
+    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.elevenlabs.io https://api.openai.com https://*.sentry.io https://*.posthog.com https://*.ingest.sentry.io",
+    "media-src 'self' blob: https://*.supabase.co",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    "form-action 'self' https://checkout.stripe.com",
     "frame-ancestors 'none'",
+    "frame-src 'self' https://checkout.stripe.com https://js.stripe.com",
     "upgrade-insecure-requests"
   ].join('; '),
   
