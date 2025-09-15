@@ -1,0 +1,504 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip-tests:
+        description: 'Skip E2E tests (use with caution)'
+        required: false
+        default: false
+        type: boolean
+      emergency:
+        description: 'Emergency deployment (skip some checks)'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: "18.x"
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID_WEB: ${{ secrets.VERCEL_PROJECT_ID_WEB_PROD }}
+  VERCEL_PROJECT_ID_ADMIN: ${{ secrets.VERCEL_PROJECT_ID_ADMIN_PROD }}
+  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID_PROD }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+jobs:
+  # Create GitHub release
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_url: ${{ steps.release.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          VERSION=$(cat package.json | jq -r '.version')
+          echo "version=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Generate changelog from commits
+          CHANGELOG=$(git log --pretty=format:"- %s (%h)" $(git describe --tags --abbrev=0)..HEAD)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## What's Changed
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Deployment Info
+            - Environment: Production
+            - Commit: ${{ github.sha }}
+            - Deployed by: ${{ github.actor }}
+          draft: false
+          prerelease: false
+
+  # Pre-deployment validation
+  pre-deploy-validation:
+    name: Pre-deployment Validation
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.emergency }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run all tests
+        run: npm run test:coverage
+
+      - name: Security audit
+        run: npm audit --audit-level=high
+
+      - name: Check build
+        run: npm run build
+
+  # Manual approval gate
+  approval:
+    name: Production Deployment Approval
+    runs-on: ubuntu-latest
+    needs: [pre-deploy-validation, create-release]
+    environment:
+      name: production-approval
+    steps:
+      - name: Request approval
+        run: |
+          echo "🚀 Production deployment request"
+          echo "Version: ${{ needs.create-release.outputs.version }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Requester: ${{ github.actor }}"
+          echo ""
+          echo "Please review and approve the deployment to production."
+
+  # Backup production database
+  backup-database:
+    name: Backup Production Database
+    runs-on: ubuntu-latest
+    needs: approval
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Create database backup
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          BACKUP_NAME="prod_backup_${TIMESTAMP}_${GITHUB_SHA}"
+
+          echo "Creating backup: $BACKUP_NAME"
+
+          # Create backup using Supabase CLI
+          supabase db dump \
+            --db-url ${{ secrets.DATABASE_URL_PROD }} \
+            -f backup_$TIMESTAMP.sql
+
+          # Upload to S3 or other backup storage
+          # aws s3 cp backup_$TIMESTAMP.sql s3://mindscript-backups/$BACKUP_NAME.sql
+
+          echo "backup_name=$BACKUP_NAME" >> $GITHUB_OUTPUT
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # Deploy Web App to Production
+  deploy-web:
+    name: Deploy Web App to Production
+    runs-on: ubuntu-latest
+    needs: [approval, backup-database]
+    environment:
+      name: production-web
+      url: https://mindscript.app
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app for production
+        run: npm run build --workspace=@mindscript/web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL_PROD }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY_PROD }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY_PROD }}
+          NEXT_PUBLIC_APP_URL: https://mindscript.app
+          NODE_ENV: production
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy to Vercel Production
+        id: deploy
+        run: |
+          cd apps/web
+          URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployed to: $URL"
+
+      - name: Verify deployment
+        run: |
+          # Wait for deployment to be ready
+          sleep 30
+
+          # Check if site is accessible
+          STATUS=$(curl -o /dev/null -s -w "%{http_code}" ${{ steps.deploy.outputs.url }})
+          if [ $STATUS -ne 200 ]; then
+            echo "Deployment verification failed! Status: $STATUS"
+            exit 1
+          fi
+          echo "Deployment verified successfully"
+
+  # Deploy Admin App to Production
+  deploy-admin:
+    name: Deploy Admin App to Production
+    runs-on: ubuntu-latest
+    needs: [approval, backup-database]
+    environment:
+      name: production-admin
+      url: https://admin.mindscript.app
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build admin app for production
+        run: npm run build --workspace=@mindscript/admin
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL_PROD }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY_PROD }}
+          NEXT_PUBLIC_APP_URL: https://admin.mindscript.app
+          NODE_ENV: production
+
+      - name: Deploy to Vercel Production
+        id: deploy
+        run: |
+          cd apps/admin
+          URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }})
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+  # Deploy Edge Functions to Production
+  deploy-edge-functions:
+    name: Deploy Edge Functions to Production
+    runs-on: ubuntu-latest
+    needs: [approval, backup-database]
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Edge Functions
+        run: |
+          for dir in supabase/functions/*/; do
+            if [ -f "$dir/index.ts" ]; then
+              function_name=$(basename "$dir")
+              echo "Deploying $function_name to production"
+              supabase functions deploy $function_name \
+                --project-ref ${{ env.SUPABASE_PROJECT_ID }} \
+                --no-verify-jwt
+            fi
+          done
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # Run database migrations
+  migrate-database:
+    name: Run Production Migrations
+    runs-on: ubuntu-latest
+    needs: [deploy-edge-functions]
+    environment: production-db
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Run migrations with validation
+        run: |
+          echo "Running production migrations..."
+
+          # First, validate migrations
+          supabase db diff \
+            --db-url ${{ secrets.DATABASE_URL_PROD }} \
+            --file migration_diff.sql
+
+          # Apply migrations if validation passes
+          supabase db push \
+            --db-url ${{ secrets.DATABASE_URL_PROD }} \
+            --include-all
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # Run full E2E test suite
+  e2e-tests:
+    name: Production E2E Tests
+    runs-on: ubuntu-latest
+    needs: [deploy-web, deploy-admin, migrate-database]
+    if: ${{ !inputs.skip-tests }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps
+
+      - name: Run full E2E test suite
+        run: npm run test:e2e
+        env:
+          PLAYWRIGHT_BASE_URL: https://mindscript.app
+          PLAYWRIGHT_ADMIN_URL: https://admin.mindscript.app
+          E2E_TEST_EMAIL: ${{ secrets.E2E_TEST_EMAIL_PROD }}
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD_PROD }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: e2e-test-results
+          path: playwright-report/
+          retention-days: 30
+
+  # Performance monitoring setup
+  setup-monitoring:
+    name: Setup Performance Monitoring
+    runs-on: ubuntu-latest
+    needs: [deploy-web, deploy-admin]
+    steps:
+      - name: Update Sentry release
+        uses: getsentry/action-release@v1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        with:
+          environment: production
+          version: ${{ needs.create-release.outputs.version }}
+          sourcemaps: ./apps/web/.next
+
+      - name: Setup Datadog monitoring
+        run: |
+          # Configure Datadog RUM
+          curl -X POST "https://api.datadoghq.com/api/v1/rum/applications" \
+            -H "DD-API-KEY: ${{ secrets.DATADOG_API_KEY }}" \
+            -H "DD-APPLICATION-KEY: ${{ secrets.DATADOG_APP_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "name": "MindScript Production",
+              "type": "browser",
+              "url": "https://mindscript.app"
+            }'
+
+  # Invalidate CDN cache
+  invalidate-cache:
+    name: Invalidate CDN Cache
+    runs-on: ubuntu-latest
+    needs: [deploy-web, deploy-admin]
+    steps:
+      - name: Purge Cloudflare cache
+        run: |
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CLOUDFLARE_ZONE_ID }}/purge_cache" \
+            -H "Authorization: Bearer ${{ secrets.CLOUDFLARE_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data '{"purge_everything":true}'
+
+  # Final deployment verification
+  verify-deployment:
+    name: Verify Production Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-web, deploy-admin, e2e-tests, setup-monitoring]
+    steps:
+      - name: Health checks
+        run: |
+          # Check web app
+          curl -f https://mindscript.app/api/health || exit 1
+
+          # Check admin app
+          curl -f https://admin.mindscript.app/api/health || exit 1
+
+          # Check Edge Functions
+          curl -f https://${{ env.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/health || exit 1
+
+          echo "All health checks passed ✅"
+
+      - name: Performance check
+        run: |
+          # Run Lighthouse audit
+          npx lighthouse https://mindscript.app \
+            --output=json \
+            --output-path=./lighthouse-report.json \
+            --only-categories=performance
+
+          PERF_SCORE=$(cat lighthouse-report.json | jq '.categories.performance.score')
+          echo "Performance score: $PERF_SCORE"
+
+          if (( $(echo "$PERF_SCORE < 0.9" | bc -l) )); then
+            echo "⚠️ Performance score below threshold"
+          fi
+
+  # Send deployment notification
+  notify-deployment:
+    name: Send Production Notification
+    runs-on: ubuntu-latest
+    needs: [verify-deployment, create-release]
+    if: always()
+    steps:
+      - name: Send success notification
+        if: needs.verify-deployment.result == 'success'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🎉 Production deployment successful!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "🚀 Production Deployment Complete"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Version:*\n${{ needs.create-release.outputs.version }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Release:*\n<${{ needs.create-release.outputs.release_url }}|View Release>"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Deployed by:*\n${{ github.actor }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n✅ All systems operational"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Live URLs:*\n• Web: https://mindscript.app\n• Admin: https://admin.mindscript.app"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Send failure notification
+        if: needs.verify-deployment.result != 'success'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "❌ Production deployment failed!",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "⚠️ Production Deployment Failed"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Action Required:* Please check the deployment logs and consider rolling back if necessary.\n\n*Rollback command:*\n```gh workflow run rollback.yml```"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

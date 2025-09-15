@@ -1,0 +1,551 @@
+name: Scheduled Jobs
+
+on:
+  schedule:
+    # Run analytics aggregation daily at 2 AM UTC
+    - cron: '0 2 * * *'
+    # Run cleanup jobs every 6 hours
+    - cron: '0 */6 * * *'
+    # Run payout processing weekly on Mondays at 10 AM UTC
+    - cron: '0 10 * * 1'
+    # Run health checks every 15 minutes
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      job-type:
+        description: 'Job to run'
+        required: true
+        type: choice
+        options:
+          - all
+          - analytics
+          - cleanup
+          - payouts
+          - health-check
+          - backup
+          - usage-reports
+          - expired-subscriptions
+
+env:
+  NODE_VERSION: "18.x"
+  SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID_PROD }}
+
+jobs:
+  # Determine which jobs to run
+  setup:
+    name: Determine Jobs
+    runs-on: ubuntu-latest
+    outputs:
+      run-analytics: ${{ steps.check.outputs.analytics }}
+      run-cleanup: ${{ steps.check.outputs.cleanup }}
+      run-payouts: ${{ steps.check.outputs.payouts }}
+      run-health: ${{ steps.check.outputs.health }}
+      run-backup: ${{ steps.check.outputs.backup }}
+      run-usage: ${{ steps.check.outputs.usage }}
+      run-subscriptions: ${{ steps.check.outputs.subscriptions }}
+    steps:
+      - name: Check schedule or manual trigger
+        id: check
+        run: |
+          # Manual trigger - check selected job
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ inputs.job-type }}" == "all" ]; then
+              echo "analytics=true" >> $GITHUB_OUTPUT
+              echo "cleanup=true" >> $GITHUB_OUTPUT
+              echo "payouts=true" >> $GITHUB_OUTPUT
+              echo "health=true" >> $GITHUB_OUTPUT
+              echo "backup=true" >> $GITHUB_OUTPUT
+              echo "usage=true" >> $GITHUB_OUTPUT
+              echo "subscriptions=true" >> $GITHUB_OUTPUT
+            else
+              echo "analytics=${{ inputs.job-type == 'analytics' }}" >> $GITHUB_OUTPUT
+              echo "cleanup=${{ inputs.job-type == 'cleanup' }}" >> $GITHUB_OUTPUT
+              echo "payouts=${{ inputs.job-type == 'payouts' }}" >> $GITHUB_OUTPUT
+              echo "health=${{ inputs.job-type == 'health-check' }}" >> $GITHUB_OUTPUT
+              echo "backup=${{ inputs.job-type == 'backup' }}" >> $GITHUB_OUTPUT
+              echo "usage=${{ inputs.job-type == 'usage-reports' }}" >> $GITHUB_OUTPUT
+              echo "subscriptions=${{ inputs.job-type == 'expired-subscriptions' }}" >> $GITHUB_OUTPUT
+            fi
+          else
+            # Scheduled trigger - check cron schedule
+            HOUR=$(date -u +%H)
+            DAY=$(date -u +%u)
+            MINUTE=$(date -u +%M)
+
+            # Analytics at 2 AM
+            if [ "$HOUR" == "02" ] && [ "$MINUTE" -lt "15" ]; then
+              echo "analytics=true" >> $GITHUB_OUTPUT
+            else
+              echo "analytics=false" >> $GITHUB_OUTPUT
+            fi
+
+            # Cleanup every 6 hours
+            if [ $((HOUR % 6)) -eq 0 ] && [ "$MINUTE" -lt "15" ]; then
+              echo "cleanup=true" >> $GITHUB_OUTPUT
+            else
+              echo "cleanup=false" >> $GITHUB_OUTPUT
+            fi
+
+            # Payouts on Monday at 10 AM
+            if [ "$DAY" == "1" ] && [ "$HOUR" == "10" ] && [ "$MINUTE" -lt "15" ]; then
+              echo "payouts=true" >> $GITHUB_OUTPUT
+            else
+              echo "payouts=false" >> $GITHUB_OUTPUT
+            fi
+
+            # Health checks every 15 minutes
+            echo "health=true" >> $GITHUB_OUTPUT
+
+            # Daily backup at 2 AM
+            if [ "$HOUR" == "02" ] && [ "$MINUTE" -lt "15" ]; then
+              echo "backup=true" >> $GITHUB_OUTPUT
+            else
+              echo "backup=false" >> $GITHUB_OUTPUT
+            fi
+
+            # Usage reports on Sunday at 2 AM
+            if [ "$DAY" == "7" ] && [ "$HOUR" == "02" ] && [ "$MINUTE" -lt "15" ]; then
+              echo "usage=true" >> $GITHUB_OUTPUT
+            else
+              echo "usage=false" >> $GITHUB_OUTPUT
+            fi
+
+            # Check expired subscriptions daily at 3 AM
+            if [ "$HOUR" == "03" ] && [ "$MINUTE" -lt "15" ]; then
+              echo "subscriptions=true" >> $GITHUB_OUTPUT
+            else
+              echo "subscriptions=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  # Analytics aggregation job
+  analytics:
+    name: Analytics Aggregation
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.run-analytics == 'true'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Trigger analytics Edge Function
+        run: |
+          echo "📊 Running analytics aggregation..."
+
+          # Trigger the analytics job
+          curl -X POST \
+            "https://${{ env.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/queue-worker" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "action": "process",
+              "jobType": "analytics",
+              "data": {
+                "type": "daily_aggregation",
+                "date": "'$(date -u -d "yesterday" +%Y-%m-%d)'"
+              }
+            }'
+
+          echo "✅ Analytics aggregation triggered"
+
+      - name: Generate usage metrics
+        run: |
+          # Query database for metrics
+          psql "${{ secrets.DATABASE_URL_PROD }}" << EOF
+            -- Daily active users
+            INSERT INTO analytics_metrics (metric_type, metric_date, value, metadata)
+            SELECT
+              'dau',
+              CURRENT_DATE - INTERVAL '1 day',
+              COUNT(DISTINCT user_id),
+              jsonb_build_object('platform', 'all')
+            FROM user_sessions
+            WHERE created_at >= CURRENT_DATE - INTERVAL '1 day'
+              AND created_at < CURRENT_DATE;
+
+            -- Audio renders completed
+            INSERT INTO analytics_metrics (metric_type, metric_date, value, metadata)
+            SELECT
+              'renders_completed',
+              CURRENT_DATE - INTERVAL '1 day',
+              COUNT(*),
+              jsonb_build_object(
+                'avg_duration_seconds', AVG(EXTRACT(EPOCH FROM (completed_at - created_at))),
+                'total_minutes_rendered', SUM((metadata->>'duration_seconds')::int) / 60
+              )
+            FROM job_queue
+            WHERE type = 'audio_render'
+              AND status = 'completed'
+              AND completed_at >= CURRENT_DATE - INTERVAL '1 day'
+              AND completed_at < CURRENT_DATE;
+          EOF
+
+  # Cleanup job
+  cleanup:
+    name: Cleanup Old Data
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.run-cleanup == 'true'
+    environment: production
+    steps:
+      - name: Clean temporary files
+        run: |
+          echo "🧹 Cleaning temporary files..."
+
+          # Trigger cleanup Edge Function
+          curl -X POST \
+            "https://${{ env.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/queue-worker" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "action": "cleanup"
+            }'
+
+      - name: Archive old job records
+        run: |
+          echo "📦 Archiving old job records..."
+
+          psql "${{ secrets.DATABASE_URL_PROD }}" << EOF
+            -- Archive completed jobs older than 30 days
+            WITH archived AS (
+              INSERT INTO job_queue_archive
+              SELECT * FROM job_queue
+              WHERE status IN ('completed', 'cancelled')
+                AND updated_at < CURRENT_TIMESTAMP - INTERVAL '30 days'
+              RETURNING id
+            )
+            DELETE FROM job_queue
+            WHERE id IN (SELECT id FROM archived);
+
+            -- Clean up old session data
+            DELETE FROM user_sessions
+            WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '90 days';
+
+            -- Remove orphaned storage objects
+            DELETE FROM storage.objects
+            WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '7 days'
+              AND bucket_id = 'temp-audio'
+              AND NOT EXISTS (
+                SELECT 1 FROM audio_tracks
+                WHERE file_url LIKE '%' || storage.objects.name
+              );
+          EOF
+
+      - name: Vacuum database
+        run: |
+          echo "🔧 Running database maintenance..."
+
+          psql "${{ secrets.DATABASE_URL_PROD }}" -c "VACUUM ANALYZE;"
+
+  # Payout processing
+  payouts:
+    name: Process Weekly Payouts
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.run-payouts == 'true'
+    environment: production-payments
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Calculate seller payouts
+        run: |
+          echo "💰 Calculating weekly payouts..."
+
+          # Trigger payout calculation
+          curl -X POST \
+            "https://${{ env.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/queue-worker" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "action": "process",
+              "jobType": "payout",
+              "data": {
+                "type": "weekly_payout",
+                "week_ending": "'$(date -u -d "last sunday" +%Y-%m-%d)'"
+              }
+            }'
+
+      - name: Verify payout totals
+        run: |
+          psql "${{ secrets.DATABASE_URL_PROD }}" << EOF
+            SELECT
+              COUNT(*) as payout_count,
+              SUM(amount) as total_amount,
+              currency
+            FROM payout_queue
+            WHERE status = 'pending'
+              AND created_at >= CURRENT_DATE
+            GROUP BY currency;
+          EOF
+
+  # Health checks
+  health-check:
+    name: Health Checks
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.run-health == 'true'
+    timeout-minutes: 5
+    steps:
+      - name: Check web app
+        id: web
+        continue-on-error: true
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://mindscript.app/api/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Web app unhealthy: $STATUS"
+            echo "healthy=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Web app healthy"
+            echo "healthy=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check admin app
+        id: admin
+        continue-on-error: true
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://admin.mindscript.app/api/health)
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Admin app unhealthy: $STATUS"
+            echo "healthy=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Admin app healthy"
+            echo "healthy=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Edge Functions
+        id: edge
+        continue-on-error: true
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://${{ env.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/health")
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Edge Functions unhealthy: $STATUS"
+            echo "healthy=false" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Edge Functions healthy"
+            echo "healthy=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check database
+        id: database
+        continue-on-error: true
+        run: |
+          if psql "${{ secrets.DATABASE_URL_PROD }}" -c "SELECT 1;" > /dev/null 2>&1; then
+            echo "✅ Database healthy"
+            echo "healthy=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Database unhealthy"
+            echo "healthy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check job queue health
+        run: |
+          psql "${{ secrets.DATABASE_URL_PROD }}" << EOF
+            -- Check for stuck jobs
+            SELECT
+              type,
+              status,
+              COUNT(*) as count,
+              MAX(updated_at) as last_update
+            FROM job_queue
+            WHERE status IN ('pending', 'processing')
+              AND updated_at < CURRENT_TIMESTAMP - INTERVAL '1 hour'
+            GROUP BY type, status;
+
+            -- Check dead letter queue
+            SELECT
+              COUNT(*) as dead_letter_count
+            FROM job_dead_letter
+            WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '24 hours';
+          EOF
+
+      - name: Alert on unhealthy services
+        if: |
+          steps.web.outputs.healthy == 'false' ||
+          steps.admin.outputs.healthy == 'false' ||
+          steps.edge.outputs.healthy == 'false' ||
+          steps.database.outputs.healthy == 'false'
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🚨 Health check failure detected",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "⚠️ Service Health Alert"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Web:* ${{ steps.web.outputs.healthy == 'true' && '✅' || '❌' }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Admin:* ${{ steps.admin.outputs.healthy == 'true' && '✅' || '❌' }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Edge:* ${{ steps.edge.outputs.healthy == 'true' && '✅' || '❌' }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Database:* ${{ steps.database.outputs.healthy == 'true' && '✅' || '❌' }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URGENT }}
+
+  # Database backup
+  backup:
+    name: Database Backup
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.run-backup == 'true'
+    environment: production
+    steps:
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Create backup
+        run: |
+          echo "💾 Creating database backup..."
+
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          BACKUP_NAME="scheduled_backup_${TIMESTAMP}"
+
+          # Create backup
+          supabase db dump \
+            --db-url ${{ secrets.DATABASE_URL_PROD }} \
+            -f backup_$TIMESTAMP.sql
+
+          # Compress
+          gzip backup_$TIMESTAMP.sql
+
+          # Upload to S3
+          aws s3 cp backup_$TIMESTAMP.sql.gz \
+            s3://mindscript-db-backups/scheduled/$BACKUP_NAME.sql.gz \
+            --storage-class GLACIER_IR
+
+          # Clean up old backups (keep 30 days)
+          aws s3 ls s3://mindscript-db-backups/scheduled/ \
+            --recursive | while read -r line; do
+            createDate=$(echo $line | awk '{print $1" "$2}')
+            createDate=$(date -d "$createDate" +%s)
+            olderThan=$(date -d "30 days ago" +%s)
+            if [[ $createDate -lt $olderThan ]]; then
+              fileName=$(echo $line | awk '{print $4}')
+              echo "Deleting old backup: $fileName"
+              aws s3 rm s3://mindscript-db-backups/scheduled/$fileName
+            fi
+          done
+
+          echo "✅ Backup completed: $BACKUP_NAME"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+
+  # Usage reports
+  usage-reports:
+    name: Generate Usage Reports
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.run-usage == 'true'
+    environment: production
+    steps:
+      - name: Generate weekly report
+        run: |
+          echo "📊 Generating usage reports..."
+
+          REPORT=$(psql "${{ secrets.DATABASE_URL_PROD }}" -t << EOF
+            WITH weekly_stats AS (
+              SELECT
+                COUNT(DISTINCT u.id) as total_users,
+                COUNT(DISTINCT CASE WHEN u.created_at >= CURRENT_DATE - INTERVAL '7 days' THEN u.id END) as new_users,
+                COUNT(DISTINCT at.id) as tracks_created,
+                SUM(CASE WHEN jq.type = 'audio_render' AND jq.status = 'completed' THEN 1 ELSE 0 END) as renders_completed,
+                AVG(CASE WHEN jq.type = 'audio_render' THEN EXTRACT(EPOCH FROM (jq.completed_at - jq.created_at)) END) as avg_render_time
+              FROM users u
+              LEFT JOIN audio_tracks at ON at.user_id = u.id
+                AND at.created_at >= CURRENT_DATE - INTERVAL '7 days'
+              LEFT JOIN job_queue jq ON jq.user_id = u.id
+                AND jq.created_at >= CURRENT_DATE - INTERVAL '7 days'
+            )
+            SELECT jsonb_pretty(to_jsonb(weekly_stats))
+            FROM weekly_stats;
+          EOF
+          )
+
+          # Send report via email
+          curl -X POST \
+            "https://${{ env.SUPABASE_PROJECT_ID }}.supabase.co/functions/v1/send-email" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"to\": \"${{ secrets.ADMIN_EMAIL }}\",
+              \"subject\": \"Weekly Usage Report - $(date +%Y-%m-%d)\",
+              \"html\": \"<pre>$REPORT</pre>\"
+            }"
+
+  # Expired subscriptions
+  expired-subscriptions:
+    name: Handle Expired Subscriptions
+    runs-on: ubuntu-latest
+    needs: setup
+    if: needs.setup.outputs.run-subscriptions == 'true'
+    environment: production
+    steps:
+      - name: Check and update expired subscriptions
+        run: |
+          echo "🔄 Checking expired subscriptions..."
+
+          psql "${{ secrets.DATABASE_URL_PROD }}" << EOF
+            -- Mark expired subscriptions
+            UPDATE user_subscriptions
+            SET status = 'expired',
+                updated_at = CURRENT_TIMESTAMP
+            WHERE status = 'active'
+              AND expires_at < CURRENT_TIMESTAMP;
+
+            -- Revoke access for expired subscriptions
+            UPDATE user_features
+            SET active = false,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id IN (
+              SELECT user_id
+              FROM user_subscriptions
+              WHERE status = 'expired'
+                AND updated_at >= CURRENT_TIMESTAMP - INTERVAL '1 minute'
+            );
+
+            -- Queue notification emails
+            INSERT INTO job_queue (type, data, user_id)
+            SELECT
+              'email',
+              jsonb_build_object(
+                'type', 'subscription_expired',
+                'email', u.email,
+                'subscription_id', us.id
+              ),
+              us.user_id
+            FROM user_subscriptions us
+            JOIN users u ON u.id = us.user_id
+            WHERE us.status = 'expired'
+              AND us.updated_at >= CURRENT_TIMESTAMP - INTERVAL '1 minute';
+          EOF
+
+          echo "✅ Expired subscriptions processed"

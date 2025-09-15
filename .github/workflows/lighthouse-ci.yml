@@ -1,0 +1,120 @@
+name: Lighthouse CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'apps/web/**'
+      - 'packages/ui/**'
+      - '.github/workflows/lighthouse-ci.yml'
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build --workspace=@mindscript/web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_APP_URL: http://localhost:3001
+
+      - name: Start application
+        run: |
+          npm run start --workspace=@mindscript/web &
+          npx wait-on http://localhost:3001 -t 30000
+        env:
+          PORT: 3001
+
+      - name: Run Lighthouse CI
+        run: |
+          npm install -g @lhci/cli@0.13.x
+          lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/
+
+      - name: Format Lighthouse score
+        if: always()
+        run: |
+          echo "## Lighthouse Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Parse and display scores from the latest run
+          if [ -f .lighthouseci/lhr-*.json ]; then
+            PERF_SCORE=$(cat .lighthouseci/lhr-*.json | jq '.categories.performance.score * 100' | head -1)
+            A11Y_SCORE=$(cat .lighthouseci/lhr-*.json | jq '.categories.accessibility.score * 100' | head -1)
+            BEST_SCORE=$(cat .lighthouseci/lhr-*.json | jq '.categories["best-practices"].score * 100' | head -1)
+            SEO_SCORE=$(cat .lighthouseci/lhr-*.json | jq '.categories.seo.score * 100' | head -1)
+
+            echo "| Category | Score |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Performance | ${PERF_SCORE}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Accessibility | ${A11Y_SCORE}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| Best Practices | ${BEST_SCORE}% |" >> $GITHUB_STEP_SUMMARY
+            echo "| SEO | ${SEO_SCORE}% |" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  bundle-analysis:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Analyze bundle size
+        run: |
+          npm run build:analyze --workspace=@mindscript/web
+          echo "Bundle analysis complete. Check artifacts for details."
+        env:
+          ANALYZE: true
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+
+      - name: Upload bundle analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-analysis
+          path: apps/web/.next/analyze/
+
+      - name: Check bundle size limits
+        run: |
+          # Extract and check bundle sizes
+          MAIN_BUNDLE_SIZE=$(find apps/web/.next -name "*.js" -exec du -k {} + | sort -rn | head -10 | awk '{sum+=$1} END {print sum}')
+          echo "Total JS bundle size: ${MAIN_BUNDLE_SIZE}KB"
+
+          if [ "$MAIN_BUNDLE_SIZE" -gt 500 ]; then
+            echo "⚠️ Warning: Bundle size exceeds 500KB threshold"
+            echo "::warning::Bundle size is ${MAIN_BUNDLE_SIZE}KB, which exceeds the 500KB threshold"
+          fi

@@ -1,0 +1,185 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    # Run tests every day at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  e2e-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+        shard: [1, 2, 3] # Split tests across 3 shards for parallel execution
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Build application
+        run: npm run build --workspace=@mindscript/web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          NEXT_PUBLIC_APP_URL: http://localhost:3001
+
+      - name: Start test database
+        run: |
+          docker run -d \
+            --name test-postgres \
+            -e POSTGRES_PASSWORD=testpassword \
+            -e POSTGRES_DB=mindscript_test \
+            -p 5432:5432 \
+            postgres:15
+
+      - name: Wait for database
+        run: |
+          until docker exec test-postgres pg_isready; do
+            echo "Waiting for postgres..."
+            sleep 1
+          done
+
+      - name: Run migrations
+        run: npm run migrate:test
+        env:
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/mindscript_test
+
+      - name: Run E2E tests
+        run: npx playwright test --project=${{ matrix.browser }} --shard=${{ matrix.shard }}/3
+        env:
+          CI: true
+          PLAYWRIGHT_BASE_URL: http://localhost:3001
+          DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/mindscript_test
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_TEST_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_TEST_WEBHOOK_SECRET }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ matrix.browser }}-${{ matrix.shard }}
+          path: |
+            test-results/
+            playwright-report/
+
+      - name: Upload coverage
+        if: matrix.browser == 'chromium' && matrix.shard == 1
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/e2e/lcov.info
+          flags: e2e-tests
+
+  e2e-mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Build application
+        run: npm run build --workspace=@mindscript/web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+
+      - name: Run mobile E2E tests
+        run: npx playwright test --project="Mobile Chrome" --project="Mobile Safari"
+        env:
+          CI: true
+          PLAYWRIGHT_BASE_URL: http://localhost:3001
+
+      - name: Upload mobile test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-mobile-results
+          path: |
+            test-results/
+            playwright-report/
+
+  merge-reports:
+    needs: [e2e-tests, e2e-mobile]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results/
+
+      - name: Merge test results
+        run: |
+          npx playwright merge-reports --reporter html ./all-results/**/*.json
+
+      - name: Upload merged report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-merged
+          path: playwright-report/
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('./all-results/results.json', 'utf8'));
+
+            const passed = results.tests.filter(t => t.status === 'passed').length;
+            const failed = results.tests.filter(t => t.status === 'failed').length;
+            const skipped = results.tests.filter(t => t.status === 'skipped').length;
+
+            const comment = `## 🎭 Playwright E2E Test Results
+
+            ✅ **Passed:** ${passed}
+            ❌ **Failed:** ${failed}
+            ⏭️ **Skipped:** ${skipped}
+
+            📊 **Total:** ${results.tests.length}
+            ⏱️ **Duration:** ${(results.duration / 1000).toFixed(2)}s
+
+            [View Full Report](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

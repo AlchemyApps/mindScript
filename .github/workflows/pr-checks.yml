@@ -1,0 +1,438 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [main, dev]
+    types: [opened, synchronize, reopened]
+
+env:
+  NODE_VERSION: "18.x"
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Determine what files changed to optimize CI runs
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      admin: ${{ steps.filter.outputs.admin }}
+      packages: ${{ steps.filter.outputs.packages }}
+      edge-functions: ${{ steps.filter.outputs.edge-functions }}
+      database: ${{ steps.filter.outputs.database }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'packages/**'
+            mobile:
+              - 'apps/mobile/**'
+              - 'packages/**'
+            admin:
+              - 'apps/admin/**'
+              - 'packages/**'
+            packages:
+              - 'packages/**'
+            edge-functions:
+              - 'supabase/functions/**'
+            database:
+              - 'supabase/migrations/**'
+
+  # Code quality checks
+  quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Need full history for some checks
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: ESLint check
+        run: npm run lint
+
+      - name: Prettier check
+        run: npm run format -- --check
+
+      - name: Check for unused dependencies
+        run: npx depcheck --ignores="@types/*,@vitest/*"
+
+  # Security scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        continue-on-error: true # Don't fail the build on vulnerabilities
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.pull_request.base.sha }}
+          head: ${{ github.event.pull_request.head.sha }}
+
+  # Unit tests with coverage
+  test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+      - name: Check coverage thresholds
+        run: |
+          echo "Checking coverage thresholds..."
+          COVERAGE=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+          echo "Overall coverage: $COVERAGE%"
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "Coverage is below 80% threshold"
+            exit 1
+          fi
+
+      - name: Comment PR with coverage
+        uses: romeovs/lcov-reporter-action@v0.3.1
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          lcov-file: ./coverage/lcov.info
+
+  # Build validation
+  build:
+    name: Build Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        app: [web, admin]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build ${{ matrix.app }}
+        run: npm run build --workspace=@mindscript/${{ matrix.app }}
+
+      - name: Check bundle size
+        run: |
+          # Get bundle size
+          BUNDLE_SIZE=$(du -sb apps/${{ matrix.app }}/.next | cut -f1)
+          MAX_SIZE=$((5 * 1024 * 1024)) # 5MB limit
+
+          echo "Bundle size for ${{ matrix.app }}: $BUNDLE_SIZE bytes"
+
+          if [ $BUNDLE_SIZE -gt $MAX_SIZE ]; then
+            echo "Bundle size exceeds limit!"
+            exit 1
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-${{ matrix.app }}
+          path: apps/${{ matrix.app }}/.next
+          retention-days: 7
+
+  # Mobile app checks
+  mobile:
+    name: Mobile App Checks
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.mobile == 'true'
+    needs: changes
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check Expo config
+        run: npx expo-doctor
+        working-directory: apps/mobile
+
+      - name: TypeScript check
+        run: npm run typecheck --workspace=@mindscript/mobile
+
+      - name: Run mobile tests
+        run: npm run test --workspace=@mindscript/mobile
+
+  # Edge Functions validation
+  edge-functions:
+    name: Edge Functions Check
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.edge-functions == 'true'
+    needs: changes
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Format check
+        run: deno fmt --check supabase/functions/
+
+      - name: Lint check
+        run: deno lint supabase/functions/
+
+      - name: Type check
+        run: |
+          for dir in supabase/functions/*/; do
+            if [ -f "$dir/index.ts" ]; then
+              echo "Checking $dir"
+              deno check "$dir/index.ts"
+            fi
+          done
+
+      - name: Run Edge Function tests
+        run: |
+          for test in supabase/functions/**/*.test.ts; do
+            if [ -f "$test" ]; then
+              echo "Running $test"
+              deno test --allow-all "$test"
+            fi
+          done
+
+  # Database migration validation
+  database:
+    name: Database Migration Check
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.database == 'true'
+    needs: changes
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Validate migration files
+        run: |
+          # Check for migration conflicts
+          MIGRATIONS=$(ls supabase/migrations/*.sql | sort)
+          echo "Found migrations:"
+          echo "$MIGRATIONS"
+
+          # Validate SQL syntax (basic check)
+          for migration in $MIGRATIONS; do
+            echo "Validating $migration"
+            # Basic SQL validation
+            if ! grep -q "^--" "$migration"; then
+              echo "Warning: Migration should start with a comment"
+            fi
+          done
+
+      - name: Check for unsafe operations
+        run: |
+          # Check for potentially dangerous operations
+          UNSAFE_PATTERNS="DROP TABLE|DROP COLUMN|DROP INDEX|TRUNCATE|DELETE FROM"
+
+          for migration in supabase/migrations/*.sql; do
+            if grep -E "$UNSAFE_PATTERNS" "$migration"; then
+              echo "⚠️  Warning: Found potentially unsafe operation in $migration"
+              echo "Please ensure proper safeguards are in place"
+            fi
+          done
+
+  # Lighthouse CI for web performance
+  lighthouse:
+    name: Lighthouse CI
+    runs-on: ubuntu-latest
+    needs: build
+    if: needs.changes.outputs.web == 'true'
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: build-web
+          path: apps/web/.next
+
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli
+
+      - name: Run Lighthouse CI
+        run: |
+          lhci autorun \
+            --upload.target=temporary-public-storage \
+            --collect.url=http://localhost:3000 \
+            --collect.url=http://localhost:3000/builder \
+            --collect.url=http://localhost:3000/marketplace \
+            --assert.preset=lighthouse:recommended \
+            --assert.assertions.categories:performance=90 \
+            --assert.assertions.categories:accessibility=90 \
+            --assert.assertions.categories:best-practices=90 \
+            --assert.assertions.categories:seo=90
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+  # Integration tests
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [quality, test, build]
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: supabase/postgres:15.1.0.117
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup test database
+        run: |
+          npx supabase db push --db-url postgresql://postgres:postgres@localhost:5432/postgres
+          npx supabase db seed
+
+      - name: Run integration tests
+        run: npm run test:integration
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          SUPABASE_URL: http://localhost:54321
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
+  # All checks passed
+  pr-checks-complete:
+    name: PR Checks Complete
+    runs-on: ubuntu-latest
+    needs: [quality, security, test, build, integration]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.quality.result }}" != "success" ] || \
+             [ "${{ needs.security.result }}" != "success" ] || \
+             [ "${{ needs.test.result }}" != "success" ] || \
+             [ "${{ needs.build.result }}" != "success" ] || \
+             [ "${{ needs.integration.result }}" != "success" ]; then
+            echo "One or more checks failed"
+            exit 1
+          fi
+          echo "All PR checks passed! ✅"
+
+      - name: Add comment to PR
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✅ All PR checks passed! Ready for review.'
+            })

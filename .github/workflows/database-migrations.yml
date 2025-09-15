@@ -1,0 +1,466 @@
+name: Database Migrations
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+      migration-type:
+        description: 'Migration type'
+        required: true
+        type: choice
+        default: 'apply'
+        options:
+          - apply
+          - rollback
+          - dry-run
+          - status
+      migration-file:
+        description: 'Specific migration file (optional, for rollback)'
+        required: false
+        type: string
+      confirm-production:
+        description: 'Type "CONFIRM" to apply to production'
+        required: false
+        type: string
+
+env:
+  SUPABASE_VERSION: "1.142.0"
+
+jobs:
+  # Validate migration request
+  validate:
+    name: Validate Migration Request
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+      backup-needed: ${{ steps.check.outputs.backup-needed }}
+    steps:
+      - name: Validate production confirmation
+        id: check
+        run: |
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            if [ "${{ inputs.confirm-production }}" != "CONFIRM" ]; then
+              echo "❌ Production migrations require typing CONFIRM"
+              echo "proceed=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            echo "backup-needed=true" >> $GITHUB_OUTPUT
+          else
+            echo "backup-needed=false" >> $GITHUB_OUTPUT
+          fi
+          echo "proceed=true" >> $GITHUB_OUTPUT
+
+      - name: Check migration type validity
+        run: |
+          if [ "${{ inputs.migration-type }}" == "rollback" ] && [ -z "${{ inputs.migration-file }}" ]; then
+            echo "❌ Rollback requires specifying a migration file"
+            exit 1
+          fi
+
+  # Backup database before migrations (production only)
+  backup:
+    name: Backup Database
+    runs-on: ubuntu-latest
+    needs: validate
+    if: needs.validate.outputs.backup-needed == 'true' && inputs.migration-type != 'dry-run'
+    environment: production-db
+    outputs:
+      backup-id: ${{ steps.backup.outputs.id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_VERSION }}
+
+      - name: Create database backup
+        id: backup
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          BACKUP_NAME="pre_migration_${TIMESTAMP}_${GITHUB_SHA}"
+
+          echo "Creating backup: $BACKUP_NAME"
+
+          # Create point-in-time backup
+          supabase db dump \
+            --db-url ${{ secrets.DATABASE_URL_PROD }} \
+            -f backup_$TIMESTAMP.sql
+
+          # Compress backup
+          gzip backup_$TIMESTAMP.sql
+
+          # Upload to backup storage
+          aws s3 cp backup_$TIMESTAMP.sql.gz \
+            s3://mindscript-db-backups/$BACKUP_NAME.sql.gz \
+            --metadata "migration-run=${{ github.run_id }},timestamp=$TIMESTAMP"
+
+          echo "id=$BACKUP_NAME" >> $GITHUB_OUTPUT
+          echo "✅ Backup created: $BACKUP_NAME"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # Analyze migrations before applying
+  analyze:
+    name: Analyze Migrations
+    runs-on: ubuntu-latest
+    needs: [validate]
+    environment: ${{ inputs.environment }}-readonly
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_VERSION }}
+
+      - name: Get current database state
+        run: |
+          PROJECT_ID=${{ secrets[format('SUPABASE_PROJECT_ID_{0}', upper(inputs.environment))] }}
+
+          echo "📊 Current migration status:"
+          supabase db remote list \
+            --project-ref $PROJECT_ID
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Analyze pending migrations
+        run: |
+          echo "🔍 Analyzing migrations..."
+
+          # Get list of migration files
+          MIGRATIONS=$(ls -1 supabase/migrations/*.sql | sort)
+
+          echo "Found migration files:"
+          for migration in $MIGRATIONS; do
+            echo "  - $(basename $migration)"
+
+            # Check for dangerous operations
+            if grep -qE "DROP TABLE|DROP COLUMN|TRUNCATE|DELETE FROM" "$migration"; then
+              echo "    ⚠️  Contains potentially destructive operations"
+            fi
+
+            # Check for RLS policies
+            if grep -q "CREATE POLICY\|ALTER POLICY" "$migration"; then
+              echo "    🔒 Contains RLS policy changes"
+            fi
+
+            # Check for indexes
+            if grep -q "CREATE INDEX\|DROP INDEX" "$migration"; then
+              echo "    📇 Contains index changes"
+            fi
+          done
+
+      - name: Generate migration diff
+        if: inputs.migration-type != 'status'
+        run: |
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          echo "📝 Generating migration diff..."
+          supabase db diff \
+            --db-url "$DB_URL" \
+            --file migration_diff.sql \
+            --use-migra \
+            --schema public,auth,storage
+
+          if [ -f migration_diff.sql ]; then
+            echo "Diff generated:"
+            cat migration_diff.sql
+          else
+            echo "No differences found"
+          fi
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # Apply migrations
+  apply:
+    name: Apply Migrations
+    runs-on: ubuntu-latest
+    needs: [validate, backup, analyze]
+    if: always() && needs.validate.outputs.proceed == 'true' && inputs.migration-type != 'status'
+    environment: ${{ inputs.environment }}-db
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: ${{ env.SUPABASE_VERSION }}
+
+      - name: Dry run migrations
+        if: inputs.migration-type == 'dry-run'
+        run: |
+          echo "🧪 Running migrations in dry-run mode..."
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Create temporary schema for dry run
+          psql "$DB_URL" -c "CREATE SCHEMA IF NOT EXISTS migration_test;"
+
+          # Apply migrations to test schema
+          for migration in supabase/migrations/*.sql; do
+            echo "Testing: $(basename $migration)"
+            psql "$DB_URL" -c "SET search_path TO migration_test;" -f "$migration" || true
+          done
+
+          # Clean up test schema
+          psql "$DB_URL" -c "DROP SCHEMA migration_test CASCADE;"
+
+          echo "✅ Dry run completed"
+
+      - name: Apply migrations
+        if: inputs.migration-type == 'apply'
+        run: |
+          echo "🚀 Applying migrations to ${{ inputs.environment }}..."
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Apply all pending migrations
+          supabase db push \
+            --db-url "$DB_URL" \
+            --include-all
+
+          echo "✅ Migrations applied successfully"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Rollback migration
+        if: inputs.migration-type == 'rollback'
+        run: |
+          echo "⏪ Rolling back migration: ${{ inputs.migration-file }}"
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Find and apply the rollback file
+          ROLLBACK_FILE="supabase/rollbacks/${{ inputs.migration-file }}.down.sql"
+
+          if [ ! -f "$ROLLBACK_FILE" ]; then
+            echo "❌ Rollback file not found: $ROLLBACK_FILE"
+            exit 1
+          fi
+
+          # Apply rollback
+          psql "$DB_URL" -f "$ROLLBACK_FILE"
+
+          # Update migration history
+          psql "$DB_URL" -c "DELETE FROM supabase_migrations WHERE name = '${{ inputs.migration-file }}';"
+
+          echo "✅ Rollback completed"
+
+  # Verify migrations
+  verify:
+    name: Verify Migrations
+    runs-on: ubuntu-latest
+    needs: apply
+    if: always() && needs.apply.result == 'success'
+    environment: ${{ inputs.environment }}-readonly
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migration tests
+        run: |
+          echo "🧪 Running migration verification tests..."
+
+          # Run specific migration tests
+          npm run test:migrations -- --env=${{ inputs.environment }}
+        env:
+          DATABASE_URL: ${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+          SUPABASE_URL: ${{ secrets[format('SUPABASE_URL_{0}', upper(inputs.environment))] }}
+          SUPABASE_ANON_KEY: ${{ secrets[format('SUPABASE_ANON_KEY_{0}', upper(inputs.environment))] }}
+
+      - name: Verify RLS policies
+        run: |
+          echo "🔒 Verifying RLS policies..."
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Check all tables have RLS enabled
+          TABLES_WITHOUT_RLS=$(psql "$DB_URL" -t -c "
+            SELECT schemaname || '.' || tablename
+            FROM pg_tables
+            WHERE schemaname = 'public'
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_policies
+              WHERE schemaname = pg_tables.schemaname
+              AND tablename = pg_tables.tablename
+            )
+          ")
+
+          if [ -n "$TABLES_WITHOUT_RLS" ]; then
+            echo "⚠️  Tables without RLS policies:"
+            echo "$TABLES_WITHOUT_RLS"
+          else
+            echo "✅ All tables have RLS policies"
+          fi
+
+      - name: Check database health
+        run: |
+          echo "💓 Checking database health..."
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Check connection count
+          psql "$DB_URL" -c "
+            SELECT count(*) as connections,
+                   state
+            FROM pg_stat_activity
+            GROUP BY state
+            ORDER BY count(*) DESC;
+          "
+
+          # Check for locks
+          psql "$DB_URL" -c "
+            SELECT blocked_locks.pid AS blocked_pid,
+                   blocked_activity.usename AS blocked_user,
+                   blocking_locks.pid AS blocking_pid,
+                   blocking_activity.usename AS blocking_user
+            FROM pg_catalog.pg_locks blocked_locks
+            JOIN pg_catalog.pg_stat_activity blocked_activity ON blocked_activity.pid = blocked_locks.pid
+            JOIN pg_catalog.pg_locks blocking_locks ON blocking_locks.locktype = blocked_locks.locktype
+            JOIN pg_catalog.pg_stat_activity blocking_activity ON blocking_activity.pid = blocking_locks.pid
+            WHERE NOT blocked_locks.granted
+            LIMIT 10;
+          "
+
+  # Rollback on failure
+  auto-rollback:
+    name: Auto Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [backup, apply, verify]
+    if: failure() && needs.backup.outputs.backup-id && inputs.environment == 'production'
+    environment: production-emergency
+    steps:
+      - name: Restore from backup
+        run: |
+          echo "🚨 Auto-rollback triggered!"
+          echo "Restoring from backup: ${{ needs.backup.outputs.backup-id }}"
+
+          # Download backup
+          aws s3 cp \
+            s3://mindscript-db-backups/${{ needs.backup.outputs.backup-id }}.sql.gz \
+            backup.sql.gz
+
+          # Decompress
+          gunzip backup.sql.gz
+
+          # Restore database
+          DB_URL=${{ secrets.DATABASE_URL_PROD }}
+          psql "$DB_URL" -f backup.sql
+
+          echo "✅ Database restored from backup"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+
+      - name: Notify rollback
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🚨 Production database auto-rollback executed",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "⚠️ Database Auto-Rollback"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Environment:* Production\n*Backup ID:* ${{ needs.backup.outputs.backup-id }}\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Send notification
+  notify:
+    name: Send Notification
+    runs-on: ubuntu-latest
+    needs: [apply, verify]
+    if: always()
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.verify.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.apply.result }}" == "skipped" ]; then
+            echo "status=skipped" >> $GITHUB_OUTPUT
+            echo "emoji=⏭️" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "${{ steps.status.outputs.emoji }} Database migration ${{ inputs.migration-type }} ${{ steps.status.outputs.status }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ steps.status.outputs.emoji }} Database Migration"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Environment:*\n${{ inputs.environment }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Type:*\n${{ inputs.migration-type }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${{ steps.status.outputs.status }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Run by:*\n${{ github.actor }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

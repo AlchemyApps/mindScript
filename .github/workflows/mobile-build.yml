@@ -1,0 +1,450 @@
+name: Mobile App Build & Deploy
+
+on:
+  push:
+    tags:
+      - 'mobile-v*'
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+      profile:
+        description: 'EAS Build profile'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - development
+          - preview
+          - production
+      submit:
+        description: 'Submit to app stores'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: "18.x"
+  EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+jobs:
+  # Setup and validation
+  setup:
+    name: Setup Mobile Build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      build-number: ${{ steps.version.outputs.build-number }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Setup Expo
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ env.EXPO_TOKEN }}
+
+      - name: Get version info
+        id: version
+        run: |
+          cd apps/mobile
+          VERSION=$(cat app.json | jq -r '.expo.version')
+          BUILD_NUMBER=$(cat app.json | jq -r '.expo.ios.buildNumber')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "build-number=$BUILD_NUMBER" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION, Build: $BUILD_NUMBER"
+
+      - name: Validate app config
+        run: |
+          cd apps/mobile
+          npx expo-doctor
+          npx expo config --type prebuild
+
+  # Build iOS app
+  build-ios:
+    name: Build iOS App
+    runs-on: ubuntu-latest
+    needs: setup
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios' }}
+    environment:
+      name: mobile-ios
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ env.EXPO_TOKEN }}
+
+      - name: Configure app credentials
+        run: |
+          cd apps/mobile
+
+          # Set environment variables
+          echo "EXPO_PUBLIC_SUPABASE_URL=${{ secrets.EXPO_PUBLIC_SUPABASE_URL_PROD }}" >> .env.production
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY_PROD }}" >> .env.production
+          echo "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_PROD }}" >> .env.production
+          echo "EXPO_PUBLIC_API_URL=https://mindscript.app/api" >> .env.production
+
+      - name: Build iOS app
+        run: |
+          cd apps/mobile
+          eas build --platform ios \
+            --profile ${{ github.event.inputs.profile || 'production' }} \
+            --non-interactive \
+            --wait \
+            --clear-cache
+        env:
+          EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+          EXPO_APPLE_ID_PASSWORD: ${{ secrets.EXPO_APPLE_ID_PASSWORD }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.EXPO_APPLE_TEAM_ID }}
+
+      - name: Download iOS build
+        if: success()
+        run: |
+          cd apps/mobile
+          BUILD_URL=$(eas build:list --platform ios --limit 1 --json | jq -r '.[0].artifacts.buildUrl')
+          curl -L -o mindscript-ios.ipa "$BUILD_URL"
+          echo "iOS build downloaded: mindscript-ios.ipa"
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ios-build-${{ needs.setup.outputs.version }}
+          path: apps/mobile/mindscript-ios.ipa
+          retention-days: 30
+
+  # Build Android app
+  build-android:
+    name: Build Android App
+    runs-on: ubuntu-latest
+    needs: setup
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
+    environment:
+      name: mobile-android
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ env.EXPO_TOKEN }}
+
+      - name: Configure app credentials
+        run: |
+          cd apps/mobile
+
+          # Set environment variables
+          echo "EXPO_PUBLIC_SUPABASE_URL=${{ secrets.EXPO_PUBLIC_SUPABASE_URL_PROD }}" >> .env.production
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY_PROD }}" >> .env.production
+          echo "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ secrets.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY_PROD }}" >> .env.production
+          echo "EXPO_PUBLIC_API_URL=https://mindscript.app/api" >> .env.production
+
+      - name: Build Android app
+        run: |
+          cd apps/mobile
+          eas build --platform android \
+            --profile ${{ github.event.inputs.profile || 'production' }} \
+            --non-interactive \
+            --wait \
+            --clear-cache
+        env:
+          EXPO_ANDROID_KEYSTORE_BASE64: ${{ secrets.EXPO_ANDROID_KEYSTORE_BASE64 }}
+          EXPO_ANDROID_KEYSTORE_ALIAS: ${{ secrets.EXPO_ANDROID_KEYSTORE_ALIAS }}
+          EXPO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.EXPO_ANDROID_KEYSTORE_PASSWORD }}
+          EXPO_ANDROID_KEY_PASSWORD: ${{ secrets.EXPO_ANDROID_KEY_PASSWORD }}
+
+      - name: Download Android build
+        if: success()
+        run: |
+          cd apps/mobile
+          BUILD_URL=$(eas build:list --platform android --limit 1 --json | jq -r '.[0].artifacts.buildUrl')
+
+          if [[ "${{ github.event.inputs.profile }}" == "production" ]]; then
+            curl -L -o mindscript-android.aab "$BUILD_URL"
+            echo "Android build downloaded: mindscript-android.aab"
+          else
+            curl -L -o mindscript-android.apk "$BUILD_URL"
+            echo "Android build downloaded: mindscript-android.apk"
+          fi
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-build-${{ needs.setup.outputs.version }}
+          path: apps/mobile/mindscript-android.*
+          retention-days: 30
+
+  # Run mobile E2E tests
+  test-mobile:
+    name: Mobile E2E Tests
+    runs-on: macos-latest
+    needs: [build-ios, build-android]
+    if: success()
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd apps/mobile
+          npm install -g detox-cli
+
+      - name: Setup iOS Simulator
+        run: |
+          # Boot iOS simulator
+          xcrun simctl boot "iPhone 14"
+          xcrun simctl openurl booted https://mindscript.app
+
+      - name: Download iOS build
+        uses: actions/download-artifact@v3
+        with:
+          name: ios-build-${{ needs.setup.outputs.version }}
+          path: apps/mobile
+
+      - name: Install app on simulator
+        run: |
+          cd apps/mobile
+          xcrun simctl install booted mindscript-ios.ipa
+
+      - name: Run Detox tests
+        run: |
+          cd apps/mobile
+          detox test --configuration ios.sim.release \
+            --cleanup \
+            --reuse \
+            --record-logs all \
+            --take-screenshots all
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: detox-test-results
+          path: apps/mobile/artifacts/
+          retention-days: 7
+
+  # Submit to TestFlight
+  submit-ios:
+    name: Submit to TestFlight
+    runs-on: ubuntu-latest
+    needs: [build-ios, test-mobile]
+    if: ${{ github.event.inputs.submit == 'true' && success() }}
+    environment:
+      name: app-store-testflight
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ env.EXPO_TOKEN }}
+
+      - name: Submit to TestFlight
+        run: |
+          cd apps/mobile
+          eas submit --platform ios \
+            --profile production \
+            --non-interactive
+        env:
+          EXPO_APPLE_ID: ${{ secrets.EXPO_APPLE_ID }}
+          EXPO_APPLE_ID_PASSWORD: ${{ secrets.EXPO_APPLE_ID_PASSWORD }}
+          EXPO_APPLE_TEAM_ID: ${{ secrets.EXPO_APPLE_TEAM_ID }}
+
+      - name: Comment on release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.setup.outputs.version }}';
+            const buildNumber = '${{ needs.setup.outputs.build-number }}';
+
+            github.rest.repos.createReleaseComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: `📱 iOS app v${version} (${buildNumber}) submitted to TestFlight!`
+            });
+
+  # Submit to Google Play
+  submit-android:
+    name: Submit to Google Play
+    runs-on: ubuntu-latest
+    needs: [build-android, test-mobile]
+    if: ${{ github.event.inputs.submit == 'true' && success() }}
+    environment:
+      name: google-play-store
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ env.EXPO_TOKEN }}
+
+      - name: Submit to Google Play
+        run: |
+          cd apps/mobile
+          eas submit --platform android \
+            --profile production \
+            --non-interactive
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY_BASE64: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY_BASE64 }}
+
+      - name: Comment on release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ needs.setup.outputs.version }}';
+            const buildNumber = '${{ needs.setup.outputs.build-number }}';
+
+            github.rest.repos.createReleaseComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: `🤖 Android app v${version} (${buildNumber}) submitted to Google Play!`
+            });
+
+  # Create OTA update
+  ota-update:
+    name: Create OTA Update
+    runs-on: ubuntu-latest
+    needs: [setup, test-mobile]
+    if: ${{ github.event.inputs.profile != 'production' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Expo and EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ env.EXPO_TOKEN }}
+
+      - name: Publish OTA update
+        run: |
+          cd apps/mobile
+          eas update --branch ${{ github.event.inputs.profile || 'preview' }} \
+            --message "Version ${{ needs.setup.outputs.version }} - Build ${{ needs.setup.outputs.build-number }}" \
+            --non-interactive
+
+      - name: Get update group ID
+        id: update
+        run: |
+          cd apps/mobile
+          UPDATE_GROUP=$(eas update:list --branch ${{ github.event.inputs.profile || 'preview' }} --limit 1 --json | jq -r '.[0].group')
+          echo "update-group=$UPDATE_GROUP" >> $GITHUB_OUTPUT
+
+  # Notify deployment
+  notify:
+    name: Send Notification
+    runs-on: ubuntu-latest
+    needs: [setup, build-ios, build-android]
+    if: always()
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.build-ios.result }}" == "success" ] && [ "${{ needs.build-android.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "${{ steps.status.outputs.emoji }} Mobile build ${{ steps.status.outputs.status }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ steps.status.outputs.emoji }} Mobile App Build"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Version:*\n${{ needs.setup.outputs.version }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Build Number:*\n${{ needs.setup.outputs.build-number }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Profile:*\n${{ github.event.inputs.profile || 'production' }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Platforms:*\n${{ github.event.inputs.platform || 'all' }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

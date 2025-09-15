@@ -1,0 +1,274 @@
+# Dependabot configuration for automated dependency updates
+# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+
+version: 2
+updates:
+  # Root package.json and npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    pull-request-branch-name:
+      separator: "-"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "automated"
+    reviewers:
+      - "chrisschrade"
+    assignees:
+      - "chrisschrade"
+    commit-message:
+      prefix: "chore"
+      prefix-development: "chore"
+      include: "scope"
+    ignore:
+      # Ignore major version updates for critical dependencies
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "expo"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group related dependencies
+      react:
+        patterns:
+          - "react"
+          - "react-*"
+          - "@types/react*"
+      testing:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+          - "@testing-library/*"
+          - "playwright"
+          - "@playwright/*"
+      linting:
+        patterns:
+          - "eslint"
+          - "eslint-*"
+          - "@typescript-eslint/*"
+          - "prettier"
+      build-tools:
+        patterns:
+          - "turbo"
+          - "tsup"
+          - "vite"
+          - "@vitejs/*"
+
+  # Web app dependencies
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "web-app"
+      - "automated"
+    commit-message:
+      prefix: "chore(web)"
+    groups:
+      next-ecosystem:
+        patterns:
+          - "next"
+          - "@next/*"
+          - "next-*"
+      ui-components:
+        patterns:
+          - "@radix-ui/*"
+          - "framer-motion"
+          - "tailwind*"
+          - "class-variance-authority"
+          - "clsx"
+
+  # Mobile app dependencies
+  - package-ecosystem: "npm"
+    directory: "/apps/mobile"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "03:00"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "mobile-app"
+      - "automated"
+    commit-message:
+      prefix: "chore(mobile)"
+    groups:
+      expo-ecosystem:
+        patterns:
+          - "expo"
+          - "expo-*"
+          - "@expo/*"
+      react-native:
+        patterns:
+          - "react-native"
+          - "react-native-*"
+          - "@react-native-*"
+
+  # Admin app dependencies
+  - package-ecosystem: "npm"
+    directory: "/apps/admin"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+      - "admin-app"
+      - "automated"
+    commit-message:
+      prefix: "chore(admin)"
+
+  # UI package dependencies
+  - package-ecosystem: "npm"
+    directory: "/packages/ui"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+      - "ui-package"
+      - "automated"
+    commit-message:
+      prefix: "chore(ui)"
+
+  # Audio engine package dependencies
+  - package-ecosystem: "npm"
+    directory: "/packages/audio-engine"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+      - "audio-engine"
+      - "automated"
+    commit-message:
+      prefix: "chore(audio)"
+    # Be extra careful with audio processing dependencies
+    ignore:
+      - dependency-name: "fluent-ffmpeg"
+        update-types: ["version-update:semver-major"]
+
+  # Schemas package dependencies
+  - package-ecosystem: "npm"
+    directory: "/packages/schemas"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    labels:
+      - "dependencies"
+      - "schemas"
+      - "automated"
+    commit-message:
+      prefix: "chore(schemas)"
+    # Zod major updates need careful testing
+    ignore:
+      - dependency-name: "zod"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "automated"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "actions/*"
+      deployment:
+        patterns:
+          - "vercel/*"
+          - "supabase/*"
+          - "expo/*"
+
+  # Docker dependencies (for local development)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+      - "docker"
+      - "automated"
+    commit-message:
+      prefix: "build"
+    ignore:
+      # Supabase images are pinned to specific versions
+      - dependency-name: "supabase/*"
+
+  # Security updates - run daily and create PRs immediately
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "00:00"
+    open-pull-requests-limit: 10
+    labels:
+      - "security"
+      - "dependencies"
+      - "urgent"
+      - "automated"
+    commit-message:
+      prefix: "security"
+    # Only create PRs for security updates
+    allow:
+      - dependency-type: "all"
+    # Apply security updates to all directories
+    versioning-strategy: "increase"
+    # Create PRs for security updates immediately
+    security-updates-only: true
+
+# Additional security scanning for all package directories
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "daily"
+    labels:
+      - "security"
+      - "web-app"
+      - "automated"
+    security-updates-only: true
+
+  - package-ecosystem: "npm"
+    directory: "/apps/mobile"
+    schedule:
+      interval: "daily"
+    labels:
+      - "security"
+      - "mobile-app"
+      - "automated"
+    security-updates-only: true
+
+  - package-ecosystem: "npm"
+    directory: "/apps/admin"
+    schedule:
+      interval: "daily"
+    labels:
+      - "security"
+      - "admin-app"
+      - "automated"
+    security-updates-only: true

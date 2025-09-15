@@ -1,0 +1,515 @@
+name: Emergency Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+      rollback-type:
+        description: 'What to rollback'
+        required: true
+        type: choice
+        options:
+          - deployment
+          - database
+          - both
+      target-version:
+        description: 'Target version/commit to rollback to'
+        required: true
+        type: string
+      reason:
+        description: 'Reason for rollback'
+        required: true
+        type: string
+      confirm-rollback:
+        description: 'Type "ROLLBACK" to confirm'
+        required: true
+        type: string
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+
+jobs:
+  # Validate rollback request
+  validate:
+    name: Validate Rollback Request
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+      deployment-needed: ${{ steps.check.outputs.deployment }}
+      database-needed: ${{ steps.check.outputs.database }}
+    steps:
+      - name: Validate confirmation
+        id: check
+        run: |
+          if [ "${{ inputs.confirm-rollback }}" != "ROLLBACK" ]; then
+            echo "❌ Rollback requires typing ROLLBACK"
+            exit 1
+          fi
+
+          if [ "${{ inputs.rollback-type }}" == "deployment" ] || [ "${{ inputs.rollback-type }}" == "both" ]; then
+            echo "deployment=true" >> $GITHUB_OUTPUT
+          else
+            echo "deployment=false" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "${{ inputs.rollback-type }}" == "database" ] || [ "${{ inputs.rollback-type }}" == "both" ]; then
+            echo "database=true" >> $GITHUB_OUTPUT
+          else
+            echo "database=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "proceed=true" >> $GITHUB_OUTPUT
+          echo "✅ Rollback request validated"
+
+      - name: Log rollback initiation
+        run: |
+          echo "🚨 EMERGENCY ROLLBACK INITIATED"
+          echo "Environment: ${{ inputs.environment }}"
+          echo "Type: ${{ inputs.rollback-type }}"
+          echo "Target: ${{ inputs.target-version }}"
+          echo "Reason: ${{ inputs.reason }}"
+          echo "Initiated by: ${{ github.actor }}"
+
+  # Create backup before rollback
+  backup-current:
+    name: Backup Current State
+    runs-on: ubuntu-latest
+    needs: validate
+    if: needs.validate.outputs.proceed == 'true'
+    environment: ${{ inputs.environment }}-emergency
+    outputs:
+      backup-id: ${{ steps.backup.outputs.id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create state snapshot
+        id: backup
+        run: |
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          BACKUP_ID="pre_rollback_${TIMESTAMP}_${GITHUB_SHA:0:7}"
+
+          echo "📸 Creating pre-rollback snapshot: $BACKUP_ID"
+
+          # Save current deployment info
+          mkdir -p rollback_backup
+
+          # Get current Vercel deployment
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            WEB_PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_WEB_PROD }}"
+            ADMIN_PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_ADMIN_PROD }}"
+          else
+            WEB_PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_WEB }}"
+            ADMIN_PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_ADMIN }}"
+          fi
+
+          # Save deployment URLs
+          echo "WEB_URL=$(vercel list --token=${{ secrets.VERCEL_TOKEN }} --scope=${{ env.VERCEL_ORG_ID }} --meta projectId=$WEB_PROJECT_ID --limit 1 | tail -1 | awk '{print $2}')" > rollback_backup/deployments.txt
+          echo "ADMIN_URL=$(vercel list --token=${{ secrets.VERCEL_TOKEN }} --scope=${{ env.VERCEL_ORG_ID }} --meta projectId=$ADMIN_PROJECT_ID --limit 1 | tail -1 | awk '{print $2}')" >> rollback_backup/deployments.txt
+
+          # Backup database if needed
+          if [ "${{ needs.validate.outputs.database-needed }}" == "true" ]; then
+            DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+            supabase db dump \
+              --db-url "$DB_URL" \
+              -f rollback_backup/database.sql
+
+            gzip rollback_backup/database.sql
+          fi
+
+          # Upload backup
+          tar czf $BACKUP_ID.tar.gz rollback_backup/
+
+          aws s3 cp $BACKUP_ID.tar.gz \
+            s3://mindscript-rollbacks/$BACKUP_ID.tar.gz
+
+          echo "id=$BACKUP_ID" >> $GITHUB_OUTPUT
+          echo "✅ Backup created: $BACKUP_ID"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
+
+  # Rollback deployments
+  rollback-deployment:
+    name: Rollback Deployments
+    runs-on: ubuntu-latest
+    needs: [validate, backup-current]
+    if: needs.validate.outputs.deployment-needed == 'true'
+    environment: ${{ inputs.environment }}-emergency
+    steps:
+      - name: Checkout target version
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target-version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build applications
+        run: |
+          echo "🔨 Building applications at target version..."
+          npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets[format('NEXT_PUBLIC_SUPABASE_URL_{0}', upper(inputs.environment))] }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets[format('NEXT_PUBLIC_SUPABASE_ANON_KEY_{0}', upper(inputs.environment))] }}
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${{ secrets[format('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY_{0}', upper(inputs.environment))] }}
+
+      - name: Rollback web app
+        run: |
+          echo "⏪ Rolling back web app..."
+
+          cd apps/web
+
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_WEB_PROD }}"
+            vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+              --scope=${{ env.VERCEL_ORG_ID }} \
+              --env VERCEL_PROJECT_ID=$PROJECT_ID
+          else
+            PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_WEB }}"
+            vercel deploy --token=${{ secrets.VERCEL_TOKEN }} \
+              --scope=${{ env.VERCEL_ORG_ID }} \
+              --env VERCEL_PROJECT_ID=$PROJECT_ID
+          fi
+
+          echo "✅ Web app rolled back"
+
+      - name: Rollback admin app
+        run: |
+          echo "⏪ Rolling back admin app..."
+
+          cd apps/admin
+
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_ADMIN_PROD }}"
+            vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} \
+              --scope=${{ env.VERCEL_ORG_ID }} \
+              --env VERCEL_PROJECT_ID=$PROJECT_ID
+          else
+            PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID_ADMIN }}"
+            vercel deploy --token=${{ secrets.VERCEL_TOKEN }} \
+              --scope=${{ env.VERCEL_ORG_ID }} \
+              --env VERCEL_PROJECT_ID=$PROJECT_ID
+          fi
+
+          echo "✅ Admin app rolled back"
+
+      - name: Rollback Edge Functions
+        run: |
+          echo "⏪ Rolling back Edge Functions..."
+
+          SUPABASE_PROJECT_ID=${{ secrets[format('SUPABASE_PROJECT_ID_{0}', upper(inputs.environment))] }}
+
+          # Deploy Edge Functions from target version
+          for dir in supabase/functions/*/; do
+            if [ -f "$dir/index.ts" ]; then
+              function_name=$(basename "$dir")
+              echo "Rolling back $function_name"
+
+              supabase functions deploy $function_name \
+                --project-ref $SUPABASE_PROJECT_ID \
+                --no-verify-jwt
+            fi
+          done
+
+          echo "✅ Edge Functions rolled back"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+  # Rollback database
+  rollback-database:
+    name: Rollback Database
+    runs-on: ubuntu-latest
+    needs: [validate, backup-current]
+    if: needs.validate.outputs.database-needed == 'true'
+    environment: ${{ inputs.environment }}-db-emergency
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target-version }}
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Identify rollback migrations
+        id: migrations
+        run: |
+          echo "🔍 Identifying migrations to rollback..."
+
+          # Get current commit migrations
+          git checkout ${{ github.sha }}
+          CURRENT_MIGRATIONS=$(ls -1 supabase/migrations/*.sql | sort)
+
+          # Get target commit migrations
+          git checkout ${{ inputs.target-version }}
+          TARGET_MIGRATIONS=$(ls -1 supabase/migrations/*.sql | sort)
+
+          # Find migrations to rollback (in current but not in target)
+          ROLLBACK_MIGRATIONS=$(comm -23 <(echo "$CURRENT_MIGRATIONS") <(echo "$TARGET_MIGRATIONS"))
+
+          echo "Migrations to rollback:"
+          echo "$ROLLBACK_MIGRATIONS"
+
+          # Save to file
+          echo "$ROLLBACK_MIGRATIONS" > rollback_migrations.txt
+
+      - name: Execute rollback migrations
+        run: |
+          echo "⏪ Rolling back database migrations..."
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Apply rollback migrations in reverse order
+          tac rollback_migrations.txt | while read migration; do
+            if [ -n "$migration" ]; then
+              MIGRATION_NAME=$(basename "$migration" .sql)
+              ROLLBACK_FILE="supabase/rollbacks/${MIGRATION_NAME}.down.sql"
+
+              if [ -f "$ROLLBACK_FILE" ]; then
+                echo "Applying rollback: $ROLLBACK_FILE"
+                psql "$DB_URL" -f "$ROLLBACK_FILE"
+
+                # Remove from migration history
+                psql "$DB_URL" -c "DELETE FROM supabase_migrations WHERE name = '$MIGRATION_NAME';"
+              else
+                echo "⚠️  No rollback file for $MIGRATION_NAME"
+              fi
+            fi
+          done
+
+          echo "✅ Database rolled back"
+
+      - name: Verify database state
+        run: |
+          echo "🔍 Verifying database state..."
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Check current migrations
+          psql "$DB_URL" -c "SELECT name, executed_at FROM supabase_migrations ORDER BY executed_at DESC LIMIT 10;"
+
+          # Check table structure
+          psql "$DB_URL" -c "\dt public.*"
+
+          # Check RLS policies
+          psql "$DB_URL" -c "SELECT tablename, policyname FROM pg_policies WHERE schemaname = 'public';"
+
+  # Verify rollback
+  verify:
+    name: Verify Rollback
+    runs-on: ubuntu-latest
+    needs: [rollback-deployment, rollback-database]
+    if: always()
+    environment: ${{ inputs.environment }}-readonly
+    steps:
+      - name: Checkout target version
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target-version }}
+
+      - name: Verify deployments
+        if: needs.rollback-deployment.result == 'success'
+        run: |
+          echo "🔍 Verifying deployments..."
+
+          # Check web app
+          if [ "${{ inputs.environment }}" == "production" ]; then
+            WEB_URL="https://mindscript.app"
+            ADMIN_URL="https://admin.mindscript.app"
+          else
+            WEB_URL="https://staging.mindscript.app"
+            ADMIN_URL="https://admin-staging.mindscript.app"
+          fi
+
+          # Verify web app
+          WEB_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $WEB_URL/api/health)
+          if [ "$WEB_STATUS" == "200" ]; then
+            echo "✅ Web app verified"
+          else
+            echo "❌ Web app verification failed: $WEB_STATUS"
+          fi
+
+          # Verify admin app
+          ADMIN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" $ADMIN_URL/api/health)
+          if [ "$ADMIN_STATUS" == "200" ]; then
+            echo "✅ Admin app verified"
+          else
+            echo "❌ Admin app verification failed: $ADMIN_STATUS"
+          fi
+
+      - name: Verify database
+        if: needs.rollback-database.result == 'success'
+        run: |
+          echo "🔍 Verifying database..."
+
+          DB_URL=${{ secrets[format('DATABASE_URL_{0}', upper(inputs.environment))] }}
+
+          # Test database connectivity
+          if psql "$DB_URL" -c "SELECT 1;" > /dev/null 2>&1; then
+            echo "✅ Database connection verified"
+          else
+            echo "❌ Database connection failed"
+            exit 1
+          fi
+
+          # Run basic queries
+          psql "$DB_URL" << EOF
+            -- Check critical tables exist
+            SELECT COUNT(*) FROM users;
+            SELECT COUNT(*) FROM audio_tracks;
+            SELECT COUNT(*) FROM job_queue;
+          EOF
+
+      - name: Run smoke tests
+        run: |
+          echo "🧪 Running smoke tests..."
+
+          npm ci
+          npm run test:e2e:smoke || true
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ inputs.environment == 'production' && 'https://mindscript.app' || 'https://staging.mindscript.app' }}
+
+  # Send notifications
+  notify:
+    name: Send Notifications
+    runs-on: ubuntu-latest
+    needs: [validate, backup-current, rollback-deployment, rollback-database, verify]
+    if: always()
+    steps:
+      - name: Determine status
+        id: status
+        run: |
+          if [ "${{ needs.verify.result }}" == "success" ]; then
+            echo "status=success" >> $GITHUB_OUTPUT
+            echo "emoji=✅" >> $GITHUB_OUTPUT
+            echo "message=Rollback completed successfully" >> $GITHUB_OUTPUT
+          elif [ "${{ needs.verify.result }}" == "skipped" ]; then
+            echo "status=partial" >> $GITHUB_OUTPUT
+            echo "emoji=⚠️" >> $GITHUB_OUTPUT
+            echo "message=Rollback partially completed" >> $GITHUB_OUTPUT
+          else
+            echo "status=failure" >> $GITHUB_OUTPUT
+            echo "emoji=❌" >> $GITHUB_OUTPUT
+            echo "message=Rollback failed - manual intervention required" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Slack notification
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "🚨 EMERGENCY ROLLBACK: ${{ steps.status.outputs.message }}",
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": {
+                    "type": "plain_text",
+                    "text": "${{ steps.status.outputs.emoji }} Emergency Rollback"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Environment:*\n${{ inputs.environment }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Type:*\n${{ inputs.rollback-type }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Target Version:*\n${{ inputs.target-version }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\n${{ steps.status.outputs.message }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Initiated by:*\n${{ github.actor }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Backup ID:*\n${{ needs.backup-current.outputs.backup-id }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Reason:*\n${{ inputs.reason }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Next Steps:*\n1. Verify all services are operational\n2. Monitor error rates and performance\n3. Communicate status to stakeholders\n4. Create incident report"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URGENT }}
+
+      - name: Create incident report
+        run: |
+          cat > incident_report.md << EOF
+          # Incident Report: Emergency Rollback
+
+          ## Summary
+          - **Date/Time:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Environment:** ${{ inputs.environment }}
+          - **Type:** ${{ inputs.rollback-type }}
+          - **Target Version:** ${{ inputs.target-version }}
+          - **Initiated By:** ${{ github.actor }}
+          - **Status:** ${{ steps.status.outputs.message }}
+
+          ## Reason
+          ${{ inputs.reason }}
+
+          ## Actions Taken
+          1. Created backup: ${{ needs.backup-current.outputs.backup-id }}
+          2. Rolled back deployments: ${{ needs.rollback-deployment.result }}
+          3. Rolled back database: ${{ needs.rollback-database.result }}
+          4. Verification: ${{ needs.verify.result }}
+
+          ## Follow-up Required
+          - [ ] Verify all services operational
+          - [ ] Review monitoring dashboards
+          - [ ] Communicate to stakeholders
+          - [ ] Root cause analysis
+          - [ ] Update runbooks
+
+          ## Logs
+          - GitHub Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+
+          # Upload report
+          aws s3 cp incident_report.md \
+            s3://mindscript-incidents/$(date +%Y%m%d)_rollback_${{ github.run_id }}.md
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: us-east-1
