@@ -81,3 +81,6 @@ export * from "./seller";
 
 // Voice cloning exports
 export * from "./voice-cloning";
+
+// IAP (In-App Purchase) exports
+export * from "./iap";

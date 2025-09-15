@@ -23,7 +23,8 @@
   "dependencies": {
     "@mindscript/schemas": "*",
     "@supabase/supabase-js": "^2.39.7",
-    "stripe": "^17.7.0"
+    "stripe": "^17.7.0",
+    "resend": "^3.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.10",
