@@ -1,0 +1,15 @@
+{
+  "extends": "../../packages/config/typescript.json",
+  "compilerOptions": {
+    "lib": ["dom", "ES2020"],
+    "module": "ESNext",
+    "target": "ES2020",
+    "types": ["vitest/globals"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "incremental": false,
+    "noEmit": false
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}
