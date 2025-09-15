@@ -1,12 +1,25 @@
-import { View, Text, StyleSheet } from "react-native";
-import { StatusBar } from "expo-status-bar";
+import { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { useRouter } from 'expo-router';
+import { supabase } from '../lib/supabase';
 
-export default function HomeScreen() {
+export default function Index() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // Check for existing session and redirect accordingly
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        router.replace('/(tabs)/library');
+      } else {
+        router.replace('/(auth)/login');
+      }
+    });
+  }, []);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>MindScript</Text>
-      <Text style={styles.subtitle}>Program your inner voice</Text>
-      <StatusBar style="auto" />
+      <ActivityIndicator size="large" color="#7C3AED" />
     </View>
   );
 }
@@ -14,20 +27,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F7F8FC",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: "#0F172A",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: "#6B7280",
-    textAlign: "center",
+    backgroundColor: '#F7F8FC',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
