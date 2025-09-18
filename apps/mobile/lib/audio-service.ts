@@ -6,6 +6,7 @@ import TrackPlayer, {
   usePlaybackState,
   useProgress,
   useTrackPlayerEvents,
+  Capability,
 } from 'react-native-track-player';
 
 export interface MindScriptTrack extends Track {
@@ -26,25 +27,24 @@ class AudioService {
     try {
       await TrackPlayer.setupPlayer();
       await TrackPlayer.updateOptions({
-        stopWithApp: false,
         capabilities: [
-          TrackPlayer.CAPABILITY_PLAY,
-          TrackPlayer.CAPABILITY_PAUSE,
-          TrackPlayer.CAPABILITY_SKIP_TO_NEXT,
-          TrackPlayer.CAPABILITY_SKIP_TO_PREVIOUS,
-          TrackPlayer.CAPABILITY_SEEK_TO,
-          TrackPlayer.CAPABILITY_STOP,
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+          Capability.SkipToPrevious,
+          Capability.SeekTo,
+          Capability.Stop,
         ],
         compactCapabilities: [
-          TrackPlayer.CAPABILITY_PLAY,
-          TrackPlayer.CAPABILITY_PAUSE,
-          TrackPlayer.CAPABILITY_SKIP_TO_NEXT,
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
         ],
         notificationCapabilities: [
-          TrackPlayer.CAPABILITY_PLAY,
-          TrackPlayer.CAPABILITY_PAUSE,
-          TrackPlayer.CAPABILITY_SKIP_TO_NEXT,
-          TrackPlayer.CAPABILITY_SKIP_TO_PREVIOUS,
+          Capability.Play,
+          Capability.Pause,
+          Capability.SkipToNext,
+          Capability.SkipToPrevious,
         ],
       });
 
@@ -95,7 +95,8 @@ class AudioService {
   }
 
   async getCurrentTrack(): Promise<number | null> {
-    return await TrackPlayer.getActiveTrackIndex();
+    const index = await TrackPlayer.getActiveTrackIndex();
+    return index !== undefined ? index : null;
   }
 
   async getQueue(): Promise<Track[]> {

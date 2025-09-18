@@ -269,7 +269,7 @@ export default function RevenuePage() {
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="revenue"
-                label={({ tier, percent }) => `${tier} ${(percent * 100).toFixed(0)}%`}
+                label={({ tier, percent }: any) => `${tier} ${((percent as number) * 100).toFixed(0)}%`}
               >
                 {data?.revenueByTier.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

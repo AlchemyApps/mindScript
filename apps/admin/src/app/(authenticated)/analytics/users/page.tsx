@@ -237,7 +237,7 @@ export default function UsersPage() {
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="count"
-                label={({ tier, percentage }) => `${tier} (${percentage.toFixed(1)}%)`}
+                label={({ tier, percentage }: any) => `${tier} (${(percentage as number).toFixed(1)}%)`}
               >
                 {data?.cohortData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

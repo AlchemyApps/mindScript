@@ -101,7 +101,7 @@ async function getRevenueMetrics(supabase: any, period: string) {
     .select('price_amount')
     .eq('status', 'active')
 
-  const mrr = activeSubscriptions?.reduce((sum, sub) => sum + (sub.price_amount / 100), 0) || 0
+  const mrr = activeSubscriptions?.reduce((sum: number, sub: any) => sum + (sub.price_amount / 100), 0) || 0
   const arr = mrr * 12 // Annual Recurring Revenue
 
   // Get revenue over time
@@ -141,7 +141,7 @@ async function getRevenueMetrics(supabase: any, period: string) {
     mrr,
     arr,
     churnRate,
-    totalRevenue: revenueOverTime?.reduce((sum, payment) => sum + payment.amount, 0) || 0,
+    totalRevenue: revenueOverTime?.reduce((sum: number, payment: any) => sum + payment.amount, 0) || 0,
     revenueByPeriod,
     topSources,
     growth: calculateGrowth(revenueByPeriod),

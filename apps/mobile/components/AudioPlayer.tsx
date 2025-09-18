@@ -48,7 +48,7 @@ export function AudioPlayer({ track, onClose }: AudioPlayerProps) {
     setIsLoading(true);
     try {
       await audioService.clearQueue();
-      await audioService.addTrack(trackToLoad);
+      await audioService.addTrack(trackToLoad as any);
       await audioService.play();
       setCurrentTrack(trackToLoad);
     } catch (error) {

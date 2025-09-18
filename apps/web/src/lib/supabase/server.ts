@@ -1,4 +1,4 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
 export function createClient() {
@@ -12,50 +12,18 @@ export function createClient() {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
-        set(name: string, value: string, options: CookieOptions) {
+        set(name: string, value: string, options: any) {
           try {
-            cookieStore.set({ name, value, ...options });
+            cookieStore.set(name, value, options);
           } catch (error) {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
+            // Cookie setting can fail in certain contexts (e.g., static generation)
           }
         },
-        remove(name: string, options: CookieOptions) {
+        remove(name: string, options: any) {
           try {
-            cookieStore.set({ name, value: "", ...options });
+            cookieStore.set(name, "", options);
           } catch (error) {
-            // The `delete` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-      },
-    }
-  );
-}
-
-export function createServiceClient() {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookies().get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          try {
-            cookies().set({ name, value, ...options });
-          } catch (error) {
-            // Ignored
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookies().set({ name, value: "", ...options });
-          } catch (error) {
-            // Ignored
+            // Cookie removal can fail in certain contexts
           }
         },
       },

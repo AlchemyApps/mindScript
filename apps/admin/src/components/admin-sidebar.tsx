@@ -14,6 +14,7 @@ import {
   Shield,
   CreditCard,
   Package,
+  DollarSign,
 } from 'lucide-react'
 
 const navigation = [
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Content', href: '/analytics/content', icon: FileText },
   { name: 'Catalog', href: '/catalog', icon: Music },
   { name: 'Sellers', href: '/sellers', icon: ShoppingCart },
+  { name: 'Pricing', href: '/pricing', icon: DollarSign },
   { name: 'Moderation', href: '/moderation', icon: Shield },
   { name: 'Queue Monitor', href: '/monitoring/queue', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },

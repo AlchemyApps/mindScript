@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { audioService } from '../lib/audio-service';
+import { backgroundAudioService } from '../services/backgroundAudioService';
+import { carPlayService } from '../services/carPlayService';
 import { Platform } from 'react-native';
 
 const queryClient = new QueryClient({
@@ -20,9 +22,26 @@ export default function RootLayout() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize audio service
+    // Initialize audio services
     if (Platform.OS !== 'web') {
-      audioService.initialize().catch(console.error);
+      const initializeAudioServices = async () => {
+        try {
+          // Initialize background audio service first
+          await backgroundAudioService.initialize();
+
+          // Then initialize the main audio service
+          await audioService.initialize();
+
+          // Initialize CarPlay/Android Auto service
+          await carPlayService.initialize();
+
+          console.log('All audio services initialized successfully');
+        } catch (error) {
+          console.error('Failed to initialize audio services:', error);
+        }
+      };
+
+      initializeAudioServices();
     }
 
     // Get initial session
@@ -38,7 +57,15 @@ export default function RootLayout() {
       setSession(session);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+
+      // Cleanup audio services
+      if (Platform.OS !== 'web') {
+        backgroundAudioService.destroy().catch(console.error);
+        carPlayService.destroy();
+      }
+    };
   }, []);
 
   if (isLoading) {
