@@ -1,6 +1,8 @@
 'use client';
 
 import { Button } from "@mindscript/ui";
+import { GuestBuilder } from "../components/guest-builder";
+import Link from "next/link";
 
 export default function HomePage() {
   return (
@@ -13,32 +15,31 @@ export default function HomePage() {
             <span className="text-xl font-semibold font-sora">MindScript</span>
           </div>
           <nav className="hidden md:flex items-center space-x-6">
+            <a href="#builder" className="text-muted hover:text-text transition-colors">Try Builder</a>
             <a href="#features" className="text-muted hover:text-text transition-colors">Features</a>
             <a href="#pricing" className="text-muted hover:text-text transition-colors">Pricing</a>
-            <Button variant="ghost" size="sm">Sign In</Button>
-            <Button size="sm">Get Started</Button>
+            <Link href="/auth/login">
+              <Button variant="ghost" size="sm">Sign In</Button>
+            </Link>
           </nav>
         </div>
       </header>
 
       {/* Hero Section */}
       <main className="flex-1">
-        <section className="py-20 px-4">
+        <section className="py-20 px-4 bg-gradient-to-b from-white to-gray-50">
           <div className="container mx-auto text-center max-w-4xl">
             <h1 className="text-4xl md:text-6xl font-bold font-sora mb-6 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               Program your inner voice
             </h1>
-            <p className="text-xl text-muted mb-8 max-w-2xl mx-auto">
-              Create personalized affirmation loops with AI voice and binaural sound. 
+            <p className="text-xl text-muted mb-12 max-w-2xl mx-auto">
+              Create personalized affirmation loops with AI voice and binaural sound.
               Transform your mindset with the power of repetition and intention.
             </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button size="lg" className="px-8">
-                Build your first loop — $1
-              </Button>
-              <Button variant="ghost" size="lg">
-                Listen to examples
-              </Button>
+
+            {/* Inline Builder */}
+            <div id="builder" className="scroll-mt-20">
+              <GuestBuilder className="max-w-4xl mx-auto" />
             </div>
           </div>
         </section>

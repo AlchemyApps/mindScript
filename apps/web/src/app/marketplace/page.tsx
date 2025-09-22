@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useDebounce } from "@/hooks/useDebounce";
+import { useDebounce } from "../../hooks/useDebounce";
 import { SearchBar } from "./components/SearchBar";
 import { FilterPanel } from "./components/FilterPanel";
 import { CategoryNav } from "./components/CategoryNav";

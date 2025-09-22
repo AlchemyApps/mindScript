@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "../../../../lib/supabase/server";
 import Stripe from "stripe";
+import { nanoid } from "nanoid";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -16,6 +17,152 @@ const STRIPE_FIXED_FEE_CENTS = 30;
  */
 function calculateProcessingFees(amountCents: number): number {
   return Math.round(amountCents * STRIPE_PERCENTAGE_FEE + STRIPE_FIXED_FEE_CENTS);
+}
+
+/**
+ * Handle guest to user conversion from checkout
+ */
+async function handleGuestConversion(
+  session: Stripe.Checkout.Session,
+  supabase: ReturnType<typeof createClient>
+) {
+  try {
+    // Get customer email from Stripe session
+    const customerEmail = session.customer_details?.email;
+    if (!customerEmail) {
+      console.error("No customer email in checkout session");
+      return;
+    }
+
+    // Check if user already exists
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("id")
+      .eq("email", customerEmail)
+      .single();
+
+    let userId: string;
+
+    if (existingUser) {
+      // User already exists, use their ID
+      userId = existingUser.id;
+      console.log(`Existing user found for ${customerEmail}`);
+    } else {
+      // Create new user account
+      // Generate a temporary password (user will need to reset)
+      const tempPassword = nanoid(16);
+
+      // Create auth user
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email: customerEmail,
+        password: tempPassword,
+        email_confirm: true, // Auto-confirm email since they paid
+        user_metadata: {
+          full_name: session.customer_details?.name || "",
+          preferred_name: session.custom_fields?.find(f => f.key === 'preferred_name')?.text?.value || "",
+          source: "guest_conversion",
+          first_purchase_date: new Date().toISOString(),
+        },
+      });
+
+      if (authError || !authData.user) {
+        console.error("Failed to create auth user:", authError);
+        return;
+      }
+
+      userId = authData.user.id;
+
+      // Create user profile
+      await supabase.from("users").insert({
+        id: userId,
+        email: customerEmail,
+        username: customerEmail.split('@')[0] + nanoid(6), // Generate unique username
+        full_name: session.customer_details?.name || "",
+        stripe_customer_id: session.customer as string,
+        created_at: new Date().toISOString(),
+      });
+
+      console.log(`Created new user account for ${customerEmail}`);
+
+      // TODO: Send welcome email with password reset link
+    }
+
+    // Reconstruct builder state from metadata
+    const metadata = session.metadata || {};
+
+    // Reconstruct script from chunks
+    let script = "";
+    const chunkCount = parseInt(metadata.script_chunks_count || "0");
+    for (let i = 0; i < chunkCount; i++) {
+      script += metadata[`script_chunk_${i}`] || "";
+    }
+
+    // Create audio job configuration
+    const audioConfig = {
+      script,
+      voice: {
+        provider: metadata.voice_provider,
+        voice_id: metadata.voice_id,
+        name: metadata.voice_name,
+      },
+      duration: parseInt(metadata.duration || "5"),
+      backgroundMusic: metadata.background_music_id ? {
+        id: metadata.background_music_id,
+        name: metadata.background_music_name,
+      } : undefined,
+      solfeggio: metadata.solfeggio_frequency ? {
+        enabled: true,
+        frequency: parseInt(metadata.solfeggio_frequency),
+      } : undefined,
+      binaural: metadata.binaural_band ? {
+        enabled: true,
+        band: metadata.binaural_band,
+      } : undefined,
+    };
+
+    // Create audio job record
+    const { data: audioJob, error: jobError } = await supabase
+      .from("audio_jobs")
+      .insert({
+        user_id: userId,
+        status: "pending",
+        config: audioConfig,
+        title: `Track ${new Date().toLocaleDateString()}`,
+        stripe_session_id: session.id,
+        stripe_payment_intent_id: session.payment_intent as string,
+      })
+      .select()
+      .single();
+
+    if (jobError || !audioJob) {
+      console.error("Failed to create audio job:", jobError);
+      return;
+    }
+
+    // Create purchase record for the first track
+    await supabase.from("purchases").insert({
+      buyer_id: userId,
+      seller_id: userId, // Self-purchase for first track
+      platform: "web",
+      sale_price_cents: session.amount_total || 99,
+      currency: session.currency?.toUpperCase() || "USD",
+      status: "paid",
+      stripe_payment_intent_id: session.payment_intent as string,
+      stripe_checkout_session_id: session.id,
+      metadata: {
+        conversion_type: "guest_to_user",
+        audio_job_id: audioJob.id,
+      },
+    });
+
+    // Queue the audio job for processing
+    // TODO: Trigger audio processing queue
+
+    console.log(`Guest conversion completed for ${customerEmail}, audio job ${audioJob.id} created`);
+
+  } catch (error) {
+    console.error("Error handling guest conversion:", error);
+  }
 }
 
 /**
@@ -75,8 +222,14 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        
-        // Extract metadata
+
+        // Check if this is a guest conversion
+        if (session.metadata?.conversion_type === 'guest_to_user') {
+          await handleGuestConversion(session, supabase);
+          break;
+        }
+
+        // Extract metadata for regular purchases
         const userId = session.metadata?.userId;
         const trackId = session.metadata?.trackId;
         const sellerId = session.metadata?.sellerId;

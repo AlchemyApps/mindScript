@@ -16,7 +16,7 @@
     "resend": "^3.0.0"
   },
   "devDependencies": {
-    "@mindscript/tsconfig": "workspace:*",
+    "@mindscript/config": "*",
     "@types/react": "^18.2.0",
     "typescript": "^5.3.3"
   }

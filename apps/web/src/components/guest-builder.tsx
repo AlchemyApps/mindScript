@@ -1,0 +1,518 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { Button } from "@mindscript/ui";
+import { cn } from '../lib/utils';
+
+interface BuilderState {
+  script: string;
+  voice: {
+    provider: 'openai' | 'elevenlabs';
+    voice_id: string;
+    name: string;
+  };
+  duration: number;
+  backgroundMusic?: {
+    id: string;
+    name: string;
+    price: number;
+  };
+  solfeggio?: {
+    enabled: boolean;
+    frequency: number;
+    price: number;
+  };
+  binaural?: {
+    enabled: boolean;
+    band: 'delta' | 'theta' | 'alpha' | 'beta' | 'gamma';
+    price: number;
+  };
+}
+
+const VOICE_OPTIONS = {
+  openai: [
+    { id: 'alloy', name: 'Alloy (Neutral)' },
+    { id: 'echo', name: 'Echo (Male)' },
+    { id: 'fable', name: 'Fable (British)' },
+    { id: 'onyx', name: 'Onyx (Deep Male)' },
+    { id: 'nova', name: 'Nova (Female)' },
+    { id: 'shimmer', name: 'Shimmer (Soft Female)' },
+  ],
+  elevenlabs: [
+    { id: 'rachel', name: 'Rachel (Natural)' },
+    { id: 'domi', name: 'Domi (Strong)' },
+    { id: 'bella', name: 'Bella (Soft)' },
+  ]
+};
+
+const BACKGROUND_MUSIC_OPTIONS = [
+  { id: 'none', name: 'No Background Music', price: 0 },
+  { id: 'calm-waters', name: 'Calm Waters', price: 0.99 },
+  { id: 'forest-ambience', name: 'Forest Ambience', price: 0.99 },
+  { id: 'cosmic-journey', name: 'Cosmic Journey', price: 0.99 },
+  { id: 'meditation-bells', name: 'Meditation Bells', price: 0.99 },
+];
+
+const SOLFEGGIO_FREQUENCIES = [
+  { value: 174, name: '174 Hz - Pain Relief' },
+  { value: 285, name: '285 Hz - Healing' },
+  { value: 396, name: '396 Hz - Liberation' },
+  { value: 417, name: '417 Hz - Change' },
+  { value: 528, name: '528 Hz - Love' },
+  { value: 639, name: '639 Hz - Connection' },
+  { value: 741, name: '741 Hz - Awakening' },
+  { value: 852, name: '852 Hz - Intuition' },
+  { value: 963, name: '963 Hz - Divine' },
+];
+
+const BINAURAL_BANDS = [
+  { id: 'delta', name: 'Delta (0.5-4 Hz) - Deep Sleep', price: 0.99 },
+  { id: 'theta', name: 'Theta (4-8 Hz) - Meditation', price: 0.99 },
+  { id: 'alpha', name: 'Alpha (8-13 Hz) - Relaxation', price: 0.99 },
+  { id: 'beta', name: 'Beta (13-30 Hz) - Focus', price: 0.99 },
+  { id: 'gamma', name: 'Gamma (30-100 Hz) - Peak Awareness', price: 0.99 },
+];
+
+interface GuestBuilderProps {
+  className?: string;
+}
+
+export function GuestBuilder({ className }: GuestBuilderProps) {
+  const [state, setState] = useState<BuilderState>({
+    // Default state - always use this initially to avoid hydration mismatch
+    script: '',
+    voice: {
+      provider: 'openai',
+      voice_id: 'alloy',
+      name: 'Alloy (Neutral)'
+    },
+    duration: 5,
+    backgroundMusic: undefined,
+    solfeggio: {
+      enabled: false,
+      frequency: 528,
+      price: 0.99
+    },
+    binaural: {
+      enabled: false,
+      band: 'alpha',
+      price: 0.99
+    }
+  });
+
+  const [activeTab, setActiveTab] = useState<'script' | 'voice' | 'extras'>('script');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Load from localStorage after mount to avoid hydration mismatch
+  useEffect(() => {
+    setIsHydrated(true);
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('guestBuilderState');
+      if (saved) {
+        try {
+          const parsedState = JSON.parse(saved);
+          setState(parsedState);
+        } catch (e) {
+          console.error('Failed to parse saved state:', e);
+        }
+      }
+    }
+  }, []);
+
+  // Save state to localStorage whenever it changes (after hydration)
+  useEffect(() => {
+    if (isHydrated && typeof window !== 'undefined') {
+      localStorage.setItem('guestBuilderState', JSON.stringify(state));
+    }
+  }, [state, isHydrated]);
+
+  const calculateTotal = () => {
+    let total = 0.99; // Base price
+    if (state.backgroundMusic && state.backgroundMusic.id !== 'none') {
+      total += state.backgroundMusic.price;
+    }
+    if (state.solfeggio?.enabled) {
+      total += state.solfeggio.price;
+    }
+    if (state.binaural?.enabled) {
+      total += state.binaural.price;
+    }
+    return total;
+  };
+
+  const handleCheckout = async () => {
+    setIsProcessing(true);
+
+    try {
+      // Prepare checkout data
+      const checkoutData = {
+        builderState: state,
+        successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: window.location.href,
+        priceAmount: Math.round(calculateTotal() * 100), // Convert to cents
+      };
+
+      // Create checkout session
+      const response = await fetch('/api/checkout/guest-conversion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkoutData)
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+
+      // Redirect to Stripe Checkout
+      window.location.href = url;
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const scriptCharCount = state.script.length;
+  const isScriptValid = scriptCharCount >= 10 && scriptCharCount <= 5000;
+
+  return (
+    <div className={cn('bg-white rounded-2xl shadow-xl p-6 md:p-8', className)}>
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold font-sora mb-2">Create Your First Track</h2>
+        <p className="text-gray-600">Build your personalized audio experience - no sign up required</p>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="flex space-x-1 rounded-lg bg-gray-100 p-1 mb-6">
+        <button
+          type="button"
+          onClick={() => setActiveTab('script')}
+          className={cn(
+            'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            activeTab === 'script'
+              ? 'bg-white text-gray-900 shadow'
+              : 'text-gray-600 hover:text-gray-900'
+          )}
+        >
+          Script
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('voice')}
+          className={cn(
+            'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            activeTab === 'voice'
+              ? 'bg-white text-gray-900 shadow'
+              : 'text-gray-600 hover:text-gray-900'
+          )}
+        >
+          Voice & Duration
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('extras')}
+          className={cn(
+            'flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            activeTab === 'extras'
+              ? 'bg-white text-gray-900 shadow'
+              : 'text-gray-600 hover:text-gray-900'
+          )}
+        >
+          Extras
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <div className="min-h-[400px]">
+        {/* Script Tab */}
+        {activeTab === 'script' && (
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="script" className="block text-sm font-medium text-gray-700 mb-2">
+                Your Script
+              </label>
+              <textarea
+                id="script"
+                value={state.script}
+                onChange={(e) => setState({ ...state, script: e.target.value })}
+                placeholder="Write your affirmation, meditation, or motivational script here..."
+                className="w-full h-64 px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+              />
+              <div className="mt-2 flex justify-between text-sm">
+                <span className={cn(
+                  scriptCharCount < 10 || scriptCharCount > 5000 ? 'text-red-500' : 'text-gray-500'
+                )}>
+                  {scriptCharCount} / 5000 characters
+                </span>
+                {scriptCharCount >= 10 && (
+                  <span className="text-gray-500">
+                    Estimated duration: ~{Math.ceil(scriptCharCount / 150)} minutes
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h3 className="font-semibold text-sm mb-2">Example Script:</h3>
+              <p className="text-sm text-gray-700 italic">
+                "I am confident and capable. Every day, I grow stronger and more resilient.
+                I trust in my abilities and embrace new challenges with courage.
+                Success flows to me naturally, and I am worthy of all good things."
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Voice Tab */}
+        {activeTab === 'voice' && (
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Voice Provider
+              </label>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => setState({
+                    ...state,
+                    voice: {
+                      ...state.voice,
+                      provider: 'openai',
+                      voice_id: 'alloy',
+                      name: 'Alloy (Neutral)'
+                    }
+                  })}
+                  className={cn(
+                    'p-4 rounded-lg border-2 transition-colors',
+                    state.voice.provider === 'openai'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-gray-200 hover:border-gray-300'
+                  )}
+                >
+                  <div className="font-semibold">OpenAI</div>
+                  <div className="text-sm text-gray-500">Natural AI voices</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setState({
+                    ...state,
+                    voice: {
+                      ...state.voice,
+                      provider: 'elevenlabs',
+                      voice_id: 'rachel',
+                      name: 'Rachel (Natural)'
+                    }
+                  })}
+                  className={cn(
+                    'p-4 rounded-lg border-2 transition-colors',
+                    state.voice.provider === 'elevenlabs'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-gray-200 hover:border-gray-300'
+                  )}
+                >
+                  <div className="font-semibold">ElevenLabs</div>
+                  <div className="text-sm text-gray-500">Premium voices</div>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Select Voice
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {VOICE_OPTIONS[state.voice.provider].map((voice) => (
+                  <button
+                    key={voice.id}
+                    type="button"
+                    onClick={() => setState({
+                      ...state,
+                      voice: { ...state.voice, voice_id: voice.id, name: voice.name }
+                    })}
+                    className={cn(
+                      'p-3 rounded-lg border text-left transition-colors',
+                      state.voice.voice_id === voice.id
+                        ? 'border-primary bg-primary/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    )}
+                  >
+                    <div className="font-medium">{voice.name}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
+                Track Duration: {state.duration} minutes
+              </label>
+              <input
+                id="duration"
+                type="range"
+                min="3"
+                max="30"
+                value={state.duration}
+                onChange={(e) => setState({ ...state, duration: parseInt(e.target.value) })}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-500 mt-1">
+                <span>3 min</span>
+                <span>30 min</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Extras Tab */}
+        {activeTab === 'extras' && (
+          <div className="space-y-6">
+            {/* Background Music */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Background Music
+                <span className="text-gray-500 font-normal ml-2">(+$0.99 each)</span>
+              </label>
+              <select
+                value={state.backgroundMusic?.id || 'none'}
+                onChange={(e) => {
+                  const selected = BACKGROUND_MUSIC_OPTIONS.find(m => m.id === e.target.value);
+                  setState({
+                    ...state,
+                    backgroundMusic: selected?.id === 'none' ? undefined : selected
+                  });
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              >
+                {BACKGROUND_MUSIC_OPTIONS.map((music) => (
+                  <option key={music.id} value={music.id}>
+                    {music.name} {music.price > 0 && `(+$${music.price})`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Solfeggio Frequencies */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Solfeggio Frequencies
+                  <span className="text-gray-500 font-normal ml-2">(+$0.99)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setState({
+                    ...state,
+                    solfeggio: { ...state.solfeggio!, enabled: !state.solfeggio?.enabled }
+                  })}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    state.solfeggio?.enabled ? 'bg-primary' : 'bg-gray-200'
+                  )}
+                >
+                  <span className={cn(
+                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                    state.solfeggio?.enabled ? 'translate-x-6' : 'translate-x-1'
+                  )} />
+                </button>
+              </div>
+              {state.solfeggio?.enabled && (
+                <select
+                  value={state.solfeggio.frequency}
+                  onChange={(e) => setState({
+                    ...state,
+                    solfeggio: { ...state.solfeggio!, frequency: parseInt(e.target.value) }
+                  })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {SOLFEGGIO_FREQUENCIES.map((freq) => (
+                    <option key={freq.value} value={freq.value}>
+                      {freq.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Binaural Beats */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">
+                  Binaural Beats
+                  <span className="text-gray-500 font-normal ml-2">(+$0.99)</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setState({
+                    ...state,
+                    binaural: { ...state.binaural!, enabled: !state.binaural?.enabled }
+                  })}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    state.binaural?.enabled ? 'bg-primary' : 'bg-gray-200'
+                  )}
+                >
+                  <span className={cn(
+                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                    state.binaural?.enabled ? 'translate-x-6' : 'translate-x-1'
+                  )} />
+                </button>
+              </div>
+              {state.binaural?.enabled && (
+                <select
+                  value={state.binaural.band}
+                  onChange={(e) => setState({
+                    ...state,
+                    binaural: {
+                      ...state.binaural!,
+                      band: e.target.value as typeof state.binaural.band
+                    }
+                  })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {BINAURAL_BANDS.map((band) => (
+                    <option key={band.id} value={band.id}>
+                      {band.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Pricing Note */}
+            <div className="bg-yellow-50 rounded-lg p-4">
+              <p className="text-sm text-gray-700">
+                <span className="font-semibold">First track special pricing!</span> Add-ons are discounted
+                for your first track. Regular pricing applies to future tracks.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Action Bar */}
+      <div className="mt-8 pt-6 border-t border-gray-200">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-2xl font-bold">${calculateTotal().toFixed(2)}</div>
+            <div className="text-sm text-gray-500">First track special price</div>
+          </div>
+          <Button
+            size="lg"
+            onClick={handleCheckout}
+            disabled={!isScriptValid || isProcessing}
+            className="px-8"
+          >
+            {isProcessing ? 'Processing...' : 'Create Your First Track'}
+          </Button>
+        </div>
+        <p className="text-xs text-gray-500 text-center">
+          You'll be redirected to secure checkout. Account created automatically after payment.
+        </p>
+      </div>
+    </div>
+  );
+}

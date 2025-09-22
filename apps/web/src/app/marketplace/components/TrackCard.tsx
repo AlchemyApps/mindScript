@@ -1,12 +1,12 @@
 "use client";
 
-import { Card, CardContent, CardFooter, CardHeader } from "@mindscript/ui";
+import { Card, CardContent, CardHeader } from "@mindscript/ui";
 import { Button } from "@mindscript/ui";
 import { Badge } from "@mindscript/ui";
 import { PlayIcon, ShoppingCartIcon } from "lucide-react";
 import { formatDuration, getCategoryIcon } from "@mindscript/schemas";
 import type { Publication } from "@mindscript/schemas";
-import { useCartStore } from "@/store/cartStore";
+import { useCartStore } from "../../../store/cartStore";
 
 interface TrackCardProps {
   track: Publication & { 
@@ -156,7 +156,7 @@ export function TrackCard({ track, onClick, variant = "grid" }: TrackCardProps) 
         </div>
       </CardContent>
       
-      <CardFooter className="pt-3">
+      <div className="p-6 pt-3 border-t">
         <div className="flex items-center justify-between w-full">
           <span className="text-lg font-semibold">
             {track.formatted_price || `$${(track.priceWebCents / 100).toFixed(2)}`}
@@ -166,7 +166,7 @@ export function TrackCard({ track, onClick, variant = "grid" }: TrackCardProps) 
             Add to Cart
           </Button>
         </div>
-      </CardFooter>
+      </div>
     </Card>
   );
 }
