@@ -100,19 +100,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Create the audio job for rendering
-    const audioJob = {
-      track_id: track.id,
-      user_id: user.id,
+    const jobData = {
       script: trackConfig.script,
       voice: trackConfig.voice_config,
-      music: trackConfig.music_config || null,
-      frequencies: trackConfig.frequency_config || null,
-      output_format: trackConfig.output_config?.format || 'mp3',
-      output_quality: trackConfig.output_config?.quality || 'standard',
-      priority: 'normal' as const,
-      metadata: {
-        track_title: metadata.title,
-        is_public: metadata.visibility === 'public',
+      background_music: trackConfig.music_config ? {
+        track_id: trackConfig.music_config.track_id,
+        volume: trackConfig.music_config.volume || -20,
+      } : undefined,
+      solfeggio: trackConfig.frequency_config?.solfeggio ? {
+        frequency: trackConfig.frequency_config.solfeggio.frequency,
+        volume: trackConfig.frequency_config.solfeggio.volume || -30,
+      } : undefined,
+      binaural: trackConfig.frequency_config?.binaural ? {
+        base_frequency: trackConfig.frequency_config.binaural.base_frequency,
+        beat_frequency: trackConfig.frequency_config.binaural.beat_frequency,
+        volume: trackConfig.frequency_config.binaural.volume || -30,
+      } : undefined,
+      output: {
+        format: trackConfig.output_config?.format || 'mp3',
+        quality: trackConfig.output_config?.quality || 'medium',
+        normalize: true,
+        target_lufs: -16,
       },
     };
 
@@ -120,9 +128,12 @@ export async function POST(request: NextRequest) {
     const { data: job, error: jobError } = await supabase
       .from('audio_job_queue')
       .insert({
-        ...audioJob,
+        track_id: track.id,
+        user_id: user.id,
         status: 'pending',
-        progress_percentage: 0,
+        progress: 0,
+        job_data: jobData,
+        stage: 'Preparing render job',
       })
       .select()
       .single();
@@ -149,22 +160,21 @@ export async function POST(request: NextRequest) {
       .eq('id', track.id);
 
     // Trigger the edge function to process the job
-    // This would be done via webhook or direct invocation
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/process-audio-job`,
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/audio-processor`,
         {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ job_id: job.id }),
+          body: JSON.stringify({ action: 'process' }),
         }
       );
 
       if (!response.ok) {
-        console.error('Failed to trigger audio processing');
+        console.error('Failed to trigger audio processing:', await response.text());
         // Don't fail the request, the job will be picked up by the worker
       }
     } catch (error) {

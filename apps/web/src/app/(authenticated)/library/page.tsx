@@ -167,16 +167,21 @@ export default function LibraryPage() {
   
   // Handle track play
   const handlePlayTrack = useCallback((track: Track, index: number) => {
-    if (!track.audio_url) return;
-    
+    // Check for signed URL first, then regular URL
+    const audioUrl = (track as any).audio_signed_url || track.audio_url;
+    if (!audioUrl) return;
+
     // Convert tracks to player format
     const playerTracks = tracks
-      .filter(t => t.audio_url && t.status === "published")
+      .filter(t => {
+        const url = (t as any).audio_signed_url || t.audio_url;
+        return url && t.status === "published";
+      })
       .map(t => ({
         id: t.id,
         title: t.title,
         artist: t.profiles?.display_name,
-        url: t.audio_url!,
+        url: (t as any).audio_signed_url || t.audio_url!,
         duration: t.duration,
         coverImage: t.cover_image_url,
         type: t.ownership as "owned" | "purchased",
@@ -196,15 +201,24 @@ export default function LibraryPage() {
   
   // Handle track download
   const handleDownloadTrack = useCallback(async (track: Track) => {
-    if (!track.audio_url) return;
-    
     try {
-      const response = await fetch(track.audio_url);
+      // Use the streaming endpoint that returns the file directly
+      const response = await fetch(`/api/tracks/${track.id}/stream`);
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error("Download error:", error);
+        return;
+      }
+
+      // The response is the actual file with proper headers
       const blob = await response.blob();
+
+      // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${track.title}.mp3`;
+      a.download = `${track.title.replace(/[^a-z0-9\s\-_]/gi, '')}.mp3`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -244,7 +258,8 @@ export default function LibraryPage() {
   const renderTrackCard = (track: Track, index: number) => {
     const isCurrentTrack = currentTrack?.id === track.id;
     const isTrackPlaying = isCurrentTrack && isPlaying;
-    const canPlay = track.status === "published" && track.audio_url;
+    const audioUrl = (track as any).audio_signed_url || track.audio_url;
+    const canPlay = track.status === "published" && audioUrl;
     
     if (viewMode === "list") {
       return (
@@ -271,7 +286,7 @@ export default function LibraryPage() {
                   {track.status}
                 </Badge>
                 {track.ownership === "purchased" && (
-                  <Badge variant="outline" className="text-xs">
+                  <Badge variant="outline" className="text-xs" title={track.purchasedAt ? `Purchased on ${new Date(track.purchasedAt).toLocaleDateString()}` : undefined}>
                     Purchased
                   </Badge>
                 )}
@@ -306,7 +321,7 @@ export default function LibraryPage() {
                   )}
                 </Button>
               )}
-              {track.audio_url && (
+              {audioUrl && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -377,7 +392,7 @@ export default function LibraryPage() {
               {track.status}
             </Badge>
             {track.ownership === "purchased" && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-xs" title={track.purchasedAt ? `Purchased on ${new Date(track.purchasedAt).toLocaleDateString()}` : undefined}>
                 Purchased
               </Badge>
             )}
@@ -397,9 +412,9 @@ export default function LibraryPage() {
               ))}
             </div>
           )}
-          
+
           <div className="flex gap-2 mt-4">
-            {track.audio_url && (
+            {audioUrl && (
               <Button
                 size="sm"
                 variant="outline"

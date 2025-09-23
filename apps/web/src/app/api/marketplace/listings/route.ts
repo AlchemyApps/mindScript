@@ -252,16 +252,37 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Format tracks for response
-    const formattedTracks = (tracks || []).map(track => ({
-      ...track,
-      formatted_price: formatPrice(track.price_cents || 0),
-      seller: {
-        id: track.owner?.id || track.user_id,
-        display_name: track.owner?.display_name || "Unknown Seller",
-        avatar_url: track.owner?.avatar_url,
-        // badge and rating will be added when seller verification is implemented
-      },
+    // Format tracks for response with preview URLs
+    const formattedTracks = await Promise.all((tracks || []).map(async (track: any) => {
+      let preview_url: string | undefined;
+
+      // Generate signed URL for preview if preview file exists
+      if (track.preview_url) {
+        const { data } = await supabase.storage
+          .from('tracks-public')
+          .createSignedUrl(track.preview_url, 3600); // 1 hour expiry
+
+        preview_url = data?.signedUrl;
+      } else if (track.audio_url) {
+        // Fallback to main audio URL if no preview (temporary)
+        const { data } = await supabase.storage
+          .from('tracks-private')
+          .createSignedUrl(track.audio_url, 300); // 5 minutes for preview
+
+        preview_url = data?.signedUrl;
+      }
+
+      return {
+        ...track,
+        formatted_price: formatPrice(track.price_cents || 0),
+        preview_url,
+        seller: {
+          id: track.owner?.id || track.user_id,
+          display_name: track.owner?.display_name || "Unknown Seller",
+          avatar_url: track.owner?.avatar_url,
+          // badge and rating will be added when seller verification is implemented
+        },
+      };
     }));
     
     // Build response

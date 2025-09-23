@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { CheckCircle, XCircle, Loader2, Clock, AlertCircle } from 'lucide-react';
 import { usePublishStore, RenderStage } from '@/store/publishStore';
 import { cn } from '@/lib/utils';
+import { useRenderProgress } from '@/hooks/useRenderProgress';
 
 const stageInfo: Record<RenderStage, { label: string; description: string }> = {
   preparing: { label: 'Preparing', description: 'Setting up render job...' },
@@ -17,52 +17,10 @@ const stageInfo: Record<RenderStage, { label: string; description: string }> = {
 const stages: RenderStage[] = ['preparing', 'tts', 'mixing', 'normalizing', 'uploading', 'completed'];
 
 export function RenderProgress() {
-  const { jobId, renderProgress, renderError, updateRenderProgress } = usePublishStore();
-  const [isPolling, setIsPolling] = useState(false);
-  const [retryCount, setRetryCount] = useState(0);
+  const { jobId, renderProgress, renderError } = usePublishStore();
 
-  // Poll for render progress
-  useEffect(() => {
-    if (!jobId || renderProgress.stage === 'completed' || renderError) {
-      return;
-    }
-
-    setIsPolling(true);
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/builder/progress/${jobId}`);
-        if (!response.ok) {
-          throw new Error('Failed to fetch progress');
-        }
-        
-        const data = await response.json();
-        updateRenderProgress({
-          percentage: data.percentage,
-          stage: data.stage,
-          message: data.message,
-          estimatedTimeRemaining: data.estimated_time_remaining,
-        });
-
-        if (data.stage === 'completed' || data.error) {
-          clearInterval(pollInterval);
-          setIsPolling(false);
-        }
-      } catch (error) {
-        console.error('Failed to fetch progress:', error);
-        setRetryCount(prev => prev + 1);
-        
-        if (retryCount > 5) {
-          clearInterval(pollInterval);
-          setIsPolling(false);
-        }
-      }
-    }, 2000); // Poll every 2 seconds
-
-    return () => {
-      clearInterval(pollInterval);
-      setIsPolling(false);
-    };
-  }, [jobId, renderProgress.stage, renderError, updateRenderProgress, retryCount]);
+  // Use real-time subscription for render progress
+  useRenderProgress();
 
   // Format time remaining
   const formatTime = (seconds?: number) => {
@@ -223,13 +181,6 @@ export function RenderProgress() {
               {formatTime(renderProgress.estimatedTimeRemaining)}
             </span>
           </div>
-          
-          {isPolling && (
-            <div className="flex items-center text-sm text-gray-500">
-              <Loader2 className="w-4 h-4 animate-spin mr-1" />
-              Updating...
-            </div>
-          )}
         </div>
       </div>
 

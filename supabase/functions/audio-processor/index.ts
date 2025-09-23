@@ -178,14 +178,21 @@ async function processAudioJob(job: AudioJob) {
     )
     await updateProgress(job.id, 85, 'Audio mixing complete')
 
-    // Stage 5: Upload to storage (15% of progress)
-    await updateProgress(job.id, 90, 'Uploading to storage')
+    // Stage 5: Generate preview (10% of progress)
+    await updateProgress(job.id, 85, 'Generating preview')
+    const previewFile = await generatePreview(mixedFile, tempDir, job.job_data.output.format)
+    const previewUrl = await uploadPreview(job, previewFile)
+    await updateProgress(job.id, 90, 'Preview generated')
+
+    // Stage 6: Upload to storage (10% of progress)
+    await updateProgress(job.id, 92, 'Uploading to storage')
     const fileUrl = await uploadToStorage(job, mixedFile)
 
-    // Stage 6: Complete job (5% of progress)
+    // Stage 7: Complete job (5% of progress)
     await updateProgress(job.id, 95, 'Finalizing')
     await completeJob(job.id, {
       url: fileUrl,
+      preview_url: previewUrl,
       duration: await getAudioDuration(mixedFile),
       size: (await Deno.stat(mixedFile)).size,
       format: job.job_data.output.format,
@@ -536,4 +543,85 @@ async function runFFmpeg(args: string[]): Promise<void> {
     const errorMessage = new TextDecoder().decode(stderr)
     throw new Error(`FFmpeg failed: ${errorMessage}`)
   }
+}
+
+async function generatePreview(
+  fullAudioPath: string,
+  tempDir: string,
+  format: 'mp3' | 'wav'
+): Promise<string> {
+  const previewFile = `${tempDir}/preview.mp3` // Always use MP3 for previews
+
+  // Get total duration to find the best segment
+  const totalDuration = await getAudioDuration(fullAudioPath)
+
+  // Calculate preview position - aim for an interesting part (30% into the track)
+  // but ensure we have at least 15 seconds remaining
+  const previewDuration = 15 // 15 second preview
+  let startTime = Math.max(0, Math.min(
+    totalDuration * 0.3, // Start at 30% of track
+    totalDuration - previewDuration // Ensure we have enough remaining
+  ))
+
+  // If track is shorter than preview duration, use the whole track
+  if (totalDuration <= previewDuration) {
+    startTime = 0
+  }
+
+  // Generate preview with fade in/out for smooth listening
+  await runFFmpeg([
+    '-i', fullAudioPath,
+    '-ss', startTime.toString(), // Start position
+    '-t', Math.min(previewDuration, totalDuration).toString(), // Duration
+    '-af', 'afade=t=in:st=0:d=0.5,afade=t=out:st=' +
+           (Math.min(previewDuration, totalDuration) - 0.5) + ':d=0.5', // Fade in/out
+    '-c:a', 'libmp3lame',
+    '-b:a', '128k', // Lower bitrate for preview
+    '-ac', '2', // Ensure stereo
+    previewFile,
+  ])
+
+  return previewFile
+}
+
+async function uploadPreview(job: AudioJob, filePath: string): Promise<string> {
+  const fileData = await Deno.readFile(filePath)
+  const fileName = `${job.track_id}/preview_${Date.now()}.mp3`
+
+  // Upload to public previews bucket
+  const { data, error } = await supabase.storage
+    .from('track-previews')
+    .upload(fileName, fileData, {
+      contentType: 'audio/mpeg',
+      upsert: false,
+      cacheControl: '3600', // Cache for 1 hour
+    })
+
+  if (error) {
+    // If previews bucket doesn't exist, try to create it or use audio-renders
+    console.error('Preview upload error:', error)
+
+    // Fallback to audio-renders bucket (will need to make it public later)
+    const fallbackResult = await supabase.storage
+      .from('audio-renders')
+      .upload(`previews/${fileName}`, fileData, {
+        contentType: 'audio/mpeg',
+        upsert: false,
+      })
+
+    if (fallbackResult.error) throw fallbackResult.error
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('audio-renders')
+      .getPublicUrl(`previews/${fileName}`)
+
+    return publicUrl
+  }
+
+  // Get public URL for preview
+  const { data: { publicUrl } } = supabase.storage
+    .from('track-previews')
+    .getPublicUrl(fileName)
+
+  return publicUrl
 }

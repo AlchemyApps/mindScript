@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { DownloadOptionsSchema } from '@mindscript/schemas';
 import { checkTrackAccess, generateSignedUrl } from '@/lib/track-access';
-import { createUserRateLimit, RATE_LIMITS } from '../../../lib/rate-limit';
+import { createUserRateLimit, RATE_LIMITS } from '../../../../lib/rate-limit';
 
 export async function GET(
   request: NextRequest,
@@ -11,7 +10,7 @@ export async function GET(
 ) {
   try {
     const trackId = params.id;
-    
+
     // Validate track ID format
     if (!trackId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trackId)) {
       return NextResponse.json(
@@ -64,26 +63,6 @@ export async function GET(
       );
     }
 
-    // Parse query parameters
-    const searchParams = request.nextUrl.searchParams;
-    const downloadOptions = {
-      expires_in: searchParams.get('expires_in') ? parseInt(searchParams.get('expires_in')!) : undefined,
-    };
-
-    // Validate download options
-    const validationResult = DownloadOptionsSchema.safeParse(downloadOptions);
-    if (!validationResult.success) {
-      return NextResponse.json(
-        {
-          error: 'Validation error',
-          details: validationResult.error.errors,
-        },
-        { status: 400 }
-      );
-    }
-
-    const { expires_in } = validationResult.data;
-
     // Check track access (ownership or purchase)
     const accessCheck = await checkTrackAccess(trackId, user.id, supabase);
     if (!accessCheck.hasAccess) {
@@ -95,7 +74,7 @@ export async function GET(
 
     const trackInfo = accessCheck.track;
 
-    // Check if audio file is available and track is completed
+    // Check if audio file is available
     if (!trackInfo.audio_url) {
       return NextResponse.json(
         { error: 'Audio file not available' },
@@ -103,8 +82,8 @@ export async function GET(
       );
     }
 
-    // Generate signed URL with our access control utility
-    const { signedUrl, error } = await generateSignedUrl(trackInfo.audio_url, expires_in, supabase);
+    // Generate signed URL (short expiry for immediate download)
+    const { signedUrl, error } = await generateSignedUrl(trackInfo.audio_url, 300, supabase); // 5 minutes
 
     if (error || !signedUrl) {
       console.error('Failed to generate download URL:', error);
@@ -120,28 +99,39 @@ export async function GET(
       .update({ download_count: (trackInfo.download_count || 0) + 1 })
       .eq('id', trackId);
 
-    // Calculate expiry time
-    const expiresAt = new Date(Date.now() + expires_in * 1000);
+    // Fetch the file from storage
+    const fileResponse = await fetch(signedUrl);
 
-    // Return download URL
-    return NextResponse.json(
-      {
-        download_url: signedUrl,
-        expires_at: expiresAt.toISOString(),
-        expires_in,
+    if (!fileResponse.ok) {
+      return NextResponse.json(
+        { error: 'Failed to fetch audio file' },
+        { status: 500 }
+      );
+    }
+
+    // Get the file content
+    const fileBuffer = await fileResponse.arrayBuffer();
+
+    // Clean filename for download
+    const cleanTitle = trackInfo.title.replace(/[^a-z0-9\s\-_]/gi, '').trim();
+    const filename = `${cleanTitle || 'track'}.mp3`;
+
+    // Stream the file directly to the client with proper headers
+    return new NextResponse(fileBuffer, {
+      status: 200,
+      headers: {
+        'content-type': 'audio/mpeg',
+        'content-disposition': `attachment; filename="${filename}"`,
+        'content-length': fileBuffer.byteLength.toString(),
+        'cache-control': 'no-cache, no-store, must-revalidate',
+        'x-content-type-options': 'nosniff',
+        'x-ratelimit-limit': RATE_LIMITS.download.max.toString(),
+        'x-ratelimit-remaining': rateLimit.remaining.toString(),
+        'x-ratelimit-reset': new Date(rateLimit.resetTime).toISOString(),
       },
-      {
-        status: 200,
-        headers: {
-          'accept-ranges': 'bytes', // Support range requests for streaming
-          'x-ratelimit-limit': RATE_LIMITS.download.max.toString(),
-          'x-ratelimit-remaining': rateLimit.remaining.toString(),
-          'x-ratelimit-reset': new Date(rateLimit.resetTime).toISOString(),
-        },
-      }
-    );
+    });
   } catch (error) {
-    console.error('Download error:', error);
+    console.error('Download stream error:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

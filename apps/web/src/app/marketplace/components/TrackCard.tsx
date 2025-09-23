@@ -3,14 +3,16 @@
 import { Card, CardContent, CardHeader } from "@mindscript/ui";
 import { Button } from "@mindscript/ui";
 import { Badge } from "@mindscript/ui";
-import { PlayIcon, ShoppingCartIcon } from "lucide-react";
+import { PlayIcon, PauseIcon, ShoppingCartIcon } from "lucide-react";
 import { formatDuration, getCategoryIcon } from "@mindscript/schemas";
 import type { Publication } from "@mindscript/schemas";
 import { useCartStore } from "../../../store/cartStore";
+import { useRef, useState, useEffect } from "react";
 
 interface TrackCardProps {
-  track: Publication & { 
+  track: Publication & {
     formatted_price?: string;
+    preview_url?: string;
     seller?: {
       display_name: string;
       avatar_url?: string;
@@ -22,6 +24,8 @@ interface TrackCardProps {
 
 export function TrackCard({ track, onClick, variant = "grid" }: TrackCardProps) {
   const addToCart = useCartStore((state) => state.addItem);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -37,9 +41,47 @@ export function TrackCard({ track, onClick, variant = "grid" }: TrackCardProps) 
 
   const handlePreview = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // TODO: Implement audio preview
-    console.log("Preview track:", track.id);
+
+    if (!track.preview_url) {
+      console.log("No preview available for track:", track.id);
+      return;
+    }
+
+    if (isPlaying && audioRef.current) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else if (audioRef.current) {
+      audioRef.current.play();
+      setIsPlaying(true);
+    } else {
+      // Create audio element if it doesn't exist
+      const audio = new Audio(track.preview_url);
+      audio.volume = 0.7;
+      audioRef.current = audio;
+
+      audio.addEventListener('ended', () => {
+        setIsPlaying(false);
+      });
+
+      audio.addEventListener('error', (e) => {
+        console.error('Preview playback error:', e);
+        setIsPlaying(false);
+      });
+
+      audio.play();
+      setIsPlaying(true);
+    }
   };
+
+  // Cleanup audio on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   if (variant === "list") {
     return (
@@ -84,8 +126,14 @@ export function TrackCard({ track, onClick, variant = "grid" }: TrackCardProps) 
                   variant="ghost"
                   onClick={handlePreview}
                   className="h-8 w-8 p-0"
+                  disabled={!track.preview_url}
+                  title={track.preview_url ? "Preview track" : "No preview available"}
                 >
-                  <PlayIcon className="h-4 w-4" />
+                  {isPlaying ? (
+                    <PauseIcon className="h-4 w-4" />
+                  ) : (
+                    <PlayIcon className="h-4 w-4" />
+                  )}
                 </Button>
                 <div className="text-right">
                   <div className="font-semibold">
@@ -133,8 +181,14 @@ export function TrackCard({ track, onClick, variant = "grid" }: TrackCardProps) 
             variant="ghost"
             onClick={handlePreview}
             className="h-8 w-8 p-0 flex-shrink-0"
+            disabled={!track.preview_url}
+            title={track.preview_url ? "Preview track" : "No preview available"}
           >
-            <PlayIcon className="h-4 w-4" />
+            {isPlaying ? (
+              <PauseIcon className="h-4 w-4" />
+            ) : (
+              <PlayIcon className="h-4 w-4" />
+            )}
           </Button>
         </div>
         <p className="text-sm text-muted-foreground">

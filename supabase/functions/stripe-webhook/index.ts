@@ -295,6 +295,76 @@ async function handleCheckoutSessionCompleted(
     log("error", "Failed to create earnings ledger entry", { error: ledgerError.message });
   }
 
+  // Grant track access to the buyer
+  const { error: accessError } = await supabase.from("track_access").insert({
+    user_id: userId,
+    track_id: trackId,
+    access_type: "purchased",
+    purchase_id: purchase.id,
+    granted_at: new Date().toISOString(),
+  });
+
+  if (accessError) {
+    // Check if access already exists (idempotency)
+    const { data: existingAccess } = await supabase
+      .from("track_access")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("track_id", trackId)
+      .single();
+
+    if (!existingAccess) {
+      log("error", "Failed to grant track access", { error: accessError.message, userId, trackId });
+      // Don't throw - purchase is complete, access can be manually granted
+    } else {
+      log("info", "Track access already exists", { userId, trackId });
+    }
+  } else {
+    log("info", "Track access granted", { userId, trackId, purchaseId: purchase.id });
+  }
+
+  // If this was a multi-track purchase, handle all tracks
+  if (session.line_items) {
+    const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
+
+    for (const item of lineItems.data) {
+      if (item.price?.metadata?.trackId && item.price.metadata.trackId !== trackId) {
+        const additionalTrackId = item.price.metadata.trackId;
+
+        // Create additional purchase record
+        const { data: additionalPurchase } = await supabase
+          .from("purchases")
+          .insert({
+            buyer_id: userId,
+            track_id: additionalTrackId,
+            seller_id: item.price.metadata.sellerId || sellerId,
+            platform: "web",
+            sale_price_cents: item.amount_total,
+            currency: session.currency?.toUpperCase() || "USD",
+            status: "paid",
+            stripe_payment_intent_id: session.payment_intent as string,
+            stripe_checkout_session_id: session.id,
+            seller_share_cents: Math.round(item.amount_total * 0.7), // Simplified calculation
+            platform_fee_cents: Math.round(item.amount_total * 0.15),
+            processor_fee_cents: Math.round(item.amount_total * 0.029 + 30),
+          })
+          .select()
+          .single();
+
+        // Grant access for additional track
+        if (additionalPurchase) {
+          await supabase.from("track_access").insert({
+            user_id: userId,
+            track_id: additionalTrackId,
+            access_type: "purchased",
+            purchase_id: additionalPurchase.id,
+            granted_at: new Date().toISOString(),
+          });
+        }
+      }
+    }
+  }
+
   log("info", "Checkout session processed successfully", { purchaseId: purchase.id });
 }
 
