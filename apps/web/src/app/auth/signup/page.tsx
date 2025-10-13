@@ -4,8 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthForm, OAuthButtons, EmailVerificationBanner, type AuthFormField } from '@mindscript/ui';
-import { useAuth } from '@mindscript/auth/hooks';
-import { getSupabaseBrowserClient } from '@mindscript/auth/client';
+import { createClient } from '../../../lib/supabase/client';
 
 const signupFields: AuthFormField[] = [
   {
@@ -44,27 +43,42 @@ const signupFields: AuthFormField[] = [
 
 export default function SignupPage() {
   const router = useRouter();
-  const { signUp } = useAuth();
   const [loading, setLoading] = useState(false);
   const [verificationSent, setVerificationSent] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const supabase = getSupabaseBrowserClient();
+  const [error, setError] = useState<string | null>(null);
 
   const handleSignup = async (data: Record<string, string>) => {
+    setLoading(true);
+    setError(null);
     setUserEmail(data.email);
-    
-    await signUp({
-      email: data.email,
-      password: data.password,
-      displayName: data.displayName,
-    });
-    
-    setVerificationSent(true);
+
+    try {
+      const supabase = createClient();
+      const { data: authData, error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+        options: {
+          data: {
+            display_name: data.displayName,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      setVerificationSent(true);
+    } catch (error: any) {
+      setError(error.message || 'An error occurred during signup');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleSignup = async () => {
     setLoading(true);
     try {
+      const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -80,6 +94,7 @@ export default function SignupPage() {
   };
 
   const handleResendVerification = async () => {
+    const supabase = createClient();
     const { error } = await supabase.auth.resend({
       type: 'signup',
       email: userEmail,
@@ -134,12 +149,19 @@ export default function SignupPage() {
             <p className="text-gray-600 mt-2">Create your account</p>
           </div>
 
+          {error && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
+
           <AuthForm
             title="Sign up for MindScript"
             subtitle="Start creating AI-powered audio affirmations"
             fields={signupFields}
             submitLabel="Create account"
             onSubmit={handleSignup}
+            loading={loading}
             showPasswordStrength={true}
             footer={
               <>

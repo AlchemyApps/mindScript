@@ -1,23 +1,76 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { BuilderForm } from './components/BuilderForm';
-import { useAuth } from '@mindscript/auth';
+import { useAuth } from '@mindscript/auth/hooks';
 import Link from 'next/link';
 
 export default function BuilderPage() {
   const router = useRouter();
   const { user, session, loading } = useAuth();
   const [isCreating, setIsCreating] = useState(false);
-  
-  // Redirect to login if not authenticated
-  React.useEffect(() => {
-    if (!loading && !user) {
-      router.push('/auth/login?redirect=/builder');
+  const [hasRedirected, setHasRedirected] = useState(false);
+  const [pricingInfo, setPricingInfo] = useState<{
+    basePrice: number;
+    discountedPrice: number;
+    savings: number;
+    isEligibleForDiscount: boolean;
+  }>({ basePrice: 2.99, discountedPrice: 0.99, savings: 2.00, isEligibleForDiscount: false });
+
+  // Redirect to login if not authenticated - with proper guards
+  useEffect(() => {
+    // Only redirect once, and only if we're done loading
+    if (!loading && !user && !hasRedirected) {
+      setHasRedirected(true);
+      // Small delay to prevent race conditions
+      const redirectTimer = setTimeout(() => {
+        router.push('/auth/login?redirect=/builder');
+      }, 100);
+      return () => clearTimeout(redirectTimer);
     }
-  }, [user, loading, router]);
-  
+  }, [user, loading, hasRedirected, router]);
+
+  // Fetch pricing eligibility when user is authenticated
+  useEffect(() => {
+    if (user) {
+      fetchPricingEligibility();
+    }
+  }, [user]);
+
+  const fetchPricingEligibility = async () => {
+    try {
+      const response = await fetch('/api/pricing/check-eligibility');
+      if (!response.ok) {
+        throw new Error('Failed to fetch pricing eligibility');
+      }
+      const pricingData = await response.json();
+
+      setPricingInfo({
+        basePrice: pricingData.pricing.basePrice / 100,
+        discountedPrice: pricingData.pricing.discountedPrice / 100,
+        savings: pricingData.pricing.savings / 100,
+        isEligibleForDiscount: pricingData.isEligibleForDiscount
+      });
+    } catch (error) {
+      console.error('Error fetching pricing eligibility:', error);
+    }
+  };
+
+  const calculateTotal = (formData: any) => {
+    let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
+    if (formData.backgroundMusic && formData.backgroundMusic.id !== 'none') {
+      total += formData.backgroundMusic.price || 0;
+    }
+    if (formData.solfeggio?.enabled) {
+      total += formData.solfeggio.price || 0;
+    }
+    if (formData.binaural?.enabled) {
+      total += formData.binaural.price || 0;
+    }
+    return total;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -25,39 +78,47 @@ export default function BuilderPage() {
       </div>
     );
   }
-  
+
   if (!user) {
     return null;
   }
-  
+
   const handleSubmit = async (data: any) => {
     setIsCreating(true);
-    
+
     try {
-      const response = await fetch('/api/audio/submit', {
+      // Calculate total with add-ons
+      const total = calculateTotal(data);
+
+      // Prepare checkout data
+      const checkoutData = {
+        userId: user.id,
+        builderState: data,
+        successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: window.location.href,
+        priceAmount: Math.round(total * 100), // Convert to cents
+        firstTrackDiscount: pricingInfo.isEligibleForDiscount,
+      };
+
+      // Create checkout session
+      const response = await fetch('/api/checkout/guest-conversion', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify(data),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkoutData)
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create audio job');
+        throw new Error(error.error || 'Failed to create checkout session');
       }
-      
-      const result = await response.json();
-      
-      // Redirect to the project page
-      if (result.projectId) {
-        router.push(`/library/${result.projectId}`);
-      } else {
-        router.push('/library');
-      }
+
+      const { url } = await response.json();
+
+      // Redirect to Stripe Checkout
+      window.location.href = url;
     } catch (error) {
-      console.error('Error creating audio job:', error);
+      console.error('Error creating checkout session:', error);
+      alert('Failed to start checkout. Please try again.');
       throw error;
     } finally {
       setIsCreating(false);

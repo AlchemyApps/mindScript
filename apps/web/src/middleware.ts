@@ -3,23 +3,30 @@ import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 // Security headers configuration
+const isDevelopment = process.env.NODE_ENV !== 'production';
+const cspDirectives = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel-scripts.com https://*.sentry.io https://*.posthog.com https://js.stripe.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.supabase.co https://lh3.googleusercontent.com https://*.stripe.com",
+  "font-src 'self' data:",
+  "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.elevenlabs.io https://api.openai.com https://*.sentry.io https://*.posthog.com https://*.ingest.sentry.io",
+  "media-src 'self' blob: https://*.supabase.co",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self' https://checkout.stripe.com",
+  "frame-ancestors 'none'",
+  "frame-src 'self' https://checkout.stripe.com https://js.stripe.com",
+];
+
+// Only add upgrade-insecure-requests in production
+if (!isDevelopment) {
+  cspDirectives.push("upgrade-insecure-requests");
+}
+
 const securityHeaders = {
   // Content Security Policy - Strict policy with nonces for scripts
-  'Content-Security-Policy': [
-    "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live https://*.vercel-scripts.com https://*.sentry.io https://*.posthog.com https://js.stripe.com",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://*.supabase.co https://lh3.googleusercontent.com https://*.stripe.com",
-    "font-src 'self' data:",
-    "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.stripe.com https://api.elevenlabs.io https://api.openai.com https://*.sentry.io https://*.posthog.com https://*.ingest.sentry.io",
-    "media-src 'self' blob: https://*.supabase.co",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self' https://checkout.stripe.com",
-    "frame-ancestors 'none'",
-    "frame-src 'self' https://checkout.stripe.com https://js.stripe.com",
-    "upgrade-insecure-requests"
-  ].join('; '),
+  'Content-Security-Policy': cspDirectives.join('; '),
   
   // Prevent clickjacking
   'X-Frame-Options': 'DENY',
@@ -38,7 +45,7 @@ const securityHeaders = {
     'camera=()',
     'microphone=()',
     'geolocation=()',
-    'payment=(self https://checkout.stripe.com)',
+    'payment=(self "https://checkout.stripe.com")',
     'usb=()',
     'magnetometer=()',
     'gyroscope=()',
@@ -137,8 +144,12 @@ const publicRoutes = [
   '/login',
   '/signup',
   '/reset-password',
+  '/auth/login',
+  '/auth/signup',
+  '/auth/reset-password',
   '/auth/callback',
   '/api/auth/callback',
+  '/api/auth/session',
 ];
 
 const protectedRoutes = [
@@ -167,15 +178,12 @@ export async function middleware(request: NextRequest) {
             return request.cookies.getAll();
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value)
-            );
-            response = NextResponse.next({
-              request,
+            cookiesToSet.forEach(({ name, value }) => {
+              request.cookies.set(name, value);
             });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options)
-            );
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, options);
+            });
           },
         },
       }
@@ -253,7 +261,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Redirect authenticated users away from auth pages
-  if (user && (pathname === '/login' || pathname === '/signup')) {
+  if (user && (pathname === '/login' || pathname === '/signup' || pathname.startsWith('/auth/login') || pathname.startsWith('/auth/signup'))) {
     const redirectTo = request.nextUrl.searchParams.get('redirectTo');
     return NextResponse.redirect(new URL(redirectTo || '/dashboard', request.url));
   }

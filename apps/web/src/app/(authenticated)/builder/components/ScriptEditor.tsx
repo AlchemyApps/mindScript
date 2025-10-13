@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { cn } from '@mindscript/ui/utils/cn';
+import { cn } from '../../../../lib/utils';
 
 interface ScriptEditorProps {
   value: string;

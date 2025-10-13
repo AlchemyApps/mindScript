@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@mindscript/auth/hooks';
 import { Button, Card } from '@mindscript/ui';
@@ -8,12 +8,18 @@ import { Button, Card } from '@mindscript/ui';
 export default function DashboardPage() {
   const router = useRouter();
   const { user, profile, loading, signOut } = useAuth();
+  const [hasRedirected, setHasRedirected] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/auth/login');
+    // Only redirect once to prevent loops
+    if (!loading && !user && !hasRedirected) {
+      setHasRedirected(true);
+      const redirectTimer = setTimeout(() => {
+        router.push('/auth/login');
+      }, 100);
+      return () => clearTimeout(redirectTimer);
     }
-  }, [user, loading, router]);
+  }, [user, loading, hasRedirected, router]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -55,7 +61,11 @@ export default function DashboardPage() {
           <Card className="p-6">
             <h2 className="text-lg font-semibold mb-2">Your Scripts</h2>
             <p className="text-gray-600">No scripts created yet</p>
-            <Button className="mt-4 w-full" size="sm">
+            <Button
+              className="mt-4 w-full"
+              size="sm"
+              onClick={() => router.push('/builder')}
+            >
               Create Your First Script
             </Button>
           </Card>

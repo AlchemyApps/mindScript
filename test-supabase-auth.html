@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Supabase Auth</title>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Auth Test</h1>
+    <div id="status">Ready to test...</div>
+    <button onclick="testSignUp()">Test Sign Up</button>
+    <button onclick="testDirectAPI()">Test Direct API</button>
+    <div id="results"></div>
+
+    <script>
+        const SUPABASE_URL = 'https://byicqjniboevzbhbfxui.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5aWNxam5pYm9ldnpiaGJmeHVpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc1Mjg0NjAsImV4cCI6MjA3MzEwNDQ2MH0.FYzFTV7k2ZdR-QaPcBIwAK0yfJeqVgYqqVlSx9YVJ_U';
+
+        const { createClient } = supabase;
+        const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        function log(message, data = null) {
+            const timestamp = new Date().toISOString();
+            console.log(`[${timestamp}] ${message}`, data);
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML += `<div>[${timestamp}] ${message} ${data ? JSON.stringify(data) : ''}</div>`;
+        }
+
+        async function testSignUp() {
+            const email = `test${Date.now()}@example.com`;
+            const password = 'TestPassword123!';
+
+            log('Starting signup test with email: ' + email);
+            document.getElementById('status').textContent = 'Testing signup...';
+
+            try {
+                // Add timeout wrapper
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Timeout after 10 seconds')), 10000);
+                });
+
+                const signupPromise = supabaseClient.auth.signUp({
+                    email,
+                    password,
+                    options: {
+                        emailRedirectTo: window.location.origin
+                    }
+                });
+
+                log('Signup promise created, waiting...');
+
+                const result = await Promise.race([signupPromise, timeoutPromise]);
+
+                log('Signup completed:', result);
+                document.getElementById('status').textContent = 'Signup successful!';
+            } catch (error) {
+                log('Signup error:', error.message);
+                document.getElementById('status').textContent = 'Signup failed: ' + error.message;
+            }
+        }
+
+        async function testDirectAPI() {
+            const email = `test${Date.now()}@example.com`;
+            const password = 'TestPassword123!';
+
+            log('Testing direct API call to: ' + SUPABASE_URL + '/auth/v1/signup');
+            document.getElementById('status').textContent = 'Testing direct API...';
+
+            try {
+                const response = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'apikey': SUPABASE_ANON_KEY,
+                        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+                    },
+                    body: JSON.stringify({
+                        email,
+                        password,
+                        email_confirm: false,
+                        gotrue_meta_security: {}
+                    })
+                });
+
+                const data = await response.json();
+                log('Direct API response:', data);
+
+                if (response.ok) {
+                    document.getElementById('status').textContent = 'Direct API successful!';
+                } else {
+                    document.getElementById('status').textContent = 'Direct API failed: ' + data.msg;
+                }
+            } catch (error) {
+                log('Direct API error:', error.message);
+                document.getElementById('status').textContent = 'Direct API failed: ' + error.message;
+            }
+        }
+
+        // Test connection on load
+        window.onload = async () => {
+            log('Page loaded, testing Supabase connection...');
+            try {
+                const { data, error } = await supabaseClient.auth.getSession();
+                if (error) {
+                    log('Session check error:', error.message);
+                } else {
+                    log('Session check successful, session:', data.session ? 'exists' : 'none');
+                }
+            } catch (err) {
+                log('Connection test failed:', err.message);
+            }
+        };
+    </script>
+</body>
+</html>

@@ -9,6 +9,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 // Request validation schema
 const GuestCheckoutRequestSchema = z.object({
+  userId: z.string(), // User ID or email from authenticated session
   builderState: z.object({
     script: z.string(),
     voice: z.object({
@@ -36,34 +37,65 @@ const GuestCheckoutRequestSchema = z.object({
   successUrl: z.string(),
   cancelUrl: z.string(),
   priceAmount: z.number(), // in cents
+  firstTrackDiscount: z.boolean(), // Track if discount was used
 });
 
 export async function POST(request: NextRequest) {
   try {
     // Parse and validate request body
     const body = await request.json();
+    console.log('Received checkout request:', { userId: body.userId, priceAmount: body.priceAmount, firstTrackDiscount: body.firstTrackDiscount });
+
     const validationResult = GuestCheckoutRequestSchema.safeParse(body);
 
     if (!validationResult.success) {
+      console.error('Validation failed:', validationResult.error.flatten());
       return NextResponse.json(
         { error: "Invalid request data", details: validationResult.error.flatten() },
         { status: 400 }
       );
     }
 
-    const { builderState, successUrl, cancelUrl, priceAmount } = validationResult.data;
+    let { userId, builderState, successUrl, cancelUrl, priceAmount, firstTrackDiscount } = validationResult.data;
 
-    // Create line items for the checkout session
+    // If userId looks like an email, try to find the actual user ID
+    if (userId.includes('@')) {
+      console.log('UserId is an email, looking up actual user ID...');
+
+      // This is tricky because we can't directly query auth.users
+      // For now, we'll use the email as the identifier in metadata
+      // The webhook will need to handle this appropriately
+      console.log('Using email as identifier:', userId);
+    }
+
+    // Build description with selected features
+    const features: string[] = [];
+    if (builderState.backgroundMusic && builderState.backgroundMusic.id !== 'none') {
+      features.push(`Background Music: ${builderState.backgroundMusic.name}`);
+    }
+    if (builderState.solfeggio?.enabled) {
+      features.push(`Solfeggio: ${builderState.solfeggio.frequency} Hz`);
+    }
+    if (builderState.binaural?.enabled) {
+      features.push(`Binaural: ${builderState.binaural.band}`);
+    }
+
+    const description = `${builderState.duration} min track with ${builderState.voice.name}${features.length > 0 ? ` • ${features.join(' • ')}` : ''}`;
+
+    // Create single line item with total price (includes all add-ons)
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         price_data: {
           currency: 'usd',
-          unit_amount: 99, // Base price $0.99
+          unit_amount: priceAmount, // Total price from frontend (already includes add-ons)
           product_data: {
-            name: 'MindScript First Track',
-            description: `${builderState.duration} minute personalized audio track`,
+            name: firstTrackDiscount ? 'MindScript First Track (Special Pricing)' : 'MindScript Track',
+            description,
             metadata: {
-              type: 'base_track',
+              type: 'complete_track',
+              has_background_music: (!!builderState.backgroundMusic && builderState.backgroundMusic.id !== 'none').toString(),
+              has_solfeggio: (!!builderState.solfeggio?.enabled).toString(),
+              has_binaural: (!!builderState.binaural?.enabled).toString(),
             },
           },
         },
@@ -71,68 +103,14 @@ export async function POST(request: NextRequest) {
       },
     ];
 
-    // Add background music if selected
-    if (builderState.backgroundMusic && builderState.backgroundMusic.id !== 'none') {
-      lineItems.push({
-        price_data: {
-          currency: 'usd',
-          unit_amount: Math.round(builderState.backgroundMusic.price * 100),
-          product_data: {
-            name: `Background Music: ${builderState.backgroundMusic.name}`,
-            description: 'Premium background music for your track',
-            metadata: {
-              type: 'background_music',
-              music_id: builderState.backgroundMusic.id,
-            },
-          },
-        },
-        quantity: 1,
-      });
-    }
-
-    // Add Solfeggio frequency if enabled
-    if (builderState.solfeggio?.enabled) {
-      lineItems.push({
-        price_data: {
-          currency: 'usd',
-          unit_amount: Math.round(builderState.solfeggio.price * 100),
-          product_data: {
-            name: `Solfeggio Frequency: ${builderState.solfeggio.frequency} Hz`,
-            description: 'Healing frequency overlay',
-            metadata: {
-              type: 'solfeggio',
-              frequency: builderState.solfeggio.frequency.toString(),
-            },
-          },
-        },
-        quantity: 1,
-      });
-    }
-
-    // Add Binaural beats if enabled
-    if (builderState.binaural?.enabled) {
-      lineItems.push({
-        price_data: {
-          currency: 'usd',
-          unit_amount: Math.round(builderState.binaural.price * 100),
-          product_data: {
-            name: `Binaural Beats: ${builderState.binaural.band.charAt(0).toUpperCase() + builderState.binaural.band.slice(1)} Band`,
-            description: 'Brainwave entrainment',
-            metadata: {
-              type: 'binaural',
-              band: builderState.binaural.band,
-            },
-          },
-        },
-        quantity: 1,
-      });
-    }
-
     // Store builder state in metadata (Stripe has a 500 character limit per value)
     // We'll split the data across multiple metadata fields
     const scriptChunks = builderState.script.match(/.{1,400}/g) || [];
     const metadata: Record<string, string> = {
+      user_id: userId, // Critical for webhook - can be UUID or email
+      user_email: userId.includes('@') ? userId : '', // Store email separately if that's what we have
       conversion_type: 'guest_to_user',
+      first_track_discount_used: firstTrackDiscount.toString(), // Track discount usage
       first_track: 'true',
       voice_provider: builderState.voice.provider,
       voice_id: builderState.voice.voice_id,

@@ -1,6 +1,7 @@
 {
   "extends": "../../packages/config/typescript.json",
   "compilerOptions": {
+    "baseUrl": ".",
     "plugins": [
       {
         "name": "next"

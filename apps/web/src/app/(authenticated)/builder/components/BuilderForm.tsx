@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { cn } from '@mindscript/ui/utils/cn';
+import { cn } from '../../../../lib/utils';
 import { ScriptEditor } from './ScriptEditor';
 import { VoiceSelector } from './VoiceSelector';
 import { MusicBrowser } from './MusicBrowser';

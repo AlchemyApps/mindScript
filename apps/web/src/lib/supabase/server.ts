@@ -1,32 +1,38 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export function createClient() {
-  const cookieStore = cookies();
+export async function serverSupabase() {
+  const cookieStore = await cookies();
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, options: any) {
+        setAll(cookiesToSet) {
           try {
-            cookieStore.set(name, value, options);
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
           } catch (error) {
             // Cookie setting can fail in certain contexts (e.g., static generation)
-          }
-        },
-        remove(name: string, options: any) {
-          try {
-            cookieStore.set(name, "", options);
-          } catch (error) {
-            // Cookie removal can fail in certain contexts
+            console.error('Cookie setting error:', error);
           }
         },
       },
     }
   );
+}
+
+// Keep backward compatibility
+export const createClient = serverSupabase;
+
+// Helper function to get user from request
+export async function getUser() {
+  const supabase = await serverSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
 }

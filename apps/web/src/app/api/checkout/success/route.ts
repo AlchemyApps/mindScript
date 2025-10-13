@@ -39,22 +39,36 @@ export async function GET(request: NextRequest) {
       .from("purchases")
       .select(`
         *,
-        purchase_items (
-          *,
-          tracks (
-            id,
-            title,
-            description,
-            audio_url
-          )
+        tracks!track_id (
+          id,
+          title,
+          description,
+          audio_url
         )
       `)
-      .eq("stripe_checkout_session_id", sessionId)
+      .eq("checkout_session_id", sessionId)
       .single();
 
     if (purchaseError || !purchase) {
       console.error("Error fetching purchase:", purchaseError);
       // Even if we can't find the purchase in our DB, return basic info from Stripe
+    }
+
+    // Check if this is a guest conversion
+    const isGuestConversion = session.metadata?.conversion_type === 'guest_to_user';
+
+    // For guest conversions, fetch the newly created track
+    let trackId: string | undefined;
+    if (isGuestConversion && session.metadata?.user_id) {
+      const { data: track } = await supabase
+        .from('tracks')
+        .select('id')
+        .eq('user_id', session.metadata.user_id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      trackId = track?.id;
     }
 
     // Prepare the response
@@ -89,6 +103,11 @@ export async function GET(request: NextRequest) {
       totalAmount: session.amount_total || 0,
       currency: session.currency?.toUpperCase() || "USD",
       receiptUrl: (session.payment_intent as Stripe.PaymentIntent)?.charges?.data?.[0]?.receipt_url,
+      // Add redirect info for guest conversions
+      ...(isGuestConversion && {
+        redirectTo: `/library?new=true${trackId ? `&trackId=${trackId}` : ''}`,
+        trackId,
+      }),
     };
 
     return NextResponse.json(response);

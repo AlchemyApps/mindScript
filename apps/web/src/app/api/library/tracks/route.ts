@@ -19,7 +19,7 @@ const querySchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
-    
+
     // Check authentication
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
@@ -47,9 +47,28 @@ export async function GET(request: NextRequest) {
       let ownedQuery = supabase
         .from('tracks')
         .select(`
-          *,
+          id,
+          user_id,
+          title,
+          description,
+          script,
+          voice_config,
+          music_config,
+          frequency_config,
+          output_config,
+          status,
+          is_public,
+          tags,
+          render_job_id,
+          audio_url,
+          duration_seconds,
+          play_count,
+          price_cents,
+          deleted_at,
+          created_at,
+          updated_at,
           profiles!user_id (display_name, avatar_url)
-          ${params.includeRenderStatus ? ', audio_job_queue!track_id (id, status, progress, created_at, updated_at)' : ''}
+          ${params.includeRenderStatus ? ', audio_job_queue!track_id (id, status, progress, created_at)' : ''}
         `)
         .eq('user_id', user.id);
 
@@ -99,6 +118,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...track,
+          duration: track.duration_seconds || 0, // Map duration_seconds to duration
           ownership: 'owned' as const,
           status: combinedStatus, // Override with combined status
           renderStatus: params.includeRenderStatus && track.audio_job_queue?.[0]
@@ -107,7 +127,6 @@ export async function GET(request: NextRequest) {
                 status: track.audio_job_queue[0].status,
                 progress: track.audio_job_queue[0].progress,
                 createdAt: track.audio_job_queue[0].created_at,
-                updatedAt: track.audio_job_queue[0].updated_at,
               }
             : undefined,
         };
@@ -122,94 +141,11 @@ export async function GET(request: NextRequest) {
       tracks.push(...filteredOwned);
     }
 
-    // Fetch purchased tracks
-    if (params.ownership === 'all' || params.ownership === 'purchased') {
-      let purchasedQuery = supabase
-        .from('track_access')
-        .select(`
-          track_id,
-          granted_at,
-          tracks!track_id (
-            *,
-            profiles!user_id (display_name, avatar_url)
-            ${params.includeRenderStatus ? ', audio_job_queue!track_id (id, status, progress, created_at, updated_at)' : ''}
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('access_type', 'purchased');
-
-      // Don't filter by status at the database level when it's 'rendering' or 'failed'
-      if (params.status !== 'all' && params.status !== 'rendering' && params.status !== 'failed') {
-        purchasedQuery = purchasedQuery.eq('tracks.status', params.status);
-      }
-
-      // Apply search filter for purchased tracks
-      if (params.search) {
-        purchasedQuery = purchasedQuery.or(
-          `tracks.title.ilike.%${params.search}%,tracks.description.ilike.%${params.search}%`
-        );
-      }
-
-      // Apply tags filter for purchased tracks
-      if (params.tags) {
-        const tagList = params.tags.split(',').map(t => t.trim());
-        purchasedQuery = purchasedQuery.contains('tracks.tags', tagList);
-      }
-
-      // Apply sorting for purchased tracks
-      purchasedQuery = purchasedQuery.order('granted_at', { ascending: false });
-
-      const { data: purchasedAccess, error: purchasedError } = await purchasedQuery;
-      
-      if (purchasedError) {
-        console.error('Error fetching purchased tracks:', purchasedError);
-        return NextResponse.json({ error: 'Failed to fetch tracks' }, { status: 500 });
-      }
-
-      // Format purchased tracks with combined status
-      const purchasedWithType = (purchasedAccess || [])
-        .filter(access => access.tracks)
-        .map(access => {
-          const track = access.tracks;
-
-          // Derive combined status from track status and render job status
-          let combinedStatus = track.status; // 'draft', 'published', or 'archived'
-
-          // Check if there's an active render job
-          if (track.audio_job_queue && track.audio_job_queue.length > 0) {
-            const latestJob = track.audio_job_queue[0];
-            if (latestJob.status === 'processing' || latestJob.status === 'pending') {
-              combinedStatus = 'rendering';
-            } else if (latestJob.status === 'failed') {
-              combinedStatus = 'failed';
-            }
-          }
-
-          return {
-            ...track,
-            ownership: 'purchased' as const,
-            status: combinedStatus, // Override with combined status
-            purchasedAt: access.granted_at,
-            renderStatus: params.includeRenderStatus && track.audio_job_queue?.[0]
-              ? {
-                  id: track.audio_job_queue[0].id,
-                  status: track.audio_job_queue[0].status,
-                  progress: track.audio_job_queue[0].progress,
-                  createdAt: track.audio_job_queue[0].created_at,
-                  updatedAt: track.audio_job_queue[0].updated_at,
-                }
-              : undefined,
-          };
-        });
-
-      // Filter by combined status if needed
-      let filteredPurchased = purchasedWithType;
-      if (params.status !== 'all') {
-        filteredPurchased = purchasedWithType.filter((track: any) => track.status === params.status);
-      }
-
-      tracks.push(...filteredPurchased);
-    }
+    // Fetch purchased tracks - TEMPORARILY DISABLED until track_access table is set up
+    // TODO: Re-enable after applying track_access migration
+    // if (params.ownership === 'all' || params.ownership === 'purchased') {
+    //   ... purchased tracks query
+    // }
 
     // Sort combined results if needed
     if (params.ownership === 'all') {

@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AuthForm, OAuthButtons, type AuthFormField } from '@mindscript/ui';
-import { useAuth } from '@mindscript/auth/hooks';
-import { getSupabaseBrowserClient } from '@mindscript/auth/client';
+import { createClient } from '../../../lib/supabase/client';
 
 const loginFields: AuthFormField[] = [
   {
@@ -28,30 +27,98 @@ const loginFields: AuthFormField[] = [
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const supabase = getSupabaseBrowserClient();
+  const [error, setError] = useState<string | null>(null);
+
+  const redirectTo = searchParams.get('redirectTo') || '/dashboard';
 
   const handleLogin = async (data: Record<string, string>) => {
-    await signIn({
-      email: data.email,
-      password: data.password,
-    });
-    router.push('/dashboard');
+    console.log('Login attempt started', data.email);
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Try server-side auth first as a workaround for browser timeout issues
+      console.log('Attempting server-side auth...');
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Authentication failed');
+      }
+
+      console.log('Server auth successful, establishing session...');
+
+      // Now try to establish the session client-side
+      const supabase = createClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+
+      if (!sessionData?.session) {
+        // If no session, try to sign in again client-side with a shorter timeout
+        console.log('No session found, attempting client-side auth...');
+        const loginPromise = supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        });
+
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Client auth timeout')), 3000)
+        );
+
+        try {
+          const { data: authData, error } = await Promise.race([
+            loginPromise,
+            timeoutPromise
+          ]).catch(err => ({ data: null, error: err })) as any;
+
+          if (authData?.user) {
+            console.log('Client auth successful, redirecting to:', redirectTo);
+            window.location.href = redirectTo;
+            return;
+          }
+        } catch (clientError) {
+          console.log('Client auth failed, but server auth succeeded');
+          // Server auth worked, so we can still redirect
+          window.location.href = redirectTo;
+          return;
+        }
+      }
+
+      console.log('Login successful, redirecting to:', redirectTo);
+      window.location.href = redirectTo;
+    } catch (error: any) {
+      console.error('Caught error:', error);
+      setError(error.message || 'An error occurred during login');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoogleLogin = async () => {
     setLoading(true);
+    setError(null);
+
     try {
+      const supabase = createClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`,
         },
       });
       if (error) throw error;
-    } catch (error) {
+    } catch (error: any) {
       console.error('OAuth error:', error);
+      setError(error.message || 'Failed to sign in with Google');
     } finally {
       setLoading(false);
     }
@@ -68,11 +135,18 @@ export default function LoginPage() {
             <p className="text-gray-600 mt-2">Welcome back</p>
           </div>
 
+          {error && (
+            <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          )}
+
           <AuthForm
             title="Sign in to your account"
             fields={loginFields}
             submitLabel="Sign in"
             onSubmit={handleLogin}
+            loading={loading}
             footer={
               <>
                 <div className="relative my-6">

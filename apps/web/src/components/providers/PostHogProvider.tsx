@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { initPostHog, analytics } from '@/lib/posthog';
-import { useAuth } from '@mindscript/auth';
+import { useAuth } from '@mindscript/auth/hooks';
 
 export function PostHogProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();

@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@mindscript/ui";
 import { cn } from '../lib/utils';
+import { AuthModal } from './auth-modal';
+import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 interface BuilderState {
   script: string;
@@ -103,8 +105,18 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
   const [activeTab, setActiveTab] = useState<'script' | 'voice' | 'extras'>('script');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [pricingInfo, setPricingInfo] = useState<{
+    basePrice: number;
+    discountedPrice: number;
+    savings: number;
+    isEligibleForDiscount: boolean;
+  }>({ basePrice: 2.99, discountedPrice: 0.99, savings: 2.00, isEligibleForDiscount: true });
 
-  // Load from localStorage after mount to avoid hydration mismatch
+  const supabase = getSupabaseBrowserClient();
+
+  // Load from localStorage and check auth status after mount (NOT pricing)
   useEffect(() => {
     setIsHydrated(true);
     if (typeof window !== 'undefined') {
@@ -118,7 +130,55 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
         }
       }
     }
+
+    // Only check authentication status on mount
+    checkAuthStatus();
   }, []);
+
+  const checkAuthStatus = async () => {
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      setUser(currentUser);
+
+      // If user is already authenticated, check pricing now
+      if (currentUser) {
+        await checkPricingEligibility();
+      }
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+    }
+  };
+
+  const checkPricingEligibility = async () => {
+    try {
+      const response = await fetch('/api/pricing/check-eligibility');
+      if (!response.ok) {
+        throw new Error('Failed to check pricing');
+      }
+
+      const pricingData = await response.json();
+
+      // Update pricing display
+      setPricingInfo({
+        basePrice: pricingData.pricing.basePrice / 100, // Convert cents to dollars
+        discountedPrice: pricingData.pricing.discountedPrice / 100,
+        savings: pricingData.pricing.savings / 100,
+        isEligibleForDiscount: pricingData.isEligibleForDiscount
+      });
+
+      // Alert user if they already used their discount
+      if (!pricingData.isEligibleForDiscount) {
+        alert(
+          "You've already used your first-track discount.\n\n" +
+          "Regular pricing ($2.99) applies, but you can still create amazing tracks!"
+        );
+      }
+    } catch (error) {
+      console.error('Error checking pricing:', error);
+      // On error, still proceed but show message
+      alert('Unable to verify pricing. Please contact support if you encounter issues.');
+    }
+  };
 
   // Save state to localStorage whenever it changes (after hydration)
   useEffect(() => {
@@ -128,7 +188,7 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
   }, [state, isHydrated]);
 
   const calculateTotal = () => {
-    let total = 0.99; // Base price
+    let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
     if (state.backgroundMusic && state.backgroundMusic.id !== 'none') {
       total += state.backgroundMusic.price;
     }
@@ -142,15 +202,34 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
   };
 
   const handleCheckout = async () => {
+    // If user is not authenticated, show auth modal first
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    await proceedWithCheckout();
+  };
+
+  const proceedWithCheckout = async () => {
     setIsProcessing(true);
 
     try {
-      // Prepare checkout data
+      if (!user) {
+        throw new Error('User must be authenticated before checkout');
+      }
+
+      // Calculate total with add-ons
+      const total = calculateTotal();
+
+      // Prepare checkout data with user context
       const checkoutData = {
+        userId: user.id, // IMPORTANT: Pass authenticated user ID
         builderState: state,
         successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: window.location.href,
-        priceAmount: Math.round(calculateTotal() * 100), // Convert to cents
+        priceAmount: Math.round(total * 100), // Use actual total, not hardcoded
+        firstTrackDiscount: pricingInfo.isEligibleForDiscount, // Flag for webhook
       };
 
       // Create checkout session
@@ -174,6 +253,121 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleAuthSuccess = async (authenticatedUser: any) => {
+    console.log('handleAuthSuccess called with user:', authenticatedUser?.id || authenticatedUser?.email);
+
+    try {
+      // 1. Save authenticated user to state
+      setUser(authenticatedUser);
+      setShowAuthModal(false);
+
+      // Add a small delay to ensure session is propagated
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      console.log('Fetching pricing eligibility...');
+      // 2. NOW check pricing eligibility (user is authenticated)
+      const response = await fetch('/api/pricing/check-eligibility');
+      console.log('Pricing response status:', response.status);
+
+      if (response.ok) {
+        const pricingData = await response.json();
+        console.log('Pricing data:', pricingData);
+
+        // Update pricing display
+        setPricingInfo({
+          basePrice: pricingData.pricing.basePrice / 100,
+          discountedPrice: pricingData.pricing.discountedPrice / 100,
+          savings: pricingData.pricing.savings / 100,
+          isEligibleForDiscount: pricingData.isEligibleForDiscount
+        });
+
+        // Alert user if they already used their discount (non-blocking)
+        if (!pricingData.isEligibleForDiscount) {
+          alert(
+            "You've already used your first-track discount.\n\n" +
+            "Regular pricing ($2.99) applies, but you can still create amazing tracks!"
+          );
+        }
+      } else {
+        console.warn('Pricing check failed, using default pricing');
+      }
+
+      console.log('Proceeding to checkout...');
+      // 3. Proceed to checkout with CORRECT pricing (pass user directly to avoid stale state)
+      await proceedWithCheckoutForUser(authenticatedUser);
+    } catch (error) {
+      console.error('Error in auth success flow:', error);
+      alert('Failed to start checkout. Please try again.');
+      setIsProcessing(false);
+    }
+  };
+
+  const proceedWithCheckoutForUser = async (user: any) => {
+    console.log('proceedWithCheckoutForUser called');
+    setIsProcessing(true);
+
+    try {
+      if (!user) {
+        throw new Error('User must be authenticated before checkout');
+      }
+
+      // Use either id or email as identifier
+      const userId = user.id || user.email;
+      console.log('User identifier:', userId);
+
+      if (!userId) {
+        throw new Error('User must have an ID or email');
+      }
+
+      // Calculate total with add-ons
+      const total = calculateTotal();
+      console.log('Total calculated:', total);
+
+      // Prepare checkout data with user context
+      const checkoutData = {
+        userId: userId, // Can be either ID or email
+        builderState: state,
+        successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: window.location.href,
+        priceAmount: Math.round(total * 100),
+        firstTrackDiscount: pricingInfo.isEligibleForDiscount,
+      };
+
+      console.log('Checkout data prepared:', { userId: checkoutData.userId, priceAmount: checkoutData.priceAmount, firstTrackDiscount: checkoutData.firstTrackDiscount });
+
+      // Create checkout session
+      console.log('Calling checkout API...');
+      const response = await fetch('/api/checkout/guest-conversion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(checkoutData)
+      });
+
+      console.log('Checkout API response status:', response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Checkout API error:', errorData);
+        throw new Error(errorData.error || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+      console.log('Redirecting to Stripe:', url);
+
+      // Redirect to Stripe Checkout
+      window.location.href = url;
+    } catch (error) {
+      console.error('Checkout error:', error);
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleAuthClose = () => {
+    setShowAuthModal(false);
   };
 
   const scriptCharCount = state.script.length;
@@ -510,9 +704,26 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
           </Button>
         </div>
         <p className="text-xs text-gray-500 text-center">
-          You'll be redirected to secure checkout. Account created automatically after payment.
+          {user ?
+            `Signed in as ${user.email || 'authenticated user'}. ` :
+            'Sign in required before checkout. '
+          }
+          {pricingInfo.isEligibleForDiscount && pricingInfo.savings > 0 ?
+            `Save $${pricingInfo.savings.toFixed(2)} with first-track pricing!` :
+            ''
+          }
         </p>
       </div>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={handleAuthClose}
+        onAuthenticated={handleAuthSuccess}
+        mode="signup"
+        title="Create Your First Track"
+        description={`Sign up to create your personalized audio track ${pricingInfo.isEligibleForDiscount ? `with special first-time pricing - only $${pricingInfo.discountedPrice.toFixed(2)}!` : `for $${pricingInfo.basePrice.toFixed(2)}`}`}
+        trackConfig={state}
+      />
     </div>
   );
 }

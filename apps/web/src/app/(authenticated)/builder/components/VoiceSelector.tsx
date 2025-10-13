@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { cn } from '@mindscript/ui/utils/cn';
+import { cn } from '../../../../lib/utils';
 import { VoiceProviderSchema, OpenAIVoiceSchema } from '@mindscript/schemas/audio';
 import type { z } from 'zod';
 

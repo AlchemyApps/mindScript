@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { cn } from '@mindscript/ui/utils/cn';
+import { cn } from '../../../../lib/utils';
 
 interface MusicTrack {
   id: string;

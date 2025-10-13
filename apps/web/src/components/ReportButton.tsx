@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Flag, AlertTriangle } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { getSupabaseBrowserClient } from '@mindscript/auth/client'
 import { toast } from 'sonner'
 
 interface ReportButtonProps {
@@ -44,7 +44,7 @@ export function ReportButton({
     }
 
     setIsSubmitting(true)
-    const supabase = createClient()
+    const supabase = getSupabaseBrowserClient()
 
     try {
       // Check if user is authenticated
