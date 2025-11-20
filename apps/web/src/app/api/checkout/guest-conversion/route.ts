@@ -7,32 +7,34 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-11-20.acacia",
 });
 
-// Request validation schema
+// Request validation schema - matches what BuilderForm actually sends
 const GuestCheckoutRequestSchema = z.object({
   userId: z.string(), // User ID or email from authenticated session
   builderState: z.object({
     script: z.string(),
     voice: z.object({
-      provider: z.enum(['openai', 'elevenlabs']),
+      provider: z.enum(['openai', 'elevenlabs', 'uploaded']),
       voice_id: z.string(),
-      name: z.string(),
+      settings: z.object({
+        speed: z.number().optional(),
+        pitch: z.number().optional(),
+      }).optional(),
     }),
-    duration: z.number(),
-    backgroundMusic: z.object({
-      id: z.string(),
-      name: z.string(),
-      price: z.number(),
+    music: z.object({
+      id: z.string().optional(),
+      volume_db: z.number(),
     }).optional(),
     solfeggio: z.object({
       enabled: z.boolean(),
-      frequency: z.number(),
-      price: z.number(),
+      frequency: z.number().optional(),
+      volume_db: z.number(),
     }).optional(),
     binaural: z.object({
       enabled: z.boolean(),
-      band: z.enum(['delta', 'theta', 'alpha', 'beta', 'gamma']),
-      price: z.number(),
+      band: z.enum(['delta', 'theta', 'alpha', 'beta', 'gamma']).optional(),
+      volume_db: z.number(),
     }).optional(),
+    duration: z.number().optional(), // Frontend might not always send this
   }),
   successUrl: z.string(),
   cancelUrl: z.string(),
@@ -70,17 +72,20 @@ export async function POST(request: NextRequest) {
 
     // Build description with selected features
     const features: string[] = [];
-    if (builderState.backgroundMusic && builderState.backgroundMusic.id !== 'none') {
-      features.push(`Background Music: ${builderState.backgroundMusic.name}`);
+    if (builderState.music?.id && builderState.music.id !== 'none') {
+      features.push(`Background Music`);
     }
     if (builderState.solfeggio?.enabled) {
-      features.push(`Solfeggio: ${builderState.solfeggio.frequency} Hz`);
+      features.push(`Solfeggio: ${builderState.solfeggio.frequency || 528} Hz`);
     }
     if (builderState.binaural?.enabled) {
-      features.push(`Binaural: ${builderState.binaural.band}`);
+      features.push(`Binaural: ${builderState.binaural.band || 'theta'}`);
     }
 
-    const description = `${builderState.duration} min track with ${builderState.voice.name}${features.length > 0 ? ` • ${features.join(' • ')}` : ''}`;
+    // Get voice name from voice_id (we'll need to map this properly in production)
+    const voiceName = builderState.voice.voice_id.charAt(0).toUpperCase() + builderState.voice.voice_id.slice(1);
+    const duration = builderState.duration || 10; // Default to 10 minutes if not specified
+    const description = `${duration} min track with ${voiceName}${features.length > 0 ? ` • ${features.join(' • ')}` : ''}`;
 
     // Create single line item with total price (includes all add-ons)
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
@@ -93,7 +98,7 @@ export async function POST(request: NextRequest) {
             description,
             metadata: {
               type: 'complete_track',
-              has_background_music: (!!builderState.backgroundMusic && builderState.backgroundMusic.id !== 'none').toString(),
+              has_background_music: (!!builderState.music?.id && builderState.music.id !== 'none').toString(),
               has_solfeggio: (!!builderState.solfeggio?.enabled).toString(),
               has_binaural: (!!builderState.binaural?.enabled).toString(),
             },
@@ -103,40 +108,64 @@ export async function POST(request: NextRequest) {
       },
     ];
 
+    // Create full track config for webhook processing
+    const trackConfig = {
+      title: `Track - ${new Date().toLocaleDateString()}`,
+      script: builderState.script,
+      voice: {
+        provider: builderState.voice.provider,
+        voice_id: builderState.voice.voice_id,
+        name: voiceName, // Use the derived voice name
+        settings: builderState.voice.settings || {}
+      },
+      duration: duration,
+      backgroundMusic: builderState.music?.id && builderState.music.id !== 'none'
+        ? {
+            id: builderState.music.id,
+            name: 'Background Music', // We'll need to look this up in production
+            url: '', // Will be populated by the system
+            volume_db: builderState.music.volume_db || -20
+          }
+        : null,
+      solfeggio: builderState.solfeggio?.enabled ? {
+        enabled: true,
+        frequency: builderState.solfeggio.frequency || 528,
+        volume_db: builderState.solfeggio.volume_db || -20
+      } : null,
+      binaural: builderState.binaural?.enabled ? {
+        enabled: true,
+        band: builderState.binaural.band || 'theta',
+        volume_db: builderState.binaural.volume_db || -20
+      } : null,
+    };
+
     // Store builder state in metadata (Stripe has a 500 character limit per value)
-    // We'll split the data across multiple metadata fields
+    // Try to fit the full config first, fall back to chunking if too large
+    const trackConfigStr = JSON.stringify(trackConfig);
     const scriptChunks = builderState.script.match(/.{1,400}/g) || [];
+
     const metadata: Record<string, string> = {
       user_id: userId, // Critical for webhook - can be UUID or email
       user_email: userId.includes('@') ? userId : '', // Store email separately if that's what we have
       conversion_type: 'guest_to_user',
-      first_track_discount_used: firstTrackDiscount.toString(), // Track discount usage
+      is_first_purchase: firstTrackDiscount.toString(), // Aligned with webhook expectations
       first_track: 'true',
-      voice_provider: builderState.voice.provider,
-      voice_id: builderState.voice.voice_id,
-      voice_name: builderState.voice.name,
-      duration: builderState.duration.toString(),
       total_amount: priceAmount.toString(),
     };
 
-    // Add script chunks to metadata
-    scriptChunks.forEach((chunk, index) => {
-      metadata[`script_chunk_${index}`] = chunk;
-    });
-    metadata.script_chunks_count = scriptChunks.length.toString();
+    // Try to store full config if it fits, otherwise use chunking approach
+    if (trackConfigStr.length <= 500) {
+      metadata.track_config = trackConfigStr;
+    } else {
+      // Store config without script, then add script chunks separately
+      const configWithoutScript = { ...trackConfig, script: '' };
+      metadata.track_config_partial = JSON.stringify(configWithoutScript);
 
-    // Add optional features to metadata
-    if (builderState.backgroundMusic) {
-      metadata.background_music_id = builderState.backgroundMusic.id;
-      metadata.background_music_name = builderState.backgroundMusic.name;
-    }
-
-    if (builderState.solfeggio?.enabled) {
-      metadata.solfeggio_frequency = builderState.solfeggio.frequency.toString();
-    }
-
-    if (builderState.binaural?.enabled) {
-      metadata.binaural_band = builderState.binaural.band;
+      // Add script chunks to metadata
+      scriptChunks.forEach((chunk, index) => {
+        metadata[`script_chunk_${index}`] = chunk;
+      });
+      metadata.script_chunks_count = scriptChunks.length.toString();
     }
 
     // Create Stripe checkout session

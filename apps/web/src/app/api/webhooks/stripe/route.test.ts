@@ -15,6 +15,39 @@ vi.mock("stripe", () => {
   };
 });
 
+// Mock Supabase client creation
+vi.mock("@supabase/supabase-js", () => ({
+  createClient: vi.fn(() => ({
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          single: vi.fn(),
+        })),
+      })),
+      insert: vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(),
+        })),
+      })),
+      update: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          select: vi.fn(() => ({
+            single: vi.fn(),
+          })),
+        })),
+      })),
+      upsert: vi.fn(() => ({
+        select: vi.fn(() => ({
+          single: vi.fn(),
+        })),
+      })),
+      delete: vi.fn(() => ({
+        eq: vi.fn(),
+      })),
+    })),
+  })),
+}));
+
 // Mock Supabase
 vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(() => ({
@@ -43,6 +76,11 @@ vi.mock("@/lib/supabase/server", () => ({
       })),
     })),
   })),
+}));
+
+// Mock track builder
+vi.mock("../../../lib/track-builder", () => ({
+  startTrackBuild: vi.fn(),
 }));
 
 describe("Stripe Webhook Handler", () => {
@@ -497,6 +535,333 @@ describe("Stripe Webhook Handler", () => {
       expect(capturedEarnings.gross_cents).toBe(10000);
       expect(capturedEarnings.platform_fee_cents).toBe(1500); // 15% of $100
       expect(capturedEarnings.seller_earnings_cents).toBe(8500); // $85
+    });
+
+    it("should parse track_config from metadata and start track build", async () => {
+      // Arrange
+      const { startTrackBuild } = require("../../../lib/track-builder");
+      const trackConfig = {
+        title: "Track - 12/1/2024",
+        script: "This is a meditation script.",
+        voice: {
+          provider: "openai",
+          voice_id: "alloy",
+          name: "Alloy",
+          settings: {}
+        },
+        duration: 10,
+        backgroundMusic: {
+          id: "music123",
+          name: "Calm Ocean",
+          volume_db: -20
+        },
+        solfeggio: {
+          enabled: true,
+          frequency: 528,
+          price: 0.49
+        },
+        binaural: null
+      };
+
+      const mockEvent = {
+        id: "evt_track_config",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_config",
+            payment_status: "paid",
+            payment_intent: "pi_config",
+            amount_total: 397,
+            currency: "usd",
+            metadata: {
+              user_id: "user123",
+              is_first_purchase: "true",
+              track_config: JSON.stringify(trackConfig)
+            }
+          }
+        }
+      };
+
+      mockStripe.webhooks.constructEvent.mockReturnValue(mockEvent);
+      startTrackBuild.mockResolvedValue("track_123");
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === "webhook_events") {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: null,
+                  error: { code: "PGRST116" }
+                })
+              })
+            }),
+            insert: () => ({
+              select: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: { id: "webhook_config" },
+                  error: null
+                })
+              })
+            })
+          };
+        }
+        if (table === "purchases") {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: {
+                    id: "purchase_config",
+                    user_id: "user123",
+                    checkout_session_id: "cs_test_config"
+                  },
+                  error: null
+                })
+              })
+            })
+          };
+        }
+        if (table === "profiles") {
+          return {
+            update: () => ({
+              eq: () => vi.fn().mockResolvedValue({
+                data: { id: "user123" },
+                error: null
+              })
+            })
+          };
+        }
+        if (table === "pending_tracks") {
+          return {
+            delete: () => ({
+              eq: () => vi.fn().mockResolvedValue({
+                data: null,
+                error: null
+              })
+            })
+          };
+        }
+        return {};
+      });
+
+      const request = new Request("http://localhost:3000/api/webhooks/stripe", {
+        method: "POST",
+        headers: {
+          "stripe-signature": "sig_test",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(mockEvent)
+      });
+
+      // Act
+      const response = await POST(request);
+
+      // Assert
+      expect(response.status).toBe(200);
+      expect(startTrackBuild).toHaveBeenCalledWith({
+        userId: "user123",
+        purchaseId: "purchase_config",
+        trackConfig: trackConfig
+      });
+    });
+
+    it("should reconstruct track config from chunked metadata", async () => {
+      // Arrange
+      const { startTrackBuild } = require("../../../lib/track-builder");
+      const longScript = "This is a very long meditation script. ".repeat(50);
+      const scriptChunks = longScript.match(/.{1,400}/g) || [];
+
+      const partialConfig = {
+        title: "Track - 12/1/2024",
+        script: "", // Empty in partial
+        voice: {
+          provider: "elevenlabs",
+          voice_id: "voice456",
+          name: "Sarah",
+          settings: {}
+        },
+        duration: 20,
+        backgroundMusic: null,
+        solfeggio: null,
+        binaural: {
+          enabled: true,
+          band: "alpha",
+          price: 0.99
+        }
+      };
+
+      const metadata: any = {
+        user_id: "user456",
+        is_first_purchase: "false",
+        track_config_partial: JSON.stringify(partialConfig),
+        script_chunks_count: scriptChunks.length.toString()
+      };
+
+      // Add script chunks to metadata
+      scriptChunks.forEach((chunk, index) => {
+        metadata[`script_chunk_${index}`] = chunk;
+      });
+
+      const mockEvent = {
+        id: "evt_chunked",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_chunked",
+            payment_status: "paid",
+            payment_intent: "pi_chunked",
+            amount_total: 299,
+            currency: "usd",
+            metadata
+          }
+        }
+      };
+
+      mockStripe.webhooks.constructEvent.mockReturnValue(mockEvent);
+      startTrackBuild.mockResolvedValue("track_456");
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === "webhook_events") {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: null,
+                  error: { code: "PGRST116" }
+                })
+              })
+            }),
+            insert: () => ({
+              select: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: { id: "webhook_chunked" },
+                  error: null
+                })
+              })
+            })
+          };
+        }
+        if (table === "purchases") {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: {
+                    id: "purchase_chunked",
+                    user_id: "user456"
+                  },
+                  error: null
+                })
+              })
+            })
+          };
+        }
+        return {};
+      });
+
+      const request = new Request("http://localhost:3000/api/webhooks/stripe", {
+        method: "POST",
+        headers: {
+          "stripe-signature": "sig_test",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(mockEvent)
+      });
+
+      // Act
+      const response = await POST(request);
+
+      // Assert
+      expect(response.status).toBe(200);
+      expect(startTrackBuild).toHaveBeenCalledWith({
+        userId: "user456",
+        purchaseId: "purchase_chunked",
+        trackConfig: {
+          ...partialConfig,
+          script: longScript // Script should be reconstructed
+        }
+      });
+    });
+
+    it("should skip track build when config is missing", async () => {
+      // Arrange
+      const { startTrackBuild } = require("../../../lib/track-builder");
+      const mockEvent = {
+        id: "evt_no_config",
+        type: "checkout.session.completed",
+        data: {
+          object: {
+            id: "cs_test_no_config",
+            payment_status: "paid",
+            payment_intent: "pi_no_config",
+            amount_total: 99,
+            currency: "usd",
+            metadata: {
+              user_id: "user999",
+              // No track_config or chunks
+            }
+          }
+        }
+      };
+
+      mockStripe.webhooks.constructEvent.mockReturnValue(mockEvent);
+
+      mockSupabase.from.mockImplementation((table: string) => {
+        if (table === "webhook_events") {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: null,
+                  error: { code: "PGRST116" }
+                })
+              })
+            }),
+            insert: () => ({
+              select: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: { id: "webhook_no_config" },
+                  error: null
+                })
+              })
+            })
+          };
+        }
+        if (table === "purchases") {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: vi.fn().mockResolvedValue({
+                  data: {
+                    id: "purchase_no_config",
+                    user_id: "user999"
+                  },
+                  error: null
+                })
+              })
+            })
+          };
+        }
+        return {};
+      });
+
+      const request = new Request("http://localhost:3000/api/webhooks/stripe", {
+        method: "POST",
+        headers: {
+          "stripe-signature": "sig_test",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(mockEvent)
+      });
+
+      // Act
+      const response = await POST(request);
+
+      // Assert
+      expect(response.status).toBe(200);
+      // Track build should NOT be called
+      expect(startTrackBuild).not.toHaveBeenCalled();
     });
   });
 });

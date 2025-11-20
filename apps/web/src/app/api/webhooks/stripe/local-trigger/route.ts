@@ -20,6 +20,65 @@ const supabaseAdmin = createClient(
   }
 );
 
+async function buildTrackConfig(metadata: Record<string, string | undefined>) {
+  let trackConfig: any = {};
+  let pendingTrackId: string | null = null;
+  let configRetrieved = false;
+
+  const pendingId = metadata.pending_track_id || metadata.track_id;
+  if (pendingId) {
+    try {
+      const { data: pendingTrack, error } = await supabaseAdmin
+        .from('pending_tracks')
+        .select('track_config')
+        .eq('id', pendingId)
+        .single();
+
+      if (!error && pendingTrack?.track_config) {
+        trackConfig = pendingTrack.track_config;
+        configRetrieved = true;
+        pendingTrackId = pendingId;
+      } else if (error) {
+        console.error('[LOCAL-TRIGGER] Pending track lookup failed:', error);
+      }
+    } catch (error) {
+      console.error('[LOCAL-TRIGGER] Error retrieving pending track:', error);
+    }
+  }
+
+  if (!configRetrieved && metadata.track_config) {
+    try {
+      trackConfig = JSON.parse(metadata.track_config);
+      configRetrieved = true;
+    } catch (error) {
+      console.error('[LOCAL-TRIGGER] Failed to parse track_config:', error);
+    }
+  }
+
+  if (!configRetrieved && metadata.track_config_partial) {
+    try {
+      trackConfig = JSON.parse(metadata.track_config_partial);
+      const chunksCount = parseInt(metadata.script_chunks_count || '0', 10);
+      if (chunksCount > 0) {
+        let fullScript = '';
+        for (let i = 0; i < chunksCount; i++) {
+          fullScript += metadata[`script_chunk_${i}`] || '';
+        }
+        trackConfig.script = fullScript;
+      }
+      configRetrieved = true;
+    } catch (error) {
+      console.error('[LOCAL-TRIGGER] Failed to parse track_config_partial:', error);
+    }
+  }
+
+  if (!configRetrieved) {
+    console.warn('[LOCAL-TRIGGER] No track config found in metadata');
+  }
+
+  return { trackConfig, pendingTrackId };
+}
+
 /**
  * POST /api/webhooks/stripe/local-trigger
  * Trigger track creation after successful checkout
@@ -61,8 +120,6 @@ export async function POST(request: NextRequest) {
 
     const metadata = session.metadata || {};
     const userId = metadata.user_id;
-    const trackId = metadata.track_id;
-    const trackConfigStr = metadata.track_config;
     const isFirstPurchase = metadata.is_first_purchase === 'true';
 
     if (!userId) {
@@ -74,16 +131,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[LOCAL-TRIGGER] Processing purchase for user:', userId);
-
-    // Parse track config if provided
-    let trackConfig = {};
-    if (trackConfigStr) {
-      try {
-        trackConfig = JSON.parse(trackConfigStr);
-      } catch (e) {
-        console.error('[LOCAL-TRIGGER] Failed to parse track config:', e);
-      }
-    }
+    const { trackConfig, pendingTrackId } = await buildTrackConfig(metadata);
 
     // Create purchase record (idempotent with unique constraint on checkout_session_id)
     let purchase;
@@ -99,7 +147,7 @@ export async function POST(request: NextRequest) {
           status: 'completed',
           metadata: {
             is_first_purchase: isFirstPurchase,
-            track_id: trackId
+            pending_track_id: pendingTrackId
           },
           created_at: new Date().toISOString()
         })
@@ -152,7 +200,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Start track build if we have config
-    if (trackConfigStr && purchase) {
+    if (purchase && trackConfig?.script && trackConfig?.voice) {
       try {
         const builtTrackId = await startTrackBuild({
           userId,
@@ -168,13 +216,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Clean up pending track if it exists
-    if (trackId) {
+    if (pendingTrackId) {
       await supabaseAdmin
         .from('pending_tracks')
         .delete()
-        .eq('id', trackId);
+        .eq('id', pendingTrackId);
 
-      console.log('[LOCAL-TRIGGER] Cleaned up pending track:', trackId);
+      console.log('[LOCAL-TRIGGER] Cleaned up pending track:', pendingTrackId);
     }
 
     console.log('[LOCAL-TRIGGER] Successfully processed checkout:', {

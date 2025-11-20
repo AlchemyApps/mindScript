@@ -96,9 +96,9 @@ export async function POST(request: NextRequest) {
         }
 
         const metadata = session.metadata || {};
-        const userId = metadata.user_id;
+        let userId = metadata.user_id;
+        const userEmail = metadata.user_email;
         const trackId = metadata.track_id;
-        const trackConfigStr = metadata.track_config;
         const isFirstPurchase = metadata.is_first_purchase === 'true';
 
         if (!userId) {
@@ -106,16 +106,107 @@ export async function POST(request: NextRequest) {
           break;
         }
 
+        // Handle email-based user_id (need to resolve to UUID)
+        // TODO: Implement proper email to UUID lookup once user accounts are properly linked
+        if (userId.includes('@')) {
+          console.log('[WEBHOOK] Received email as user_id, attempting to resolve:', userId);
+
+          // Try to find user by email
+          const { data: profile } = await supabaseAdmin
+            .from('profiles')
+            .select('id')
+            .eq('email', userId)
+            .single();
+
+          if (profile) {
+            console.log('[WEBHOOK] Resolved email to user ID:', profile.id);
+            userId = profile.id;
+          } else {
+            // If no profile exists, we may need to create one or handle guest conversion
+            console.warn('[WEBHOOK] Could not resolve email to user ID, using email as identifier');
+            // For now, continue with email as userId - the track creation will fail gracefully
+          }
+        }
+
         console.log('[WEBHOOK] Processing purchase for user:', userId);
 
-        // Parse track config if provided
-        let trackConfig = {};
-        if (trackConfigStr) {
+        // Parse track config - try full config first, then reconstruct from chunks
+        let trackConfig: any = {};
+
+        if (metadata.track_config) {
+          // Full config was stored
           try {
-            trackConfig = JSON.parse(trackConfigStr);
+            trackConfig = JSON.parse(metadata.track_config);
+            console.log('[WEBHOOK] Parsed full track config from metadata');
           } catch (e) {
-            console.error('[WEBHOOK] Failed to parse track config:', e);
+            console.error('[WEBHOOK] Failed to parse track_config:', e);
           }
+        } else if (metadata.track_config_partial) {
+          // Config was chunked - reconstruct
+          try {
+            trackConfig = JSON.parse(metadata.track_config_partial);
+
+            // Reconstruct script from chunks
+            const chunksCount = parseInt(metadata.script_chunks_count || '0');
+            if (chunksCount > 0) {
+              let fullScript = '';
+              for (let i = 0; i < chunksCount; i++) {
+                fullScript += metadata[`script_chunk_${i}`] || '';
+              }
+              trackConfig.script = fullScript;
+              console.log(`[WEBHOOK] Reconstructed script from ${chunksCount} chunks`);
+            }
+          } catch (e) {
+            console.error('[WEBHOOK] Failed to parse track_config_partial:', e);
+          }
+        } else {
+          // Fallback: construct config from individual metadata fields (legacy support)
+          console.log('[WEBHOOK] No track_config found, constructing from individual fields');
+
+          // Reconstruct script from chunks if available
+          const chunksCount = parseInt(metadata.script_chunks_count || '0');
+          let script = '';
+          if (chunksCount > 0) {
+            for (let i = 0; i < chunksCount; i++) {
+              script += metadata[`script_chunk_${i}`] || '';
+            }
+          }
+
+          trackConfig = {
+            title: `Track - ${new Date().toLocaleDateString()}`,
+            script: script,
+            voice: metadata.voice_provider && metadata.voice_id ? {
+              provider: metadata.voice_provider,
+              voice_id: metadata.voice_id,
+              name: metadata.voice_name || metadata.voice_id,
+              settings: {}
+            } : undefined,
+            duration: metadata.duration ? parseInt(metadata.duration) : 10,
+            backgroundMusic: metadata.background_music_id && metadata.background_music_id !== 'none' ? {
+              id: metadata.background_music_id,
+              name: metadata.background_music_name || 'Background Music',
+              volume_db: -20
+            } : null,
+            solfeggio: metadata.solfeggio_frequency ? {
+              enabled: true,
+              frequency: parseInt(metadata.solfeggio_frequency),
+              price: 0
+            } : null,
+            binaural: metadata.binaural_band ? {
+              enabled: true,
+              band: metadata.binaural_band,
+              price: 0
+            } : null,
+          };
+        }
+
+        // Validate we have minimum required config
+        if (!trackConfig.script || !trackConfig.voice) {
+          console.error('[WEBHOOK] Invalid track config - missing required fields:', {
+            hasScript: !!trackConfig.script,
+            hasVoice: !!trackConfig.voice
+          });
+          // Continue to create purchase record but skip track creation
         }
 
         // Create purchase record (idempotent with unique constraint on checkout_session_id)
@@ -176,8 +267,8 @@ export async function POST(request: NextRequest) {
           console.log('[WEBHOOK] Marked first-track discount as used for user:', userId);
         }
 
-        // Start track build if we have config
-        if (trackConfigStr && purchase) {
+        // Start track build if we have valid config and purchase
+        if (trackConfig.script && trackConfig.voice && purchase) {
           try {
             const trackId = await startTrackBuild({
               userId,
@@ -185,11 +276,24 @@ export async function POST(request: NextRequest) {
               trackConfig
             });
 
-            console.log('[WEBHOOK] Track build started:', trackId);
+            console.log('[WEBHOOK] Track build started:', {
+              trackId,
+              userId,
+              purchaseId: purchase.id,
+              hasBackgroundMusic: !!trackConfig.backgroundMusic,
+              hasSolfeggio: !!trackConfig.solfeggio,
+              hasBinaural: !!trackConfig.binaural
+            });
           } catch (error) {
             console.error('[WEBHOOK] Failed to start track build:', error);
             // Don't fail the webhook - we can retry the build later
           }
+        } else if (!trackConfig.script || !trackConfig.voice) {
+          console.warn('[WEBHOOK] Skipping track build - invalid config:', {
+            hasScript: !!trackConfig.script,
+            hasVoice: !!trackConfig.voice,
+            hasPurchase: !!purchase
+          });
         }
 
         // Clean up pending track if it exists

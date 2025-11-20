@@ -59,14 +59,16 @@ export default function BuilderPage() {
 
   const calculateTotal = (formData: any) => {
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
-    if (formData.backgroundMusic && formData.backgroundMusic.id !== 'none') {
-      total += formData.backgroundMusic.price || 0;
+    // Note: BuilderForm sends 'music' not 'backgroundMusic'
+    if (formData.music?.id && formData.music.id !== 'none') {
+      // Add-on prices are hardcoded for now since form doesn't send them
+      total += 0.99; // Background music add-on price
     }
     if (formData.solfeggio?.enabled) {
-      total += formData.solfeggio.price || 0;
+      total += 0.49; // Solfeggio add-on price
     }
     if (formData.binaural?.enabled) {
-      total += formData.binaural.price || 0;
+      total += 0.49; // Binaural add-on price
     }
     return total;
   };
@@ -90,10 +92,18 @@ export default function BuilderPage() {
       // Calculate total with add-ons
       const total = calculateTotal(data);
 
+      // Estimate duration based on script length (roughly 150 words per minute)
+      const wordsPerMinute = 150;
+      const wordCount = data.script ? data.script.split(/\s+/).length : 0;
+      const estimatedDuration = Math.max(1, Math.ceil(wordCount / wordsPerMinute));
+
       // Prepare checkout data
       const checkoutData = {
         userId: user.id,
-        builderState: data,
+        builderState: {
+          ...data,
+          duration: estimatedDuration, // Add estimated duration
+        },
         successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: window.location.href,
         priceAmount: Math.round(total * 100), // Convert to cents
