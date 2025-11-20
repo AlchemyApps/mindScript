@@ -1,9 +1,16 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useCallback,
+  useRef,
+} from 'react';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowserClient } from '../client/supabase-browser';
-import type { User, Session } from '@supabase/supabase-js';
+import type { User, Session, SupabaseClient } from '@supabase/supabase-js';
 import type { AuthUserWithProfile } from '@mindscript/types';
 import { SignUpSchema, SignInSchema, ProfileUpdateSchema } from '@mindscript/schemas';
 import type { z } from 'zod';
@@ -18,6 +25,7 @@ interface AuthContextValue {
   signOut: () => Promise<void>;
   updateProfile: (data: z.infer<typeof ProfileUpdateSchema>) => Promise<void>;
   refreshSession: () => Promise<void>;
+  error?: string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -27,12 +35,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AuthUserWithProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [clientError, setClientError] = useState<string | null>(null);
   const router = useRouter();
-  const supabase = getSupabaseBrowserClient();
+  const supabaseRef = useRef<SupabaseClient<any, 'public', any> | null>(null);
 
-  const fetchProfile = useCallback(async (userId: string, sessionUser: User | null) => {
+  const fetchProfile = useCallback(async (
+    supabaseClient: SupabaseClient<any, 'public', any>,
+    userId: string,
+    sessionUser: User | null
+  ) => {
     try {
-      const { data: profileData } = await supabase
+      const { data: profileData } = await supabaseClient
         .from('profiles')
         .select('*, user_preferences(*), seller_agreements(*)')
         .eq('id', userId)
@@ -95,12 +108,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Error fetching profile:', error);
     }
-  }, [supabase]); // Remove user dependency!
+  }, []); // Remove user dependency!
 
   useEffect(() => {
     let mounted = true;
 
     const initAuth = async () => {
+      if (!supabaseRef.current) {
+        try {
+          supabaseRef.current = getSupabaseBrowserClient();
+          setClientError(null);
+        } catch (error) {
+          console.error('Auth initialization error: unable to create Supabase client', error);
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Unable to initialize authentication client. Check Supabase env vars.';
+          if (mounted) {
+            setClientError(message);
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+            setLoading(false);
+          }
+          return;
+        }
+      }
+
+      const supabase = supabaseRef.current;
+      if (!supabase) {
+        if (mounted) setLoading(false);
+        return;
+      }
+
       try {
         // Add timeout to getSession call
         const sessionPromise = supabase.auth.getSession();
@@ -120,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // Fetch profile with timeout
         if (session?.user) {
-          const profilePromise = fetchProfile(session.user.id, session.user);
+          const profilePromise = fetchProfile(supabase, session.user.id, session.user);
           const profileTimeout = new Promise((_, reject) =>
             setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
           );
@@ -150,6 +190,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initAuth();
 
+    const supabase = supabaseRef.current;
+    if (!supabase) {
+      return () => {
+        mounted = false;
+      };
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
@@ -158,7 +205,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (session?.user) {
         // Fire and forget profile fetch - don't block on it
-        fetchProfile(session.user.id, session.user).catch(err =>
+        fetchProfile(supabase, session.user.id, session.user).catch(err =>
           console.error('Profile fetch failed on auth change:', err)
         );
       } else {
@@ -174,9 +221,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [supabase, router, fetchProfile]);
+  }, [router, fetchProfile]);
+
+  const requireSupabase = () => {
+    const client = supabaseRef.current;
+    if (!client) {
+      throw new Error(
+        clientError || 'Authentication client is not available. Check Supabase configuration.'
+      );
+    }
+    return client;
+  };
 
   const signUp = async (data: z.infer<typeof SignUpSchema>) => {
+    const supabase = requireSupabase();
     const validated = SignUpSchema.parse(data);
     const { error } = await supabase.auth.signUp({
       email: validated.email,
@@ -192,6 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signIn = async (data: z.infer<typeof SignInSchema>) => {
+    const supabase = requireSupabase();
     const validated = SignInSchema.parse(data);
     const { error } = await supabase.auth.signInWithPassword({
       email: validated.email,
@@ -202,12 +261,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
+    const supabase = requireSupabase();
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
 
   const updateProfile = async (data: z.infer<typeof ProfileUpdateSchema>) => {
     if (!user) throw new Error('No user logged in');
+    const supabase = requireSupabase();
 
     const validated = ProfileUpdateSchema.parse(data);
     const { error } = await supabase
@@ -221,10 +282,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .eq('id', user.id);
 
     if (error) throw error;
-    await fetchProfile(user.id, user);
+    await fetchProfile(supabase, user.id, user);
   };
 
   const refreshSession = async () => {
+    const supabase = requireSupabase();
     const { error } = await supabase.auth.refreshSession();
     if (error) throw error;
   };
@@ -241,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signOut,
         updateProfile,
         refreshSession,
+        error: clientError,
       }}
     >
       {children}

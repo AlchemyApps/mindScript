@@ -27,23 +27,23 @@ export async function login(formData: FormData) {
     redirect('/login?error=' + encodeURIComponent(error.message) + '&redirectTo=' + encodeURIComponent(redirectTo))
   }
 
-  // TEMPORARILY COMMENTED TO TEST - Role check bypassed
-  // TODO: Uncomment after fixing profile data
-  /*
-  // Check if user has admin role
+  // Check if user has admin access
   if (data.user) {
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role, account_status')
       .eq('id', data.user.id)
-      .single()
+      .maybeSingle()
 
-    if (!profile || !['admin', 'super_admin'].includes(profile.role) || profile.account_status !== 'active') {
+    const isActive = profile?.account_status ? profile.account_status === 'active' : true
+    const hasAdminRole = profile ? ['admin', 'super_admin'].includes(profile.role) : false
+
+    if (profileError || !hasAdminRole || !isActive) {
       await supabase.auth.signOut()
-      redirect('/unauthorized')
+      const reason = !hasAdminRole ? 'not_admin' : !isActive ? 'inactive' : 'role_error'
+      redirect(`/unauthorized?reason=${reason}`)
     }
   }
-  */
 
   // Revalidate all layouts and redirect to the desired page
   revalidatePath('/', 'layout')

@@ -32,7 +32,7 @@ export function AdminHeader({ user, profile }: AdminHeaderProps) {
         <div className="flex items-center space-x-2">
           <User className="h-5 w-5 text-gray-600 dark:text-gray-300" />
           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {user?.email || profile?.email || 'Admin'}
+            {profile?.full_name || user?.email || 'Admin'}
           </span>
         </div>
         <form action={logout}>

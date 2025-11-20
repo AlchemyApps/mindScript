@@ -1,16 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { z } from "zod";
+import { createClient } from '@supabase/supabase-js';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-11-20.acacia",
 });
 
+// Initialize Supabase Admin Client
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }
+);
+
 // Request validation schema - matches what BuilderForm actually sends
 const GuestCheckoutRequestSchema = z.object({
   userId: z.string(), // User ID or email from authenticated session
   builderState: z.object({
+    title: z.string().min(3).max(80),
     script: z.string(),
     voice: z.object({
       provider: z.enum(['openai', 'elevenlabs', 'uploaded']),
@@ -35,6 +49,10 @@ const GuestCheckoutRequestSchema = z.object({
       volume_db: z.number(),
     }).optional(),
     duration: z.number().optional(), // Frontend might not always send this
+    loop: z.object({
+      enabled: z.boolean(),
+      pause_seconds: z.number().min(1).max(30),
+    }),
   }),
   successUrl: z.string(),
   cancelUrl: z.string(),
@@ -110,7 +128,7 @@ export async function POST(request: NextRequest) {
 
     // Create full track config for webhook processing
     const trackConfig = {
-      title: `Track - ${new Date().toLocaleDateString()}`,
+      title: builderState.title || `Track - ${new Date().toLocaleDateString()}`,
       script: builderState.script,
       voice: {
         provider: builderState.voice.provider,
@@ -119,6 +137,10 @@ export async function POST(request: NextRequest) {
         settings: builderState.voice.settings || {}
       },
       duration: duration,
+      loop: builderState.loop || {
+        enabled: true,
+        pause_seconds: 5,
+      },
       backgroundMusic: builderState.music?.id && builderState.music.id !== 'none'
         ? {
             id: builderState.music.id,
@@ -139,6 +161,39 @@ export async function POST(request: NextRequest) {
       } : null,
     };
 
+    // Store track config in pending_tracks table for persistence
+    // This ensures the config survives even if webhooks fail
+    let pendingTrackId: string | null = null;
+    try {
+      // Get user email if we have a user ID
+      let userEmail = userId.includes('@') ? userId : '';
+      if (!userEmail && !userId.includes('@')) {
+        // Try to get email from Supabase auth
+        const { data: { user } } = await supabaseAdmin.auth.admin.getUserById(userId);
+        userEmail = user?.email || '';
+      }
+
+      const { data: pendingTrack, error: pendingError } = await supabaseAdmin
+        .from('pending_tracks')
+        .insert({
+          user_email: userEmail || userId, // Fallback to userId if no email
+          track_config: trackConfig
+        })
+        .select()
+        .single();
+
+      if (pendingError) {
+        console.error('Failed to store pending track:', pendingError);
+        // Don't fail checkout, just log the error
+      } else {
+        pendingTrackId = pendingTrack.id;
+        console.log('Stored pending track:', pendingTrackId);
+      }
+    } catch (error) {
+      console.error('Error storing pending track:', error);
+      // Continue without pending track ID
+    }
+
     // Store builder state in metadata (Stripe has a 500 character limit per value)
     // Try to fit the full config first, fall back to chunking if too large
     const trackConfigStr = JSON.stringify(trackConfig);
@@ -152,6 +207,11 @@ export async function POST(request: NextRequest) {
       first_track: 'true',
       total_amount: priceAmount.toString(),
     };
+
+    // Add pending track ID if we have one
+    if (pendingTrackId) {
+      metadata.pending_track_id = pendingTrackId;
+    }
 
     // Try to store full config if it fits, otherwise use chunking approach
     if (trackConfigStr.length <= 500) {

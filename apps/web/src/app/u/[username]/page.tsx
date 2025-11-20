@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Image from 'next/image';
 import Link from 'next/link';
+import { TrackPurchaseButton } from '@/components/track/purchase-button';
 
 interface PageProps {
   params: {
@@ -235,7 +236,7 @@ export default async function SellerProfilePage({ params }: PageProps) {
       id,
       title,
       description,
-      slug:title,
+      slug,
       audio_url,
       preview_url: audio_url,
       thumbnail_url: audio_url,
@@ -251,18 +252,12 @@ export default async function SellerProfilePage({ params }: PageProps) {
     .eq('is_public', true)
     .order('created_at', { ascending: false });
 
-  // Transform track slugs (in production, you'd have actual slugs in DB)
-  const tracksWithSlugs = tracks?.map(track => ({
-    ...track,
-    slug: track.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-  })) || [];
-
-  // Calculate stats
+  const tracksWithSlugs = tracks || [];
   const totalTracks = tracksWithSlugs.length;
   const totalPlays = tracksWithSlugs.reduce((sum, track) => sum + (track.play_count || 0), 0);
 
-  const stats = {
-    totalTracks,
+const stats = {
+  totalTracks,
     totalPlays,
     totalSales: sellerProfile?.total_sales || 0,
     totalRevenue: sellerProfile?.total_revenue || 0,
@@ -270,8 +265,17 @@ export default async function SellerProfilePage({ params }: PageProps) {
     totalReviews: 0, // Would come from reviews table
   };
 
-  // Generate structured data
+// Generate structured data
   const jsonLd = generateJsonLd(profile, tracksWithSlugs, stats);
+
+const formatPrice = (priceCents?: number | null) => {
+  if (!priceCents || priceCents <= 0) return 'Free'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+  }).format(priceCents / 100)
+}
 
   return (
     <>
@@ -362,12 +366,9 @@ export default async function SellerProfilePage({ params }: PageProps) {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {tracksWithSlugs.map((track) => (
-                <Link
-                  key={track.id}
-                  href={`/u/${params.username}/${track.slug}`}
-                  className="group block"
-                >
-                  <article className="bg-white rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden">
+                <div key={track.id} className="group flex flex-col rounded-lg bg-white shadow-md hover:shadow-xl transition-shadow duration-300 overflow-hidden">
+                  <Link href={`/u/${params.username}/${track.slug}`} className="block">
+                    <article className="h-full">
                     {/* Thumbnail */}
                     <div className="aspect-square bg-gradient-to-br from-purple-400 to-indigo-400 relative">
                       <div className="absolute inset-0 flex items-center justify-center text-white">
@@ -392,36 +393,39 @@ export default async function SellerProfilePage({ params }: PageProps) {
                         </p>
                       )}
 
-                      {/* Metadata */}
-                      <div className="flex items-center justify-between text-sm text-gray-500">
-                        <span>
-                          {track.duration_seconds
-                            ? `${Math.floor(track.duration_seconds / 60)}:${(track.duration_seconds % 60).toString().padStart(2, '0')}`
-                            : 'N/A'}
-                        </span>
-                        {track.price_cents !== null && track.price_cents > 0 && (
-                          <span className="font-semibold text-green-600">
-                            ${(track.price_cents / 100).toFixed(2)}
+                      <div className="flex flex-col gap-3 text-sm text-gray-600">
+                        <div className="flex items-center justify-between">
+                          <span>
+                            {track.duration_seconds
+                              ? `${Math.floor(track.duration_seconds / 60)}:${(track.duration_seconds % 60)
+                                  .toString()
+                                  .padStart(2, '0')}`
+                              : 'N/A'}
                           </span>
+                          <span className="font-semibold text-gray-900">
+                            {formatPrice(track.price_cents)}
+                          </span>
+                        </div>
+                        {track.tags && track.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 text-xs">
+                            {track.tags.slice(0, 3).map((tag, index) => (
+                              <span
+                                key={index}
+                                className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-gray-600"
+                              >
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
                         )}
                       </div>
+                    </article>
+                  </Link>
 
-                      {/* Tags */}
-                      {track.tags && track.tags.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1">
-                          {track.tags.slice(0, 3).map((tag, index) => (
-                            <span
-                              key={index}
-                              className="inline-block px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </article>
-                </Link>
+                  <div className="border-t border-gray-100 bg-white px-4 py-3">
+                    <TrackPurchaseButton trackId={track.id} className="w-full justify-center" />
+                  </div>
+                </div>
               ))}
             </div>
           )}

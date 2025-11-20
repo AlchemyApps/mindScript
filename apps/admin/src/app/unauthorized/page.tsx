@@ -1,10 +1,22 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ShieldAlert, Home, LogIn } from 'lucide-react'
 
 export default function UnauthorizedPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const reason = searchParams.get('reason')
+
+  const reasonCopy: Record<string, string> = {
+    not_admin: "Your account doesn't have the admin role assigned.",
+    inactive: 'This admin account is currently inactive. Please contact support.',
+    role_error: 'We could not verify your admin privileges. Please try again.',
+  }
+
+  const message =
+    (reason && reasonCopy[reason]) ||
+    "You don't have permission to access the admin portal. This area is restricted to authorized administrators only."
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center p-4">
@@ -21,7 +33,7 @@ export default function UnauthorizedPage() {
           </h1>
 
           <p className="text-gray-300 text-center mb-8">
-            You don't have permission to access the admin portal. This area is restricted to authorized administrators only.
+            {message}
           </p>
 
           <div className="space-y-4">

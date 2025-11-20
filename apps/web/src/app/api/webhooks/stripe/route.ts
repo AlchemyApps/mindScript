@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 import Stripe from "stripe";
-import { startTrackBuild } from "../../../lib/track-builder";
+import { startTrackBuild } from "../../../../lib/track-builder";
 
 // Set runtime to Node.js for raw body access
 export const runtime = 'nodejs';
@@ -23,12 +23,317 @@ const supabaseAdmin = createClient(
   }
 );
 
+type StripeMetadata = Record<string, string | undefined>;
+
+async function resolveUserIdentity(
+  rawUserId: string | undefined,
+  fallbackEmail?: string | null
+): Promise<{ userId: string | null; email: string | null }> {
+  if (!rawUserId) {
+    return { userId: null, email: fallbackEmail || null };
+  }
+
+  if (!rawUserId.includes('@')) {
+    return { userId: rawUserId, email: fallbackEmail || null };
+  }
+
+  const normalizedEmail = rawUserId.toLowerCase();
+
+  // Look up profile first (fast path)
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('email', normalizedEmail)
+      .single();
+
+    if (profile?.id) {
+      return { userId: profile.id, email: normalizedEmail };
+    }
+  } catch (error) {
+    console.error('[WEBHOOK] Profile lookup failed for email', normalizedEmail, error);
+  }
+
+  // Fall back to auth admin lookup
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
+      email: normalizedEmail,
+    });
+
+    if (error) {
+      console.error('[WEBHOOK] Supabase admin user lookup failed:', error);
+    }
+
+    const user = data?.users?.[0];
+    if (user?.id) {
+      return { userId: user.id, email: normalizedEmail };
+    }
+  } catch (error) {
+    console.error('[WEBHOOK] Failed to resolve user via admin API:', error);
+  }
+
+  return { userId: null, email: normalizedEmail };
+}
+
+async function loadTrackConfigFromMetadata(metadata: StripeMetadata) {
+  let trackConfig: any = {};
+  let pendingTrackId: string | null = null;
+  let configRetrieved = false;
+
+  const pendingId = metadata.pending_track_id || metadata.track_id;
+  if (pendingId) {
+    try {
+      const { data: pendingTrack, error } = await supabaseAdmin
+        .from('pending_tracks')
+        .select('track_config')
+        .eq('id', pendingId)
+        .single();
+
+      if (!error && pendingTrack?.track_config) {
+        trackConfig = pendingTrack.track_config;
+        configRetrieved = true;
+        pendingTrackId = pendingId;
+        console.log('[WEBHOOK] Retrieved track config from pending_tracks:', pendingId);
+      } else if (error) {
+        console.error('[WEBHOOK] Pending track lookup failed:', error);
+      }
+    } catch (error) {
+      console.error('[WEBHOOK] Error retrieving pending track:', error);
+    }
+  }
+
+  if (!configRetrieved) {
+    if (metadata.track_config) {
+      try {
+        trackConfig = JSON.parse(metadata.track_config);
+        configRetrieved = true;
+        console.log('[WEBHOOK] Parsed full track config from metadata');
+      } catch (error) {
+        console.error('[WEBHOOK] Failed to parse track_config:', error);
+      }
+    } else if (metadata.track_config_partial) {
+      try {
+        trackConfig = JSON.parse(metadata.track_config_partial);
+        const chunksCount = parseInt(metadata.script_chunks_count || '0', 10);
+        if (chunksCount > 0) {
+          let fullScript = '';
+          for (let i = 0; i < chunksCount; i++) {
+            fullScript += metadata[`script_chunk_${i}`] || '';
+          }
+          trackConfig.script = fullScript;
+          console.log(`[WEBHOOK] Reconstructed script from ${chunksCount} chunks`);
+        }
+        configRetrieved = true;
+      } catch (error) {
+        console.error('[WEBHOOK] Failed to parse track_config_partial:', error);
+      }
+    } else {
+      const chunksCount = parseInt(metadata.script_chunks_count || '0', 10);
+      let script = '';
+      if (chunksCount > 0) {
+        for (let i = 0; i < chunksCount; i++) {
+          script += metadata[`script_chunk_${i}`] || '';
+        }
+      }
+
+      trackConfig = {
+        title: `Track - ${new Date().toLocaleDateString()}`,
+        script,
+        voice: metadata.voice_provider && metadata.voice_id ? {
+          provider: metadata.voice_provider,
+          voice_id: metadata.voice_id,
+          name: metadata.voice_name || metadata.voice_id,
+          settings: {}
+        } : undefined,
+        duration: metadata.duration ? parseInt(metadata.duration, 10) : 10,
+        backgroundMusic: metadata.background_music_id && metadata.background_music_id !== 'none'
+          ? {
+              id: metadata.background_music_id,
+              name: metadata.background_music_name || 'Background Music',
+              volume_db: -20
+            }
+          : null,
+        solfeggio: metadata.solfeggio_frequency ? {
+          enabled: true,
+          frequency: parseInt(metadata.solfeggio_frequency, 10),
+          volume_db: -20
+        } : null,
+        binaural: metadata.binaural_band ? {
+          enabled: true,
+          band: metadata.binaural_band,
+          volume_db: -20
+        } : null,
+      };
+    }
+  }
+
+  return { trackConfig, pendingTrackId };
+}
+
+async function markDiscountUsed(userId: string) {
+  try {
+    await supabaseAdmin
+      .from('profiles')
+      .update({
+        first_track_discount_used: true,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+  } catch (error) {
+    console.error('[WEBHOOK] Failed to mark discount as used:', error);
+  }
+}
+
+async function enqueuePurchaseNotification(userId: string, purchaseId: string, trackTitle?: string) {
+  try {
+    await supabaseAdmin
+      .from('notifications_queue')
+      .insert({
+        user_id: userId,
+        type: 'purchase_confirmation',
+        data: {
+          purchase_id: purchaseId,
+          track_title: trackTitle || 'Your new track',
+        },
+        created_at: new Date().toISOString(),
+      });
+  } catch (error) {
+    console.error('[WEBHOOK] Failed to enqueue purchase notification:', error);
+  }
+}
+
+async function recordPurchase({
+  userId,
+  sessionId,
+  paymentIntentId,
+  amount,
+  currency,
+  metadata,
+}: {
+  userId: string;
+  sessionId: string;
+  paymentIntentId?: string | null;
+  amount: number;
+  currency?: string | null;
+  metadata: StripeMetadata;
+}) {
+  const record = {
+    user_id: userId,
+    checkout_session_id: sessionId,
+    stripe_payment_intent_id: paymentIntentId || null,
+    amount,
+    currency: currency || 'usd',
+    status: 'completed',
+    metadata: {
+      is_first_purchase: metadata.is_first_purchase,
+      pending_track_id: metadata.pending_track_id || metadata.track_id || null,
+    },
+    created_at: new Date().toISOString()
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from('purchases')
+    .insert(record)
+    .select()
+    .single();
+
+  if (error) {
+    if (error.message?.includes('duplicate') || error.code === '23505') {
+      console.log('[WEBHOOK] Purchase already exists for session:', sessionId);
+      const { data: existing } = await supabaseAdmin
+        .from('purchases')
+        .select('*')
+        .eq('checkout_session_id', sessionId)
+        .single();
+      return existing;
+    }
+    throw error;
+  }
+
+  return data;
+}
+
+async function processCompletedPurchase({
+  metadata,
+  amountTotal,
+  currency,
+  paymentIntentId,
+  sessionId,
+  customerEmail,
+}: {
+  metadata: StripeMetadata;
+  amountTotal: number;
+  currency?: string | null;
+  paymentIntentId?: string | null;
+  sessionId: string;
+  customerEmail?: string | null;
+}) {
+  const rawUserId = metadata.user_id || metadata.userId;
+  const fallbackEmail = metadata.user_email || metadata.userEmail || customerEmail || null;
+
+  const { userId, email } = await resolveUserIdentity(rawUserId, fallbackEmail);
+
+  if (!userId) {
+    throw new Error('Unable to resolve user ID from metadata');
+  }
+
+  const { trackConfig, pendingTrackId } = await loadTrackConfigFromMetadata(metadata);
+
+  const purchase = await recordPurchase({
+    userId,
+    sessionId,
+    paymentIntentId,
+    amount: amountTotal || 0,
+    currency,
+    metadata,
+  });
+
+  const isFirstPurchase = metadata.is_first_purchase === 'true';
+  if (isFirstPurchase) {
+    await markDiscountUsed(userId);
+  }
+
+  if (trackConfig.script && trackConfig.voice) {
+    try {
+      await startTrackBuild({
+        userId,
+        purchaseId: purchase.id,
+        trackConfig,
+      });
+    } catch (error) {
+      console.error('[WEBHOOK] Failed to start track build:', error);
+    }
+  } else {
+    console.warn('[WEBHOOK] Skipping track build due to missing script or voice');
+  }
+
+  if (pendingTrackId) {
+    try {
+      await supabaseAdmin
+        .from('pending_tracks')
+        .delete()
+        .eq('id', pendingTrackId);
+      console.log('[WEBHOOK] Cleaned up pending track:', pendingTrackId);
+    } catch (error) {
+      console.error('[WEBHOOK] Failed to clean up pending track:', error);
+    }
+  }
+
+  await enqueuePurchaseNotification(userId, purchase.id, trackConfig.title);
+
+  return { userId, email, purchaseId: purchase.id };
+}
+
 /**
  * POST /api/webhooks/stripe
  * Handle Stripe webhook events with idempotency
  */
 export async function POST(request: NextRequest) {
-  const body = await request.text();
+  // Get raw body as ArrayBuffer first, then convert to string
+  // This ensures we get the exact body that Stripe sent
+  const rawBody = await request.arrayBuffer();
+  const body = Buffer.from(rawBody).toString('utf8');
+
   const signature = request.headers.get("stripe-signature");
 
   if (!signature) {
@@ -89,231 +394,44 @@ export async function POST(request: NextRequest) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 
-        // Only process if payment is complete
         if (session.payment_status !== 'paid') {
           console.log('[WEBHOOK] Session not paid, skipping:', session.id);
-          return NextResponse.json({ received: true });
-        }
-
-        const metadata = session.metadata || {};
-        let userId = metadata.user_id;
-        const userEmail = metadata.user_email;
-        const trackId = metadata.track_id;
-        const isFirstPurchase = metadata.is_first_purchase === 'true';
-
-        if (!userId) {
-          console.error('[WEBHOOK] Missing user_id in session metadata');
           break;
         }
 
-        // Handle email-based user_id (need to resolve to UUID)
-        // TODO: Implement proper email to UUID lookup once user accounts are properly linked
-        if (userId.includes('@')) {
-          console.log('[WEBHOOK] Received email as user_id, attempting to resolve:', userId);
-
-          // Try to find user by email
-          const { data: profile } = await supabaseAdmin
-            .from('profiles')
-            .select('id')
-            .eq('email', userId)
-            .single();
-
-          if (profile) {
-            console.log('[WEBHOOK] Resolved email to user ID:', profile.id);
-            userId = profile.id;
-          } else {
-            // If no profile exists, we may need to create one or handle guest conversion
-            console.warn('[WEBHOOK] Could not resolve email to user ID, using email as identifier');
-            // For now, continue with email as userId - the track creation will fail gracefully
-          }
-        }
-
-        console.log('[WEBHOOK] Processing purchase for user:', userId);
-
-        // Parse track config - try full config first, then reconstruct from chunks
-        let trackConfig: any = {};
-
-        if (metadata.track_config) {
-          // Full config was stored
-          try {
-            trackConfig = JSON.parse(metadata.track_config);
-            console.log('[WEBHOOK] Parsed full track config from metadata');
-          } catch (e) {
-            console.error('[WEBHOOK] Failed to parse track_config:', e);
-          }
-        } else if (metadata.track_config_partial) {
-          // Config was chunked - reconstruct
-          try {
-            trackConfig = JSON.parse(metadata.track_config_partial);
-
-            // Reconstruct script from chunks
-            const chunksCount = parseInt(metadata.script_chunks_count || '0');
-            if (chunksCount > 0) {
-              let fullScript = '';
-              for (let i = 0; i < chunksCount; i++) {
-                fullScript += metadata[`script_chunk_${i}`] || '';
-              }
-              trackConfig.script = fullScript;
-              console.log(`[WEBHOOK] Reconstructed script from ${chunksCount} chunks`);
-            }
-          } catch (e) {
-            console.error('[WEBHOOK] Failed to parse track_config_partial:', e);
-          }
-        } else {
-          // Fallback: construct config from individual metadata fields (legacy support)
-          console.log('[WEBHOOK] No track_config found, constructing from individual fields');
-
-          // Reconstruct script from chunks if available
-          const chunksCount = parseInt(metadata.script_chunks_count || '0');
-          let script = '';
-          if (chunksCount > 0) {
-            for (let i = 0; i < chunksCount; i++) {
-              script += metadata[`script_chunk_${i}`] || '';
-            }
-          }
-
-          trackConfig = {
-            title: `Track - ${new Date().toLocaleDateString()}`,
-            script: script,
-            voice: metadata.voice_provider && metadata.voice_id ? {
-              provider: metadata.voice_provider,
-              voice_id: metadata.voice_id,
-              name: metadata.voice_name || metadata.voice_id,
-              settings: {}
-            } : undefined,
-            duration: metadata.duration ? parseInt(metadata.duration) : 10,
-            backgroundMusic: metadata.background_music_id && metadata.background_music_id !== 'none' ? {
-              id: metadata.background_music_id,
-              name: metadata.background_music_name || 'Background Music',
-              volume_db: -20
-            } : null,
-            solfeggio: metadata.solfeggio_frequency ? {
-              enabled: true,
-              frequency: parseInt(metadata.solfeggio_frequency),
-              price: 0
-            } : null,
-            binaural: metadata.binaural_band ? {
-              enabled: true,
-              band: metadata.binaural_band,
-              price: 0
-            } : null,
-          };
-        }
-
-        // Validate we have minimum required config
-        if (!trackConfig.script || !trackConfig.voice) {
-          console.error('[WEBHOOK] Invalid track config - missing required fields:', {
-            hasScript: !!trackConfig.script,
-            hasVoice: !!trackConfig.voice
-          });
-          // Continue to create purchase record but skip track creation
-        }
-
-        // Create purchase record (idempotent with unique constraint on checkout_session_id)
-        let purchase;
-        try {
-          const { data, error } = await supabaseAdmin
-            .from('purchases')
-            .insert({
-              user_id: userId,
-              checkout_session_id: session.id,
-              stripe_payment_intent_id: session.payment_intent as string,
-              amount: session.amount_total || 0,
-              currency: session.currency || 'usd',
-              status: 'completed',
-              metadata: {
-                is_first_purchase: isFirstPurchase,
-                track_id: trackId
-              },
-              created_at: new Date().toISOString()
-            })
-            .select()
-            .single();
-
-          if (error) {
-            // Check if it's a duplicate key error
-            if (error.message?.includes('duplicate') || error.code === '23505') {
-              console.log('[WEBHOOK] Purchase already exists for session:', session.id);
-              return NextResponse.json({ received: true, duplicate: true });
-            }
-            throw error;
-          }
-
-          purchase = data;
-          console.log('[WEBHOOK] Created purchase:', purchase.id);
-
-        } catch (error: any) {
-          console.error('[WEBHOOK] Failed to create purchase:', error);
-
-          // If it's a unique constraint violation, the purchase was already processed
-          if (error.code === '23505') {
-            console.log('[WEBHOOK] Purchase already processed for session:', session.id);
-            return NextResponse.json({ received: true, duplicate: true });
-          }
-
-          throw error;
-        }
-
-        // Mark first-track discount as used
-        if (isFirstPurchase) {
-          await supabaseAdmin
-            .from('profiles')
-            .update({
-              first_track_discount_used: true,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', userId);
-
-          console.log('[WEBHOOK] Marked first-track discount as used for user:', userId);
-        }
-
-        // Start track build if we have valid config and purchase
-        if (trackConfig.script && trackConfig.voice && purchase) {
-          try {
-            const trackId = await startTrackBuild({
-              userId,
-              purchaseId: purchase.id,
-              trackConfig
-            });
-
-            console.log('[WEBHOOK] Track build started:', {
-              trackId,
-              userId,
-              purchaseId: purchase.id,
-              hasBackgroundMusic: !!trackConfig.backgroundMusic,
-              hasSolfeggio: !!trackConfig.solfeggio,
-              hasBinaural: !!trackConfig.binaural
-            });
-          } catch (error) {
-            console.error('[WEBHOOK] Failed to start track build:', error);
-            // Don't fail the webhook - we can retry the build later
-          }
-        } else if (!trackConfig.script || !trackConfig.voice) {
-          console.warn('[WEBHOOK] Skipping track build - invalid config:', {
-            hasScript: !!trackConfig.script,
-            hasVoice: !!trackConfig.voice,
-            hasPurchase: !!purchase
-          });
-        }
-
-        // Clean up pending track if it exists
-        if (trackId) {
-          await supabaseAdmin
-            .from('pending_tracks')
-            .delete()
-            .eq('id', trackId);
-
-          console.log('[WEBHOOK] Cleaned up pending track:', trackId);
-        }
-
-        // TODO: Send purchase confirmation email
-        // TODO: Trigger any additional post-purchase workflows
-
-        console.log('[WEBHOOK] Successfully processed checkout.session.completed:', {
+        const metadata = session.metadata || {};
+        await processCompletedPurchase({
+          metadata,
+          amountTotal: session.amount_total || 0,
+          currency: session.currency || 'usd',
+          paymentIntentId: session.payment_intent as string | null,
           sessionId: session.id,
-          userId,
-          purchaseId: purchase.id,
-          isFirstPurchase
+          customerEmail: session.customer_details?.email || session.customer_email || null,
+        });
+
+        console.log('[WEBHOOK] Successfully processed checkout.session.completed:', session.id);
+        break;
+      }
+
+      case "invoice.payment.paid": {
+        const invoice = event.data.object as Stripe.Invoice;
+        console.log('[WEBHOOK] Invoice payment paid:', invoice.id);
+        const metadata: StripeMetadata = {
+          ...(invoice.metadata || {}),
+        };
+        if (invoice.lines?.data) {
+          for (const line of invoice.lines.data) {
+            Object.assign(metadata, line.metadata);
+          }
+        }
+
+        await processCompletedPurchase({
+          metadata,
+          amountTotal: invoice.amount_paid || 0,
+          currency: invoice.currency || 'usd',
+          paymentIntentId: invoice.payment_intent as string | null,
+          sessionId: invoice.id,
+          customerEmail: invoice.customer_email || null,
         });
 
         break;

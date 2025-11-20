@@ -1,10 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import Link from 'next/link'
 import { Shield, AlertTriangle, CheckCircle, XCircle, Clock, Flag, Eye, TrendingUp, Users, BarChart3, Activity } from 'lucide-react'
-import { formatDistanceToNow, subDays, format } from 'date-fns'
+import { formatDistanceToNow } from 'date-fns'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -26,10 +25,11 @@ interface ContentReport {
   reviewed_by: string | null
   review_notes: string | null
   created_at: string
-  profiles: {
-    username: string
-    display_name: string | null
+  reporter?: {
+    username?: string
+    display_name?: string | null
   }
+  similar_reports_count?: number
 }
 
 interface ModerationMetrics {
@@ -52,7 +52,6 @@ export default function ModerationPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('pending')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [processing, setProcessing] = useState<string | null>(null)
-  const supabase = createClient()
 
   useEffect(() => {
     fetchReports()
@@ -61,35 +60,26 @@ export default function ModerationPage() {
 
   const fetchReports = async () => {
     try {
-      let query = supabase
-        .from('content_reports')
-        .select(`
-          *,
-          profiles!reporter_id (
-            username,
-            display_name
-          )
-        `)
-        .order('priority_score', { ascending: false })
-        .limit(50)
+      const params = new URLSearchParams()
+      if (selectedStatus) params.set('status', selectedStatus)
+      if (selectedCategory) params.set('category', selectedCategory)
 
-      if (selectedStatus !== 'all') {
-        query = query.eq('status', selectedStatus)
-      }
-      if (selectedCategory !== 'all') {
-        query = query.eq('category', selectedCategory)
+      const response = await fetch(`/api/moderation/queue?${params.toString()}`, {
+        cache: 'no-store',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to load moderation queue')
       }
 
-      const { data, error } = await query
-
-      if (error) throw error
-      setReports(data || [])
+      const data = await response.json()
+      setReports(data.reports || [])
     } catch (error) {
       console.error('Error fetching reports:', error)
       toast({
         title: 'Error',
         description: 'Failed to load reports',
-        variant: 'destructive'
+        variant: 'destructive',
       })
     } finally {
       setLoading(false)
@@ -98,109 +88,19 @@ export default function ModerationPage() {
 
   const fetchMetrics = async () => {
     try {
-      const now = new Date()
-      const weekAgo = subDays(now, 7)
-
-      // Fetch various metrics in parallel
-      const [
-        { data: totalData },
-        { data: categoryData },
-        { data: weeklyData },
-        { data: topReportersData }
-      ] = await Promise.all([
-        // Total counts
-        supabase
-          .from('content_reports')
-          .select('status', { count: 'exact' }),
-
-        // Reports by category
-        supabase
-          .from('content_reports')
-          .select('category')
-          .gte('created_at', weekAgo.toISOString()),
-
-        // Weekly trend data
-        supabase
-          .from('content_reports')
-          .select('created_at, status')
-          .gte('created_at', weekAgo.toISOString()),
-
-        // Top reporters with credibility
-        supabase
-          .from('reporter_credibility')
-          .select(`
-            user_id,
-            total_reports,
-            accurate_reports,
-            credibility_score,
-            profiles!user_id (
-              username
-            )
-          `)
-          .order('total_reports', { ascending: false })
-          .limit(5)
-      ])
-
-      // Process metrics
-      const categoryCount: Record<string, number> = {}
-      categoryData?.forEach(report => {
-        categoryCount[report.category] = (categoryCount[report.category] || 0) + 1
-      })
-
-      // Process weekly trend
-      const dailyData: Record<string, { reports: number; actions: number }> = {}
-      for (let i = 0; i < 7; i++) {
-        const date = format(subDays(now, i), 'MMM d')
-        dailyData[date] = { reports: 0, actions: 0 }
-      }
-
-      weeklyData?.forEach(report => {
-        const date = format(new Date(report.created_at), 'MMM d')
-        if (dailyData[date]) {
-          dailyData[date].reports++
-          if (report.status === 'actioned') {
-            dailyData[date].actions++
-          }
-        }
-      })
-
-      const statusCounts = {
-        pending: 0,
-        actioned: 0,
-        dismissed: 0,
-        under_review: 0,
-        auto_dismissed: 0
-      }
-
-      totalData?.forEach(report => {
-        statusCounts[report.status as keyof typeof statusCounts]++
-      })
-
-      const totalReports = Object.values(statusCounts).reduce((a, b) => a + b, 0)
-      const falsePositiveRate = totalReports > 0
-        ? ((statusCounts.dismissed + statusCounts.auto_dismissed) / totalReports) * 100
-        : 0
-
+      const response = await fetch('/api/moderation/metrics', { cache: 'no-store' })
+      if (!response.ok) throw new Error('Failed to fetch moderation metrics')
+      const data = await response.json()
       setMetrics({
-        totalReports,
-        pendingReports: statusCounts.pending,
-        actionedReports: statusCounts.actioned,
-        dismissedReports: statusCounts.dismissed + statusCounts.auto_dismissed,
-        averageResponseTime: 2.5, // This would need actual calculation
-        falsePositiveRate,
-        reportsByCategory: Object.entries(categoryCount).map(([category, count]) => ({
-          category,
-          count
-        })),
-        weeklyTrend: Object.entries(dailyData).reverse().map(([date, data]) => ({
-          date,
-          ...data
-        })),
-        topReporters: topReportersData?.map(reporter => ({
-          username: reporter.profiles?.username || 'Unknown',
-          reports: reporter.total_reports,
-          accuracy: reporter.credibility_score * 100
-        })) || []
+        totalReports: data.totalReports,
+        pendingReports: data.pendingReports,
+        actionedReports: data.actionedReports,
+        dismissedReports: data.dismissedReports,
+        averageResponseTime: data.averageResponseTime,
+        falsePositiveRate: data.falsePositiveRate,
+        reportsByCategory: data.reportsByCategory || [],
+        weeklyTrend: data.weeklyTrend || [],
+        topReporters: data.topReporters || [],
       })
     } catch (error) {
       console.error('Error fetching metrics:', error)
@@ -210,32 +110,19 @@ export default function ModerationPage() {
   const handleReportAction = async (reportId: string, action: 'approve' | 'dismiss') => {
     setProcessing(reportId)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
-
-      const newStatus = action === 'approve' ? 'actioned' : 'dismissed'
-
-      const { error } = await supabase
-        .from('content_reports')
-        .update({
-          status: newStatus,
-          reviewed_at: new Date().toISOString(),
-          reviewed_by: user.id,
-          review_notes: `${action === 'approve' ? 'Action taken' : 'Dismissed'} by admin`
-        })
-        .eq('id', reportId)
-
-      if (error) throw error
-
-      // Update reporter credibility
-      await supabase.rpc('update_reporter_credibility', {
-        p_report_id: reportId,
-        p_was_accurate: action === 'approve'
+      const response = await fetch(`/api/moderation/queue/${reportId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
       })
+
+      if (!response.ok) {
+        throw new Error('Failed to process report')
+      }
 
       toast({
         title: 'Success',
-        description: `Report ${action === 'approve' ? 'actioned' : 'dismissed'} successfully`
+        description: `Report ${action === 'approve' ? 'actioned' : 'dismissed'} successfully`,
       })
 
       fetchReports()
@@ -245,7 +132,7 @@ export default function ModerationPage() {
       toast({
         title: 'Error',
         description: 'Failed to process report',
-        variant: 'destructive'
+        variant: 'destructive',
       })
     } finally {
       setProcessing(null)
@@ -372,7 +259,7 @@ export default function ModerationPage() {
                           {getPriorityBadge(report.priority_score)}
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Reported by @{report.profiles.username} • {formatDistanceToNow(new Date(report.created_at), { addSuffix: true })}
+                          Reported by @{report.reporter?.username || 'unknown'} • {formatDistanceToNow(new Date(report.created_at), { addSuffix: true })}
                         </p>
                         {report.description && (
                           <p className="text-sm bg-muted p-2 rounded">{report.description}</p>

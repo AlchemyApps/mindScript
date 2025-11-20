@@ -3,6 +3,30 @@ import { createClient } from '@/lib/supabase/server';
 import { generateSignedUrl } from '@/lib/track-access';
 import { z } from 'zod';
 
+const TRACK_FIELDS_BASE = `
+  id,
+  user_id,
+  title,
+  description,
+  script,
+  voice_config,
+  music_config,
+  frequency_config,
+  output_config,
+  status,
+  is_public,
+  tags,
+  render_job_id,
+  audio_url,
+  duration_seconds,
+  play_count,
+  price_cents,
+  deleted_at,
+  created_at,
+  updated_at,
+  profiles!user_id (display_name, avatar_url)
+`;
+
 // Query parameters schema
 const querySchema = z.object({
   ownership: z.enum(['all', 'owned', 'purchased']).optional().default('all'),
@@ -41,35 +65,18 @@ export async function GET(request: NextRequest) {
     });
 
     const tracks: any[] = [];
+    const trackSelect = `${TRACK_FIELDS_BASE}${
+      params.includeRenderStatus
+        ? `,
+          audio_job_queue!track_id (id, status, progress, created_at)`
+        : ''
+    }`;
     
     // Fetch owned tracks
     if (params.ownership === 'all' || params.ownership === 'owned') {
       let ownedQuery = supabase
         .from('tracks')
-        .select(`
-          id,
-          user_id,
-          title,
-          description,
-          script,
-          voice_config,
-          music_config,
-          frequency_config,
-          output_config,
-          status,
-          is_public,
-          tags,
-          render_job_id,
-          audio_url,
-          duration_seconds,
-          play_count,
-          price_cents,
-          deleted_at,
-          created_at,
-          updated_at,
-          profiles!user_id (display_name, avatar_url)
-          ${params.includeRenderStatus ? ', audio_job_queue!track_id (id, status, progress, created_at)' : ''}
-        `)
+        .select(trackSelect)
         .eq('user_id', user.id);
 
       // Don't filter by status at the database level when it's 'rendering' or 'failed'
@@ -141,11 +148,68 @@ export async function GET(request: NextRequest) {
       tracks.push(...filteredOwned);
     }
 
-    // Fetch purchased tracks - TEMPORARILY DISABLED until track_access table is set up
-    // TODO: Re-enable after applying track_access migration
-    // if (params.ownership === 'all' || params.ownership === 'purchased') {
-    //   ... purchased tracks query
-    // }
+    // Fetch purchased tracks
+    if (params.ownership === 'all' || params.ownership === 'purchased') {
+      const { data: purchasedRows, error: purchasedError } = await supabase
+        .from('track_access')
+        .select(`
+          track_id,
+          access_type,
+          granted_at,
+          tracks!inner (
+            ${TRACK_FIELDS_BASE}
+          )
+        `)
+        .eq('user_id', user.id)
+        .eq('access_type', 'purchase');
+
+      if (purchasedError) {
+        console.error('Error fetching purchased tracks:', purchasedError);
+      } else {
+        let purchasedTracks = (purchasedRows || [])
+          .map((row: any) => {
+            if (!row.tracks) return null;
+            const track = row.tracks;
+
+            return {
+              ...track,
+              duration: track.duration_seconds || 0,
+              ownership: 'purchased' as const,
+              purchasedAt: row.granted_at,
+              renderStatus: undefined,
+            };
+          })
+          .filter(Boolean) as any[];
+
+        if (params.status !== 'all') {
+          purchasedTracks = purchasedTracks.filter(track => track.status === params.status);
+        }
+
+        if (params.search) {
+          const searchTerm = params.search.toLowerCase();
+          purchasedTracks = purchasedTracks.filter(
+            track =>
+              track.title?.toLowerCase().includes(searchTerm) ||
+              track.description?.toLowerCase().includes(searchTerm)
+          );
+        }
+
+        if (params.tags) {
+          const tagList = params.tags.split(',').map(t => t.trim().toLowerCase());
+          purchasedTracks = purchasedTracks.filter((track: any) => {
+            if (!Array.isArray(track.tags)) return false;
+            const trackTags = track.tags.map((tag: string) => tag.toLowerCase());
+            return tagList.every(tag => trackTags.includes(tag));
+          });
+        }
+
+        purchasedTracks.forEach(track => {
+          if (!tracks.find(existing => existing.id === track.id)) {
+            tracks.push(track);
+          }
+        });
+      }
+    }
 
     // Sort combined results if needed
     if (params.ownership === 'all') {

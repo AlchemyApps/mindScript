@@ -7,11 +7,10 @@ import { cn } from '../lib/utils';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAuthenticated: (user: any) => void;
+  onAuthenticated?: (user: any) => Promise<void> | void;
   mode?: 'signup' | 'login';
   title?: string;
   description?: string;
-  trackConfig?: any; // Track configuration from guest builder
 }
 
 export function AuthModal({
@@ -21,7 +20,6 @@ export function AuthModal({
   mode: initialMode = 'signup',
   title = "Create Your First Track",
   description = "Sign up to create your personalized audio track with special first-time pricing",
-  trackConfig
 }: AuthModalProps) {
   const [mode, setMode] = useState<'signup' | 'login'>(initialMode);
   const [email, setEmail] = useState('');
@@ -58,7 +56,6 @@ export function AuthModal({
     const payload: any = {
       email: email.trim().toLowerCase(),
       password,
-      trackConfig, // Pass along track configuration if provided
     };
 
     // Add mode-specific fields
@@ -88,16 +85,19 @@ export function AuthModal({
       // Handle successful authentication
       if (response.ok && data.success) {
         console.log('AUTH MODAL: Authentication successful');
-        setMessage('Success! Redirecting...');
-        onClose();
+        setMessage(onAuthenticated ? 'Success! Continuing...' : 'Success! Redirecting...');
 
-        // Navigate to the redirect URL provided by the server
-        if (data.redirectUrl) {
-          console.log('AUTH MODAL: Redirecting to:', data.redirectUrl);
-          window.location.href = data.redirectUrl;
+        if (onAuthenticated) {
+          await onAuthenticated(data.user);
+          onClose();
         } else {
-          // Fallback if no redirect URL provided
-          window.location.href = '/library';
+          onClose();
+          if (data.redirectUrl) {
+            console.log('AUTH MODAL: Redirecting to:', data.redirectUrl);
+            window.location.href = data.redirectUrl;
+          } else {
+            window.location.href = '/library';
+          }
         }
         return;
       }

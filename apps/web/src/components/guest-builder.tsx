@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from "@mindscript/ui";
 import { cn } from '../lib/utils';
 import { AuthModal } from './auth-modal';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 interface BuilderState {
+  title: string;
   script: string;
   voice: {
     provider: 'openai' | 'elevenlabs';
@@ -14,7 +15,11 @@ interface BuilderState {
     name: string;
   };
   duration: number;
-  backgroundMusic?: {
+  loop: {
+    enabled: boolean;
+    pause_seconds: number;
+  };
+  music?: {
     id: string;
     name: string;
     price: number;
@@ -79,28 +84,36 @@ interface GuestBuilderProps {
   className?: string;
 }
 
+const DURATION_OPTIONS = [5, 10, 15] as const;
+
+const DEFAULT_BUILDER_STATE: BuilderState = {
+  title: '',
+  script: '',
+  voice: {
+    provider: 'openai',
+    voice_id: 'alloy',
+    name: 'Alloy (Neutral)',
+  },
+  duration: 5,
+  loop: {
+    enabled: true,
+    pause_seconds: 5,
+  },
+  music: undefined,
+  solfeggio: {
+    enabled: false,
+    frequency: 528,
+    price: 0.99,
+  },
+  binaural: {
+    enabled: false,
+    band: 'alpha',
+    price: 0.99,
+  },
+};
+
 export function GuestBuilder({ className }: GuestBuilderProps) {
-  const [state, setState] = useState<BuilderState>({
-    // Default state - always use this initially to avoid hydration mismatch
-    script: '',
-    voice: {
-      provider: 'openai',
-      voice_id: 'alloy',
-      name: 'Alloy (Neutral)'
-    },
-    duration: 5,
-    backgroundMusic: undefined,
-    solfeggio: {
-      enabled: false,
-      frequency: 528,
-      price: 0.99
-    },
-    binaural: {
-      enabled: false,
-      band: 'alpha',
-      price: 0.99
-    }
-  });
+  const [state, setState] = useState<BuilderState>(DEFAULT_BUILDER_STATE);
 
   const [activeTab, setActiveTab] = useState<'script' | 'voice' | 'extras'>('script');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -113,43 +126,26 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     savings: number;
     isEligibleForDiscount: boolean;
   }>({ basePrice: 2.99, discountedPrice: 0.99, savings: 2.00, isEligibleForDiscount: true });
+  const [supabaseClient, setSupabaseClient] = useState<ReturnType<typeof getSupabaseBrowserClient> | null>(null);
+  const [supabaseError, setSupabaseError] = useState<string | null>(null);
 
-  const supabase = getSupabaseBrowserClient();
-
-  // Load from localStorage and check auth status after mount (NOT pricing)
   useEffect(() => {
-    setIsHydrated(true);
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('guestBuilderState');
-      if (saved) {
-        try {
-          const parsedState = JSON.parse(saved);
-          setState(parsedState);
-        } catch (e) {
-          console.error('Failed to parse saved state:', e);
-        }
-      }
+    try {
+      const client = getSupabaseBrowserClient();
+      setSupabaseClient(client);
+      setSupabaseError(null);
+    } catch (error) {
+      console.error('GuestBuilder: failed to initialize Supabase client', error);
+      setSupabaseError(
+        error instanceof Error
+          ? error.message
+          : 'Authentication service is unavailable. Verify Supabase configuration.'
+      );
+      setSupabaseClient(null);
     }
-
-    // Only check authentication status on mount
-    checkAuthStatus();
   }, []);
 
-  const checkAuthStatus = async () => {
-    try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      setUser(currentUser);
-
-      // If user is already authenticated, check pricing now
-      if (currentUser) {
-        await checkPricingEligibility();
-      }
-    } catch (error) {
-      console.error('Error checking auth status:', error);
-    }
-  };
-
-  const checkPricingEligibility = async () => {
+  const checkPricingEligibility = useCallback(async () => {
     try {
       const response = await fetch('/api/pricing/check-eligibility');
       if (!response.ok) {
@@ -178,7 +174,61 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
       // On error, still proceed but show message
       alert('Unable to verify pricing. Please contact support if you encounter issues.');
     }
-  };
+  }, []);
+
+  const checkAuthStatus = useCallback(async () => {
+    if (!supabaseClient) return;
+    try {
+      const { data: { user: currentUser } } = await supabaseClient.auth.getUser();
+      setUser(currentUser);
+
+      // If user is already authenticated, check pricing now
+      if (currentUser) {
+        await checkPricingEligibility();
+      }
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+    }
+  }, [supabaseClient, checkPricingEligibility]);
+
+  // Load from localStorage and check auth status after mount (NOT pricing)
+  useEffect(() => {
+    setIsHydrated(true);
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('guestBuilderState');
+      if (saved) {
+        try {
+          const parsedState = JSON.parse(saved);
+          setState({
+            ...DEFAULT_BUILDER_STATE,
+            ...parsedState,
+            voice: {
+              ...DEFAULT_BUILDER_STATE.voice,
+              ...(parsedState.voice || {}),
+            },
+            loop: {
+              ...DEFAULT_BUILDER_STATE.loop,
+              ...(parsedState.loop || {}),
+            },
+            music: parsedState.music ?? (parsedState.backgroundMusic || parsedState.music ? {
+              ...(parsedState.backgroundMusic || parsedState.music),
+            } : undefined),
+            solfeggio: parsedState.solfeggio
+              ? { ...DEFAULT_BUILDER_STATE.solfeggio!, ...parsedState.solfeggio }
+              : DEFAULT_BUILDER_STATE.solfeggio,
+            binaural: parsedState.binaural
+              ? { ...DEFAULT_BUILDER_STATE.binaural!, ...parsedState.binaural }
+              : DEFAULT_BUILDER_STATE.binaural,
+          });
+        } catch (e) {
+          console.error('Failed to parse saved state:', e);
+        }
+      }
+    }
+
+    // Only check authentication status on mount
+    checkAuthStatus();
+  }, [checkAuthStatus]);
 
   // Save state to localStorage whenever it changes (after hydration)
   useEffect(() => {
@@ -189,8 +239,8 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
 
   const calculateTotal = () => {
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
-    if (state.backgroundMusic && state.backgroundMusic.id !== 'none') {
-      total += state.backgroundMusic.price;
+    if (state.music && state.music.id !== 'none') {
+      total += state.music.price;
     }
     if (state.solfeggio?.enabled) {
       total += state.solfeggio.price;
@@ -202,6 +252,11 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
   };
 
   const handleCheckout = async () => {
+    if (authUnavailable) {
+      alert('Authentication service is currently unavailable. Please check back soon.');
+      return;
+    }
+
     // If user is not authenticated, show auth modal first
     if (!user) {
       setShowAuthModal(true);
@@ -209,6 +264,40 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     }
 
     await proceedWithCheckout();
+  };
+
+  const buildCheckoutBuilderState = () => {
+    return {
+      title: state.title || 'Custom Track',
+      script: state.script,
+      voice: {
+        provider: state.voice.provider,
+        voice_id: state.voice.voice_id,
+        settings: {},
+      },
+      music: state.music && state.music.id !== 'none'
+        ? {
+            id: state.music.id,
+            volume_db: -10,
+          }
+        : undefined,
+      solfeggio: state.solfeggio?.enabled
+        ? {
+            enabled: true,
+            frequency: state.solfeggio.frequency,
+            volume_db: -16,
+          }
+        : undefined,
+      binaural: state.binaural?.enabled
+        ? {
+            enabled: true,
+            band: state.binaural.band,
+            volume_db: -18,
+          }
+        : undefined,
+      duration: state.duration,
+      loop: state.loop,
+    };
   };
 
   const proceedWithCheckout = async () => {
@@ -225,7 +314,7 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
       // Prepare checkout data with user context
       const checkoutData = {
         userId: user.id, // IMPORTANT: Pass authenticated user ID
-        builderState: state,
+        builderState: buildCheckoutBuilderState(),
         successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: window.location.href,
         priceAmount: Math.round(total * 100), // Use actual total, not hardcoded
@@ -259,8 +348,17 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     console.log('handleAuthSuccess called with user:', authenticatedUser?.id || authenticatedUser?.email);
 
     try {
+      let resolvedUser = authenticatedUser;
+      if (!resolvedUser && supabaseClient) {
+        const { data } = await supabaseClient.auth.getUser();
+        resolvedUser = data.user;
+      }
+      if (!resolvedUser) {
+        throw new Error('Unable to verify authenticated user');
+      }
+
       // 1. Save authenticated user to state
-      setUser(authenticatedUser);
+      setUser(resolvedUser);
       setShowAuthModal(false);
 
       // Add a small delay to ensure session is propagated
@@ -296,7 +394,7 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
 
       console.log('Proceeding to checkout...');
       // 3. Proceed to checkout with CORRECT pricing (pass user directly to avoid stale state)
-      await proceedWithCheckoutForUser(authenticatedUser);
+      await proceedWithCheckoutForUser(resolvedUser);
     } catch (error) {
       console.error('Error in auth success flow:', error);
       alert('Failed to start checkout. Please try again.');
@@ -328,7 +426,7 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
       // Prepare checkout data with user context
       const checkoutData = {
         userId: userId, // Can be either ID or email
-        builderState: state,
+        builderState: buildCheckoutBuilderState(),
         successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: window.location.href,
         priceAmount: Math.round(total * 100),
@@ -372,6 +470,8 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
 
   const scriptCharCount = state.script.length;
   const isScriptValid = scriptCharCount >= 10 && scriptCharCount <= 5000;
+  const isTitleValid = state.title.trim().length >= 3;
+  const authUnavailable = !!supabaseError || !supabaseClient;
 
   return (
     <div className={cn('bg-white rounded-2xl shadow-xl p-6 md:p-8', className)}>
@@ -379,6 +479,13 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
         <h2 className="text-2xl font-bold font-sora mb-2">Create Your First Track</h2>
         <p className="text-gray-600">Build your personalized audio experience - no sign up required</p>
       </div>
+
+      {supabaseError && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Authentication is temporarily unavailable. Please verify Supabase environment variables
+          or try again later.
+        </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="flex space-x-1 rounded-lg bg-gray-100 p-1 mb-6">
@@ -425,6 +532,25 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
         {/* Script Tab */}
         {activeTab === 'script' && (
           <div className="space-y-4">
+            <div>
+              <label htmlFor="track-title" className="block text-sm font-medium text-gray-700 mb-2">
+                Track Title
+              </label>
+              <input
+                id="track-title"
+                type="text"
+                value={state.title}
+                onChange={(e) => setState({ ...state, title: e.target.value })}
+                placeholder="e.g., Morning Focus Reset"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+              {state.title && !isTitleValid && (
+                <p className="mt-1 text-sm text-red-500">
+                  Title must be at least 3 characters long.
+                </p>
+              )}
+            </div>
+
             <div>
               <label htmlFor="script" className="block text-sm font-medium text-gray-700 mb-2">
                 Your Script
@@ -541,21 +667,66 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
             </div>
 
             <div>
-              <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
-                Track Duration: {state.duration} minutes
-              </label>
-              <input
-                id="duration"
-                type="range"
-                min="3"
-                max="30"
-                value={state.duration}
-                onChange={(e) => setState({ ...state, duration: parseInt(e.target.value) })}
-                className="w-full"
-              />
-              <div className="flex justify-between text-xs text-gray-500 mt-1">
-                <span>3 min</span>
-                <span>30 min</span>
+              <p className="block text-sm font-medium text-gray-700 mb-2">
+                Track Duration
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                {DURATION_OPTIONS.map((duration) => (
+                  <button
+                    key={duration}
+                    type="button"
+                    onClick={() => setState({ ...state, duration })}
+                    className={cn(
+                      'rounded-lg border px-3 py-2 text-sm font-medium',
+                      state.duration === duration
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                    )}
+                  >
+                    {duration} min
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-gray-700">Loop Script</p>
+                <button
+                  type="button"
+                  onClick={() => setState({
+                    ...state,
+                    loop: { ...state.loop, enabled: !state.loop.enabled }
+                  })}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
+                    state.loop.enabled ? 'bg-primary' : 'bg-gray-200'
+                  )}
+                >
+                  <span className={cn(
+                    'inline-block h-4 w-4 transform rounded-full bg-white transition-transform',
+                    state.loop.enabled ? 'translate-x-6' : 'translate-x-1'
+                  )} />
+                </button>
+              </div>
+              <div>
+                <label htmlFor="loop-pause-guest" className="text-xs text-gray-500">
+                  Pause between loops: {state.loop.pause_seconds}s
+                </label>
+                <input
+                  id="loop-pause-guest"
+                  type="range"
+                  min={1}
+                  max={30}
+                  step={1}
+                  value={state.loop.pause_seconds}
+                  onChange={(e) => setState({
+                    ...state,
+                    loop: { ...state.loop, pause_seconds: Number(e.target.value) }
+                  })}
+                  className="mt-1 w-full"
+                  disabled={!state.loop.enabled}
+                />
               </div>
             </div>
           </div>
@@ -571,12 +742,12 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
                 <span className="text-gray-500 font-normal ml-2">(+$0.99 each)</span>
               </label>
               <select
-                value={state.backgroundMusic?.id || 'none'}
+                value={state.music?.id || 'none'}
                 onChange={(e) => {
                   const selected = BACKGROUND_MUSIC_OPTIONS.find(m => m.id === e.target.value);
                   setState({
                     ...state,
-                    backgroundMusic: selected?.id === 'none' ? undefined : selected
+                    music: selected?.id === 'none' ? undefined : selected
                   });
                 }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
@@ -694,12 +865,12 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
             <div className="text-2xl font-bold">${calculateTotal().toFixed(2)}</div>
             <div className="text-sm text-gray-500">First track special price</div>
           </div>
-          <Button
-            size="lg"
-            onClick={handleCheckout}
-            disabled={!isScriptValid || isProcessing}
-            className="px-8"
-          >
+      <Button
+        size="lg"
+        onClick={handleCheckout}
+        disabled={!isScriptValid || !isTitleValid || isProcessing || authUnavailable}
+        className="px-8"
+      >
             {isProcessing ? 'Processing...' : 'Create Your First Track'}
           </Button>
         </div>
@@ -722,7 +893,6 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
         mode="signup"
         title="Create Your First Track"
         description={`Sign up to create your personalized audio track ${pricingInfo.isEligibleForDiscount ? `with special first-time pricing - only $${pricingInfo.discountedPrice.toFixed(2)}!` : `for $${pricingInfo.basePrice.toFixed(2)}`}`}
-        trackConfig={state}
       />
     </div>
   );

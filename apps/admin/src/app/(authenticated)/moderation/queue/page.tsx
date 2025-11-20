@@ -28,9 +28,9 @@ interface ContentReport {
   status: 'pending' | 'under_review' | 'actioned' | 'dismissed'
   priority_score: number
   created_at: string
-  reporter: {
-    id: string
-    email: string
+  reporter?: {
+    id?: string
+    email?: string
     display_name?: string
   }
   similar_reports_count?: number
@@ -58,7 +58,6 @@ export default function ModerationQueuePage() {
   useEffect(() => {
     fetchReports()
 
-    // Set up real-time subscription
     const supabase = createClient()
     const subscription = supabase
       .channel('moderation_queue')
@@ -82,53 +81,22 @@ export default function ModerationQueuePage() {
 
   const fetchReports = async () => {
     setLoading(true)
-    const supabase = createClient()
 
     try {
-      let query = supabase
-        .from('content_reports')
-        .select(`
-          *,
-          reporter:profiles!reporter_id (
-            id,
-            email,
-            display_name
-          )
-        `)
-        .order('priority_score', { ascending: false })
-        .order('created_at', { ascending: false })
+      const params = new URLSearchParams()
+      if (selectedStatus) params.set('status', selectedStatus)
+      if (selectedCategory) params.set('category', selectedCategory)
 
-      // Apply status filter
-      if (selectedStatus !== 'all') {
-        query = query.eq('status', selectedStatus)
+      const response = await fetch(`/api/moderation/queue?${params.toString()}`, {
+        cache: 'no-store',
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to load moderation queue')
       }
 
-      // Apply category filter
-      if (selectedCategory !== 'all') {
-        query = query.eq('category', selectedCategory)
-      }
-
-      const { data, error } = await query
-
-      if (error) throw error
-
-      // Get similar reports count for each report
-      const reportsWithCounts = await Promise.all(
-        (data || []).map(async (report) => {
-          const { count } = await supabase
-            .from('content_reports')
-            .select('*', { count: 'exact', head: true })
-            .eq('content_type', report.content_type)
-            .eq('content_id', report.content_id)
-
-          return {
-            ...report,
-            similar_reports_count: count || 0,
-          }
-        })
-      )
-
-      setReports(reportsWithCounts)
+      const data = await response.json()
+      setReports(data.reports || [])
     } catch (error) {
       console.error('Error fetching reports:', error)
       toast.error('Failed to load moderation queue')
@@ -149,19 +117,16 @@ export default function ModerationQueuePage() {
       return
     }
 
-    const supabase = createClient()
-
     try {
-      const { error } = await supabase
-        .from('content_reports')
-        .update({
-          status: 'dismissed',
-          reviewed_at: new Date().toISOString(),
-          review_notes: 'Bulk dismissed',
-        })
-        .in('id', Array.from(selectedReports))
+      const response = await fetch('/api/moderation/queue/bulk-dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedReports) }),
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        throw new Error('Failed to dismiss reports')
+      }
 
       toast.success(`Dismissed ${selectedReports.size} reports`)
       setSelectedReports(new Set())
@@ -379,7 +344,7 @@ export default function ModerationQueuePage() {
                         <div className="flex items-center gap-1">
                           <span>Reported by:</span>
                           <span className="font-medium">
-                            {report.reporter.display_name || report.reporter.email}
+                            {report.reporter?.display_name || report.reporter?.email || 'unknown'}
                           </span>
                         </div>
                         <div className="flex items-center gap-1">

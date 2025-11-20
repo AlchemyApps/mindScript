@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { BuilderForm } from './components/BuilderForm';
+import { BuilderForm, type BuilderFormData } from './components/BuilderForm';
 import { useAuth } from '@mindscript/auth/hooks';
 import Link from 'next/link';
 
@@ -57,7 +57,7 @@ export default function BuilderPage() {
     }
   };
 
-  const calculateTotal = (formData: any) => {
+  const calculateTotal = (formData: BuilderFormData) => {
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
     // Note: BuilderForm sends 'music' not 'backgroundMusic'
     if (formData.music?.id && formData.music.id !== 'none') {
@@ -85,24 +85,23 @@ export default function BuilderPage() {
     return null;
   }
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (data: BuilderFormData) => {
     setIsCreating(true);
 
     try {
       // Calculate total with add-ons
       const total = calculateTotal(data);
 
-      // Estimate duration based on script length (roughly 150 words per minute)
-      const wordsPerMinute = 150;
-      const wordCount = data.script ? data.script.split(/\s+/).length : 0;
-      const estimatedDuration = Math.max(1, Math.ceil(wordCount / wordsPerMinute));
-
       // Prepare checkout data
       const checkoutData = {
         userId: user.id,
         builderState: {
           ...data,
-          duration: estimatedDuration, // Add estimated duration
+          duration: data.duration || 10,
+          loop: {
+            enabled: data.loop?.enabled ?? true,
+            pause_seconds: data.loop?.pause_seconds ?? 5,
+          },
         },
         successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: window.location.href,

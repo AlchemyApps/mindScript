@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import Image from 'next/image';
 import Link from 'next/link';
+import { TrackPurchaseButton } from '@/components/track/purchase-button';
 
 interface PageProps {
   params: {
@@ -10,6 +11,22 @@ interface PageProps {
     slug: string;
   };
 }
+
+const formatPrice = (priceCents?: number | null) => {
+  if (!priceCents || priceCents <= 0) return 'Free';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+  }).format(priceCents / 100);
+};
+
+const formatDuration = (durationSeconds?: number | null) => {
+  if (!durationSeconds || durationSeconds <= 0) return 'N/A';
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = (durationSeconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${seconds}`;
+};
 
 // Generate static params for SSG
 export async function generateStaticParams() {
@@ -19,7 +36,7 @@ export async function generateStaticParams() {
   const { data: tracks } = await supabase
     .from('tracks')
     .select(`
-      title,
+      slug,
       user_id,
       profiles!inner(username)
     `)
@@ -28,10 +45,12 @@ export async function generateStaticParams() {
     .order('play_count', { ascending: false })
     .limit(100); // Pre-generate top 100 tracks
 
-  return tracks?.map((track) => ({
-    username: track.profiles.username,
-    slug: track.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
-  })) || [];
+  return tracks
+    ?.filter((track) => track.slug)
+    .map((track) => ({
+      username: track.profiles.username,
+      slug: track.slug,
+    })) || [];
 }
 
 // ISR configuration - revalidate every hour
@@ -56,10 +75,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   // Get the track by matching the slug pattern
-  const { data: tracks } = await supabase
+  const { data: track } = await supabase
     .from('tracks')
     .select(`
       id,
+      slug,
       title,
       description,
       duration_seconds,
@@ -67,16 +87,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       tags,
       play_count,
       created_at,
-      updated_at
+      updated_at,
+      audio_url
     `)
     .eq('user_id', profile.id)
     .eq('status', 'published')
-    .eq('is_public', true);
-
-  // Find track by slug (in production, you'd have a slug column)
-  const track = tracks?.find(
-    t => t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') === params.slug
-  );
+    .eq('is_public', true)
+    .eq('slug', params.slug)
+    .maybeSingle();
 
   if (!track) {
     return {
@@ -167,12 +185,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 // Generate JSON-LD structured data
 function generateJsonLd(track: any, profile: any, relatedTracks: any[]) {
-  const trackSlug = track.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
   return {
     '@context': 'https://schema.org',
     '@type': 'AudioObject',
-    '@id': `https://mindscript.app/u/${profile.username}/${trackSlug}`,
+    '@id': `https://mindscript.app/u/${profile.username}/${track.slug}`,
     name: track.title,
     description: track.description,
     creator: {
@@ -203,7 +219,7 @@ function generateJsonLd(track: any, profile: any, relatedTracks: any[]) {
         '@type': 'Person',
         name: profile.display_name || profile.username,
       },
-      url: `https://mindscript.app/u/${profile.username}/${trackSlug}`,
+    url: `https://mindscript.app/u/${profile.username}/${track.slug}`,
     } : undefined,
     isPartOf: {
       '@type': 'AudioObjectCollection',
@@ -212,64 +228,55 @@ function generateJsonLd(track: any, profile: any, relatedTracks: any[]) {
     },
     // Related tracks
     relatedLink: relatedTracks.map(related => {
-      const relatedSlug = related.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const relatedSlug = related.slug ||
+        related.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
       return `https://mindscript.app/u/${profile.username}/${relatedSlug}`;
     }),
   };
 }
 
 // Audio Player Component
-function AudioPlayer({ track, onPlay }: { track: any; onPlay: () => void }) {
-  return (
-    <div className="bg-white rounded-lg shadow-lg p-6">
-      <div className="flex items-center gap-4">
-        {/* Play Button */}
-        <button
-          onClick={onPlay}
-          className="w-16 h-16 bg-purple-600 hover:bg-purple-700 text-white rounded-full flex items-center justify-center transition-colors"
-          aria-label={`Play ${track.title}`}
-        >
-          <svg className="w-8 h-8 ml-1" fill="currentColor" viewBox="0 0 20 20">
-            <path d="M5 4v12l10-6z" />
-          </svg>
-        </button>
+function AudioPlayer({ track, previewUrl }: { track: any; previewUrl?: string | null }) {
+  const duration = formatDuration(track.duration_seconds);
+  const priceLabel = formatPrice(track.price_cents);
 
-        {/* Track Info */}
-        <div className="flex-1">
-          <h3 className="font-semibold text-lg text-gray-900">{track.title}</h3>
-          {track.duration_seconds && (
-            <p className="text-gray-500">
-              Duration: {Math.floor(track.duration_seconds / 60)}:
-              {(track.duration_seconds % 60).toString().padStart(2, '0')}
+  return (
+    <div className="rounded-lg border border-purple-100 bg-white/70 p-6 shadow-sm">
+      <div className="space-y-4">
+        <div>
+          <p className="text-sm font-semibold text-gray-600 mb-2">Preview</p>
+          {previewUrl ? (
+            <audio
+              controls
+              preload="none"
+              src={previewUrl}
+              className="w-full"
+            >
+              Your browser does not support the audio element.
+            </audio>
+          ) : (
+            <p className="text-sm text-gray-500">
+              Preview not available for this track yet.
             </p>
           )}
         </div>
 
-        {/* Price */}
-        {track.price_cents > 0 && (
-          <div className="text-right">
-            <p className="text-2xl font-bold text-green-600">
-              ${(track.price_cents / 100).toFixed(2)}
-            </p>
-            <button className="mt-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">
-              Purchase
-            </button>
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm text-gray-500">Duration</p>
+            <p className="text-lg font-semibold text-gray-900">{duration}</p>
           </div>
-        )}
-      </div>
 
-      {/* Progress Bar */}
-      <div className="mt-4">
-        <div className="bg-gray-200 rounded-full h-2">
-          <div className="bg-purple-600 h-2 rounded-full" style={{ width: '0%' }} />
-        </div>
-        <div className="flex justify-between mt-1 text-xs text-gray-500">
-          <span>0:00</span>
-          <span>
-            {track.duration_seconds
-              ? `${Math.floor(track.duration_seconds / 60)}:${(track.duration_seconds % 60).toString().padStart(2, '0')}`
-              : '0:00'}
-          </span>
+          <div className="text-right">
+            <p className="text-sm text-gray-500">Price</p>
+            <p className="text-3xl font-bold text-gray-900">{priceLabel}</p>
+            <TrackPurchaseButton
+              trackId={track.id}
+              className="mt-3 w-full md:w-auto"
+            >
+              {track.price_cents > 0 ? `Buy for ${priceLabel}` : 'Add to Library'}
+            </TrackPurchaseButton>
+          </div>
         </div>
       </div>
     </div>
@@ -297,15 +304,17 @@ export default async function TrackDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // Fetch all tracks to find the one matching the slug
-  const { data: tracks } = await supabase
+  // Fetch requested track by slug
+  const { data: track, error: trackError } = await supabase
     .from('tracks')
     .select(`
       id,
+      slug,
       title,
       description,
       script,
       audio_url,
+      preview_url,
       duration_seconds,
       price_cents,
       play_count,
@@ -318,22 +327,19 @@ export default async function TrackDetailPage({ params }: PageProps) {
     `)
     .eq('user_id', profile.id)
     .eq('status', 'published')
-    .eq('is_public', true);
+    .eq('is_public', true)
+    .eq('slug', params.slug)
+    .maybeSingle();
 
-  // Find track by slug
-  const track = tracks?.find(
-    t => t.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') === params.slug
-  );
-
-  if (!track) {
+  if (trackError || !track) {
     notFound();
   }
 
-  // Fetch related tracks (same tags or same seller)
   const { data: relatedTracks } = await supabase
     .from('tracks')
     .select(`
       id,
+      slug,
       title,
       description,
       duration_seconds,
@@ -347,14 +353,32 @@ export default async function TrackDetailPage({ params }: PageProps) {
     .neq('id', track.id)
     .limit(4);
 
-  // Generate structured data
-  const jsonLd = generateJsonLd(track, profile, relatedTracks || []);
+  let previewSignedUrl: string | null = null;
+  try {
+    if (track.preview_url) {
+      const { data, error } = await supabase.storage
+        .from('tracks-public')
+        .createSignedUrl(track.preview_url, 3600);
+      if (error) {
+        console.error('Failed to sign public preview URL', error);
+      } else {
+        previewSignedUrl = data?.signedUrl || null;
+      }
+    } else if (track.audio_url) {
+      const { data, error } = await supabase.storage
+        .from('tracks-private')
+        .createSignedUrl(track.audio_url, 300);
+      if (error) {
+        console.error('Failed to sign private preview URL', error);
+      } else {
+        previewSignedUrl = data?.signedUrl || null;
+      }
+    }
+  } catch (error) {
+    console.error('Unable to generate preview URL', error);
+  }
 
-  // Increment play count (in production, this would be done via client-side API)
-  const handlePlay = () => {
-    // This would be a client-side action
-    console.log('Playing track:', track.id);
-  };
+  const jsonLd = generateJsonLd(track, profile, relatedTracks || []);
 
   return (
     <>
@@ -430,7 +454,7 @@ export default async function TrackDetailPage({ params }: PageProps) {
                 </Link>
 
                 {/* Audio Player */}
-                <AudioPlayer track={track} onPlay={handlePlay} />
+                <AudioPlayer track={track} previewUrl={previewSignedUrl} />
 
                 {/* Tags */}
                 {track.tags && track.tags.length > 0 && (
@@ -539,19 +563,15 @@ export default async function TrackDetailPage({ params }: PageProps) {
                   <div className="flex justify-between">
                     <dt className="text-gray-600">Duration</dt>
                     <dd className="font-semibold text-gray-900">
-                      {track.duration_seconds
-                        ? `${Math.floor(track.duration_seconds / 60)}:${(track.duration_seconds % 60).toString().padStart(2, '0')}`
-                        : 'N/A'}
+                      {formatDuration(track.duration_seconds)}
                     </dd>
                   </div>
-                  {track.price_cents > 0 && (
-                    <div className="flex justify-between">
-                      <dt className="text-gray-600">Price</dt>
-                      <dd className="font-semibold text-green-600">
-                        ${(track.price_cents / 100).toFixed(2)}
-                      </dd>
-                    </div>
-                  )}
+                  <div className="flex justify-between">
+                    <dt className="text-gray-600">Price</dt>
+                    <dd className="font-semibold text-green-600">
+                      {formatPrice(track.price_cents)}
+                    </dd>
+                  </div>
                 </dl>
               </div>
 
@@ -563,10 +583,11 @@ export default async function TrackDetailPage({ params }: PageProps) {
                   </h3>
                   <div className="space-y-3">
                     {relatedTracks.map((related) => {
-                      const relatedSlug = related.title
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]+/g, '-')
-                        .replace(/^-|-$/g, '');
+                      const relatedSlug = related.slug
+                        || related.title
+                          .toLowerCase()
+                          .replace(/[^a-z0-9]+/g, '-')
+                          .replace(/^-|-$/g, '');
                       return (
                         <Link
                           key={related.id}
@@ -577,12 +598,10 @@ export default async function TrackDetailPage({ params }: PageProps) {
                             {related.title}
                           </p>
                           <p className="text-sm text-gray-500">
-                            {related.duration_seconds
-                              ? `${Math.floor(related.duration_seconds / 60)}:${(related.duration_seconds % 60).toString().padStart(2, '0')}`
-                              : 'N/A'}
+                            {formatDuration(related.duration_seconds)}
                             {related.price_cents > 0 && (
                               <span className="ml-2">
-                                • ${(related.price_cents / 100).toFixed(2)}
+                                • {formatPrice(related.price_cents)}
                               </span>
                             )}
                           </p>

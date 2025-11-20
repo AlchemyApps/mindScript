@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { AdminSidebar } from '@/components/admin-sidebar'
 import { AdminHeader } from '@/components/admin-header'
@@ -11,15 +12,28 @@ export default async function AuthenticatedLayout({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // User will always exist here thanks to middleware protection
-  // Fetch profile data for UI purposes
+  if (!user) {
+    redirect('/login')
+  }
+
+  // Fetch profile data for UI purposes (and double-check admin access)
   let profile = null
   if (user) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('role, account_status, full_name, avatar_url')
       .eq('id', user.id)
-      .single()
+      .maybeSingle()
+    if (error) {
+      console.error('Failed to load admin profile in layout:', error)
+    }
+    const hasAdminRole = data ? ['admin', 'super_admin'].includes(data.role) : false
+    const isActive = data?.account_status ? data.account_status === 'active' : true
+
+    if (!hasAdminRole || !isActive) {
+      const reason = !hasAdminRole ? 'not_admin' : 'inactive'
+      redirect(`/unauthorized?reason=${reason}`)
+    }
     profile = data
   }
 

@@ -26,6 +26,7 @@ const navigation = [
   { name: 'Sellers', href: '/sellers', icon: ShoppingCart },
   { name: 'Pricing', href: '/pricing', icon: DollarSign },
   { name: 'Moderation', href: '/moderation', icon: Shield },
+  { name: 'Activity Log', href: '/activity', icon: Activity },
   { name: 'Queue Monitor', href: '/monitoring/queue', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

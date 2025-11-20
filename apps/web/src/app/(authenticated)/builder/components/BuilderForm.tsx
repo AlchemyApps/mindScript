@@ -11,7 +11,21 @@ import { MusicBrowser } from './MusicBrowser';
 import { useAutoSave } from '../hooks/useAutoSave';
 
 // Form schema
+const durationOptions = [5, 10, 15] as const;
+
 const builderFormSchema = z.object({
+  title: z
+    .string()
+    .min(3, 'Title must be at least 3 characters')
+    .max(80, 'Title must be no more than 80 characters'),
+  duration: z.union([z.literal(5), z.literal(10), z.literal(15)]).default(10),
+  loop: z.object({
+    enabled: z.boolean(),
+    pause_seconds: z
+      .number()
+      .min(1, 'Pause must be at least 1 second')
+      .max(30, 'Pause must be no more than 30 seconds'),
+  }),
   script: z.string().min(10, 'Script must be at least 10 characters').max(5000, 'Script must be no more than 5000 characters'),
   voice: z.object({
     provider: z.enum(['openai', 'elevenlabs', 'uploaded']),
@@ -37,7 +51,7 @@ const builderFormSchema = z.object({
   }).optional(),
 });
 
-type BuilderFormData = z.infer<typeof builderFormSchema>;
+export type BuilderFormData = z.infer<typeof builderFormSchema>;
 
 interface BuilderFormProps {
   onSubmit: (data: BuilderFormData) => Promise<void>;
@@ -52,7 +66,13 @@ export function BuilderForm({ onSubmit, className }: BuilderFormProps) {
   
   // Initialize form with default values
   const defaultValues: BuilderFormData = {
-    script: '',
+  title: '',
+  duration: 10,
+  loop: {
+    enabled: true,
+    pause_seconds: 5,
+  },
+  script: '',
     voice: {
       provider: 'openai',
       voice_id: 'alloy',
@@ -117,6 +137,7 @@ export function BuilderForm({ onSubmit, className }: BuilderFormProps) {
     let progress = 0;
     const steps = 4;
     
+    if ((formValues.title?.length ?? 0) >= 3) progress += 100 / steps;
     if (formValues.script && formValues.script.length >= 10) progress += 100 / steps;
     if (formValues.voice?.voice_id) progress += 100 / steps;
     if (formValues.music?.id !== undefined) progress += 100 / steps;
@@ -271,6 +292,106 @@ export function BuilderForm({ onSubmit, className }: BuilderFormProps) {
             aria-labelledby="script-label"
           >
             <legend id="script-label" className="text-lg font-semibold">Script</legend>
+            <Controller
+              name="title"
+              control={control}
+              render={({ field }) => (
+                <div className="space-y-2">
+                  <label htmlFor="track-title" className="text-sm font-medium text-gray-700">
+                    Track Title
+                  </label>
+                  <input
+                    id="track-title"
+                    type="text"
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="e.g., Morning Focus Reset"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-transparent focus:ring-2 focus:ring-blue-500"
+                  />
+                  {errors.title && (
+                    <p className="text-sm text-red-600" role="alert">{errors.title.message}</p>
+                  )}
+                </div>
+              )}
+            />
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Controller
+                name="duration"
+                control={control}
+                render={({ field }) => (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-700">Duration</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {durationOptions.map((option) => (
+                        <label
+                          key={option}
+                          className={cn(
+                            'flex cursor-pointer flex-col items-center rounded-lg border px-3 py-2 text-sm font-medium',
+                            field.value === option
+                              ? 'border-blue-500 bg-blue-50 text-blue-900'
+                              : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
+                          )}
+                        >
+                          <input
+                            type="radio"
+                            value={option}
+                            checked={field.value === option}
+                            onChange={() => field.onChange(option)}
+                            className="sr-only"
+                          />
+                          <span>{option} min</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              />
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-700">Loop Settings</p>
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <Controller
+                    name="loop.enabled"
+                    control={control}
+                    render={({ field }) => (
+                      <label className="flex items-center justify-between text-sm">
+                        <span>Repeat script</span>
+                        <input
+                          type="checkbox"
+                          checked={field.value}
+                          onChange={(e) => field.onChange(e.target.checked)}
+                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </label>
+                    )}
+                  />
+                  <Controller
+                    name="loop.pause_seconds"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="mt-3">
+                        <label htmlFor="loop-pause" className="text-xs text-gray-500">
+                          Pause between loops: {field.value}s
+                        </label>
+                        <input
+                          id="loop-pause"
+                          type="range"
+                          min={1}
+                          max={30}
+                          step={1}
+                          value={field.value}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          className="mt-1 w-full"
+                          disabled={!watch('loop.enabled')}
+                        />
+                      </div>
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
             <Controller
               name="script"
               control={control}

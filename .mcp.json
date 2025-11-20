@@ -10,6 +10,20 @@
         "/Users/chrisschrade/Downloads",
         "/Users/chrisschrade/development"
       ]
+    },
+    "supabase-dev": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=byicqjniboevzbhbfxui",
+      "headers": {
+        "Authorization": "Bearer sbp_68d6606a20a3a8a57fdf1241a778c83f6f3b5003"
+      }
+    },
+    "supabase-prod": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp?project_ref=uykxlvsqbfnfhrgcpnvn",
+      "headers": {
+        "Authorization": "Bearer sbp_68d6606a20a3a8a57fdf1241a778c83f6f3b5003"
+      }
     }
   }
 }
