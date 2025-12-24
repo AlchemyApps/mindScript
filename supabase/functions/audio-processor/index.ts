@@ -245,14 +245,16 @@ async function generateOpenAITTS(
   outputFile: string,
   settings?: any
 ) {
-  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+  const url = Deno.env.get('OPENAI_TTS_URL') || 'https://api.openai.com/v1/audio/speech'
+  const model = Deno.env.get('OPENAI_TTS_MODEL') || 'tts-1-hd'
+  const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${openaiApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'tts-1-hd',
+      model,
       input: text,
       voice: voice,
       response_format: 'mp3',
@@ -261,7 +263,16 @@ async function generateOpenAITTS(
   })
 
   if (!response.ok) {
-    throw new Error(`OpenAI TTS failed: ${response.statusText}`)
+    const text = await response.text().catch(() => '')
+    let details = text
+    try {
+      const asJson = JSON.parse(text)
+      details = JSON.stringify(asJson)
+    } catch {
+      // text stayed as-is
+    }
+    console.error('OpenAI TTS error response', response.status, response.statusText, details)
+    throw new Error(`OpenAI TTS failed: ${response.status} ${response.statusText} ${details}`)
   }
 
   const audioData = await response.arrayBuffer()
@@ -294,7 +305,16 @@ async function generateElevenLabsTTS(
   )
 
   if (!response.ok) {
-    throw new Error(`ElevenLabs TTS failed: ${response.statusText}`)
+    const text = await response.text().catch(() => '')
+    let details = text
+    try {
+      const asJson = JSON.parse(text)
+      details = JSON.stringify(asJson)
+    } catch {
+      // leave as text
+    }
+    console.error('ElevenLabs TTS error response', response.status, response.statusText, details)
+    throw new Error(`ElevenLabs TTS failed: ${response.status} ${response.statusText} ${details}`)
   }
 
   const audioData = await response.arrayBuffer()

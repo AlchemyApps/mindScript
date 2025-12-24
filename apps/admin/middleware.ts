@@ -1,8 +1,8 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const PROTECTED_PREFIXES = ['/analytics', '/users'] // Protected routes
-const PUBLIC_ROUTES = ['/login', '/unauthorized'] // Public routes
+const PUBLIC_ROUTES = ['/login', '/unauthorized'] // Routes that don't require auth
+const DEFAULT_REDIRECT = '/analytics'
 
 export async function middleware(request: NextRequest) {
   // Create a response that we can modify
@@ -67,32 +67,58 @@ export async function middleware(request: NextRequest) {
   )
 
   // Get user session - this also refreshes the token if needed
+  const pathname = request.nextUrl.pathname
+  const isAuthRoute = pathname === '/login'
+  const isPublicRoute = PUBLIC_ROUTES.includes(pathname)
+  const isAuthApiRoute = pathname.startsWith('/api/auth')
+  const requiresAuth = !isPublicRoute && !isAuthApiRoute
+
   const { data: { user } } = await supabase.auth.getUser()
   const isAuthenticated = !!user
-  const pathname = request.nextUrl.pathname
 
-  // Check if route is protected
-  const isProtectedRoute = PROTECTED_PREFIXES.some(prefix => pathname.startsWith(prefix))
-  const isLoginPage = pathname === '/login'
-
-  // Handle unauthenticated access to protected routes
-  if (!isAuthenticated && isProtectedRoute) {
-    const redirectUrl = new URL('/login', request.url)
-    redirectUrl.searchParams.set('redirectTo', pathname)
+  const buildRedirectResponse = (url: string) => {
+    const redirectUrl = new URL(url, request.url)
     const redirectResponse = NextResponse.redirect(redirectUrl)
-    // Prevent caching of redirect responses
     redirectResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     return redirectResponse
   }
 
-  // Handle authenticated access to login page
-  if (isAuthenticated && isLoginPage) {
-    const redirectTo = request.nextUrl.searchParams.get('redirectTo') || '/analytics'
-    const redirectUrl = new URL(redirectTo, request.url)
+  // Handle unauthenticated access to protected routes
+  if (!isAuthenticated && requiresAuth) {
+    const redirectUrl = new URL('/login', request.url)
+    redirectUrl.searchParams.set('redirectTo', pathname)
     const redirectResponse = NextResponse.redirect(redirectUrl)
-    // Prevent caching of redirect responses
     redirectResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     return redirectResponse
+  }
+
+  // If not authenticated and route doesn't require auth, allow request to proceed
+  if (!isAuthenticated) {
+    return response
+  }
+
+  // Check admin role
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('role, account_status')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (profileError) {
+    console.error('Admin middleware profile lookup failed:', profileError)
+  }
+
+  const isActive = profile?.account_status ? profile.account_status === 'active' : true
+  const hasAdminRole = profile ? ['admin', 'super_admin'].includes(profile.role) : false
+  const isAdmin = !profileError && hasAdminRole && isActive
+
+  if (!isAdmin && pathname !== '/unauthorized') {
+    return buildRedirectResponse('/unauthorized')
+  }
+
+  if (isAdmin && (isAuthRoute || pathname === '/unauthorized')) {
+    const redirectTo = request.nextUrl.searchParams.get('redirectTo') || DEFAULT_REDIRECT
+    return buildRedirectResponse(redirectTo)
   }
 
   // Return response with updated cookies

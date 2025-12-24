@@ -1,306 +1,378 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { ShoppingCart, CheckCircle, XCircle, AlertCircle, DollarSign, User, TrendingUp, Clock } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  ShoppingCart,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  AlertTriangle,
+  DollarSign,
+  User,
+  RefreshCcw,
+  Filter,
+  Link2,
+} from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
+import { toast } from 'sonner'
+
+type SellerStatus = 'pending' | 'active' | 'suspended' | 'rejected'
 
 interface Seller {
   id: string
-  profile_id: string
-  accepted_at: string
-  stripe_connect_id?: string
-  status: 'pending' | 'active' | 'suspended' | 'rejected'
-  onboarding_complete: boolean
+  user_id: string
+  status: SellerStatus
+  country?: string | null
+  stripe_connect_account_id?: string | null
+  charges_enabled: boolean
+  payouts_enabled: boolean
+  onboarding_completed_at?: string | null
   created_at: string
   updated_at: string
   profile?: {
-    email: string
+    email?: string
     full_name?: string
     display_name?: string
   }
   earnings?: {
-    total: number
-    pending: number
-    paid: number
+    total_cents: number
+    pending_cents: number
+    paid_cents: number
   }
-  tracks_count?: number
+  latest_payout?: {
+    amount_cents: number
+    status: string
+    completed_at?: string | null
+  }
+  outstanding_payouts?: number
 }
+
+interface SellerMetrics {
+  total: number
+  active: number
+  pending: number
+  suspended: number
+  totalRevenue: number
+}
+
+const statusBadge: Record<
+  SellerStatus,
+  { label: string; color: string; border: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  active: { label: 'Active', color: 'text-green-700 bg-green-50', border: 'border-green-200', icon: CheckCircle2 },
+  pending: { label: 'Pending', color: 'text-yellow-700 bg-yellow-50', border: 'border-yellow-200', icon: Clock },
+  suspended: { label: 'Suspended', color: 'text-red-700 bg-red-50', border: 'border-red-200', icon: XCircle },
+  rejected: { label: 'Rejected', color: 'text-gray-700 bg-gray-50', border: 'border-gray-200', icon: XCircle },
+}
+
+const currency = (valueCents = 0, code = 'USD') =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: code,
+    minimumFractionDigits: 0,
+  }).format(valueCents / 100)
 
 export default function SellersPage() {
   const [sellers, setSellers] = useState<Seller[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedStatus, setSelectedStatus] = useState<string>('all')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [stats, setStats] = useState({
+  const [metrics, setMetrics] = useState<SellerMetrics>({
     total: 0,
     active: 0,
     pending: 0,
+    suspended: 0,
     totalRevenue: 0,
   })
+  const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | SellerStatus>('all')
+  const [capabilityFilter, setCapabilityFilter] = useState<'all' | 'charges_disabled' | 'payouts_disabled'>('all')
 
-  useEffect(() => {
-    fetchSellers()
-  }, [])
-
-  async function fetchSellers() {
-    const supabase = createClient()
-
+  const loadSellers = useCallback(async () => {
+    setLoading(true)
     try {
-      const { data, error } = await supabase
-        .from('seller_agreements')
-        .select(`
-          *,
-          profile:profiles(email, full_name, display_name)
-        `)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      // Mock earnings data for now
-      const sellersWithEarnings = (data || []).map(seller => ({
-        ...seller,
-        earnings: {
-          total: Math.floor(Math.random() * 10000),
-          pending: Math.floor(Math.random() * 1000),
-          paid: Math.floor(Math.random() * 9000),
-        },
-        tracks_count: Math.floor(Math.random() * 50),
-      }))
-
-      setSellers(sellersWithEarnings)
-
-      // Calculate stats
-      const stats = sellersWithEarnings.reduce(
-        (acc, seller) => ({
-          total: acc.total + 1,
-          active: acc.active + (seller.status === 'active' ? 1 : 0),
-          pending: acc.pending + (seller.status === 'pending' ? 1 : 0),
-          totalRevenue: acc.totalRevenue + (seller.earnings?.total || 0),
-        }),
-        { total: 0, active: 0, pending: 0, totalRevenue: 0 }
-      )
-      setStats(stats)
+      const response = await fetch('/api/sellers', { cache: 'no-store' })
+      if (!response.ok) throw new Error('Failed to load sellers')
+      const data = await response.json()
+      setSellers(data.sellers || [])
+      setMetrics(data.metrics || metrics)
     } catch (error) {
-      console.error('Error fetching sellers:', error)
+      console.error(error)
+      toast.error('Unable to fetch sellers')
     } finally {
       setLoading(false)
+      setIsRefreshing(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadSellers()
+  }, [loadSellers])
+
+  const filteredSellers = useMemo(() => {
+    return sellers.filter((seller) => {
+      const matchesStatus = statusFilter === 'all' || seller.status === statusFilter
+      const matchesCapability =
+        capabilityFilter === 'all' ||
+        (capabilityFilter === 'charges_disabled' && !seller.charges_enabled) ||
+        (capabilityFilter === 'payouts_disabled' && !seller.payouts_enabled)
+      const query = searchTerm.toLowerCase()
+      const matchesSearch =
+        !query ||
+        seller.profile?.email?.toLowerCase().includes(query) ||
+        seller.profile?.full_name?.toLowerCase().includes(query) ||
+        seller.profile?.display_name?.toLowerCase().includes(query)
+
+      return matchesStatus && matchesCapability && matchesSearch
+    })
+  }, [sellers, statusFilter, capabilityFilter, searchTerm])
+
+  const handleStatusChange = async (sellerId: string, nextStatus: SellerStatus) => {
+    try {
+      const response = await fetch(`/api/sellers/${sellerId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      if (!response.ok) throw new Error('Update failed')
+      toast.success('Seller updated')
+      loadSellers()
+    } catch (error) {
+      console.error(error)
+      toast.error('Unable to update seller')
     }
   }
 
-  const filteredSellers = sellers.filter(seller => {
-    const matchesStatus = selectedStatus === 'all' || seller.status === selectedStatus
-    const matchesSearch =
-      seller.profile?.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      seller.profile?.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      seller.profile?.display_name?.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesStatus && matchesSearch
-  })
+  const handleResendOnboarding = async (sellerId: string) => {
+    try {
+      const response = await fetch(`/api/sellers/${sellerId}/resend`, { method: 'POST' })
+      const payload = await response.json().catch(() => null)
 
-  const getStatusBadge = (status: string) => {
-    const badges = {
-      active: { icon: CheckCircle, color: 'bg-green-100 text-green-800' },
-      pending: { icon: Clock, color: 'bg-yellow-100 text-yellow-800' },
-      suspended: { icon: XCircle, color: 'bg-red-100 text-red-800' },
-      rejected: { icon: XCircle, color: 'bg-gray-100 text-gray-800' },
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to trigger resend')
+      }
+
+      if (payload?.onboardingUrl) {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(payload.onboardingUrl).catch(() => null)
+        }
+
+        toast.success('Onboarding link generated', {
+          description: 'Link copied to clipboard. Share it with the seller to continue onboarding.',
+        })
+      } else {
+        toast.success(payload?.message || 'Onboarding link sent')
+      }
+    } catch (error) {
+      console.error(error)
+      toast.error('Unable to resend onboarding', {
+        description: error instanceof Error ? error.message : undefined,
+      })
     }
-    const badge = badges[status as keyof typeof badges] || badges.pending
-    const Icon = badge.icon
-    return (
-      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${badge.color}`}>
-        <Icon className="h-3 w-3" />
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </span>
-    )
   }
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-          <ShoppingCart className="h-8 w-8" />
-          Seller Management
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Manage marketplace sellers, KYC status, and payouts
-        </p>
+    <div className="p-8 space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
+            <ShoppingCart className="h-8 w-8" />
+            Seller Management
+          </h1>
+          <p className="text-gray-600 mt-2">Review onboarding progress, payouts, and compliance</p>
+        </div>
+        <button
+          onClick={() => {
+            setIsRefreshing(true)
+            loadSellers()
+          }}
+          disabled={isRefreshing}
+          className="inline-flex items-center gap-2 rounded-lg border px-4 py-2 hover:bg-gray-50 disabled:opacity-50"
+        >
+          <RefreshCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600">Total Sellers</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</div>
-            </div>
-            <User className="h-8 w-8 text-gray-400" />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
+        <MetricCard label="Total Sellers" value={metrics.total} icon={User} />
+        <MetricCard label="Active Sellers" value={metrics.active} icon={CheckCircle2} valueClass="text-green-600" />
+        <MetricCard label="Pending Review" value={metrics.pending} icon={Clock} valueClass="text-yellow-600" />
+        <MetricCard label="Suspended" value={metrics.suspended} icon={AlertTriangle} valueClass="text-red-600" />
+        <div className="md:col-span-2 bg-white border rounded-lg p-6 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-500">Lifetime Revenue</p>
+            <p className="text-3xl font-bold text-gray-900 mt-2">{currency(metrics.totalRevenue)}</p>
+            <p className="text-xs text-gray-400 mt-1">Gross revenue attributed to published sellers.</p>
           </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600">Active Sellers</div>
-              <div className="text-3xl font-bold text-green-600 mt-2">{stats.active}</div>
-            </div>
-            <CheckCircle className="h-8 w-8 text-green-400" />
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600">Pending KYC</div>
-              <div className="text-3xl font-bold text-yellow-600 mt-2">{stats.pending}</div>
-            </div>
-            <AlertCircle className="h-8 w-8 text-yellow-400" />
-          </div>
-        </div>
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="text-sm font-medium text-gray-600">Total Revenue</div>
-              <div className="text-3xl font-bold text-gray-900 mt-2">
-                ${(stats.totalRevenue / 100).toLocaleString()}
-              </div>
-            </div>
-            <DollarSign className="h-8 w-8 text-gray-400" />
-          </div>
+          <DollarSign className="h-10 w-10 text-gray-300" />
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex flex-col md:flex-row gap-4">
-          <input
-            type="text"
-            placeholder="Search by name or email..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-
+      <div className="bg-white border rounded-lg p-4 space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row">
+          <div className="flex flex-1 items-center gap-2 rounded-lg border px-4 py-2">
+            <Filter className="h-4 w-4 text-gray-500" />
+            <input
+              type="text"
+              placeholder="Search sellers…"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              className="w-full focus:outline-none"
+            />
+          </div>
           <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as 'all' | SellerStatus)}
+            className="rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value="all">All Status</option>
+            <option value="all">All statuses</option>
             <option value="active">Active</option>
             <option value="pending">Pending</option>
             <option value="suspended">Suspended</option>
             <option value="rejected">Rejected</option>
           </select>
-
-          <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-            Export CSV
-          </button>
+          <select
+            value={capabilityFilter}
+            onChange={(event) => setCapabilityFilter(event.target.value as typeof capabilityFilter)}
+            className="rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="all">All capabilities</option>
+            <option value="charges_disabled">Charges disabled</option>
+            <option value="payouts_disabled">Payouts disabled</option>
+          </select>
         </div>
       </div>
 
-      {/* Sellers Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="space-y-4">
         {loading ? (
-          <div className="p-8 text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            <p className="mt-2 text-gray-600">Loading sellers...</p>
+          <div className="bg-white border rounded-lg p-8 text-center">
+            <div className="inline-block h-8 w-8 animate-spin rounded-full border-2 border-gray-300 border-t-transparent" />
+            <p className="mt-4 text-gray-500">Loading seller records…</p>
           </div>
         ) : filteredSellers.length === 0 ? (
-          <div className="p-8 text-center">
-            <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600">No sellers found</p>
-          </div>
+          <div className="bg-white border rounded-lg p-8 text-center text-gray-500">No sellers match the current filters.</div>
         ) : (
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Seller
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  KYC
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Tracks
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Earnings
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Joined
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {filteredSellers.map((seller) => (
-                <tr key={seller.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {seller.profile?.display_name || seller.profile?.full_name || 'Unknown'}
-                      </div>
-                      <div className="text-sm text-gray-500">{seller.profile?.email}</div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(seller.status)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      seller.onboarding_complete
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {seller.onboarding_complete ? 'Complete' : 'Incomplete'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-1">
-                      <TrendingUp className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm text-gray-900">{seller.tracks_count || 0}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        ${((seller.earnings?.total || 0) / 100).toLocaleString()}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        ${((seller.earnings?.pending || 0) / 100).toLocaleString()} pending
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {formatDistanceToNow(new Date(seller.created_at), { addSuffix: true })}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                    <div className="flex gap-2">
-                      <button className="text-indigo-600 hover:text-indigo-900">
-                        View
-                      </button>
-                      {seller.status === 'active' ? (
-                        <button className="text-red-600 hover:text-red-900">
-                          Suspend
-                        </button>
-                      ) : (
-                        <button className="text-green-600 hover:text-green-900">
-                          Activate
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          filteredSellers.map((seller) => (
+            <div key={seller.id} className="bg-white border rounded-lg p-6 space-y-4">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {seller.profile?.display_name || seller.profile?.full_name || seller.profile?.email || 'Unknown seller'}
+                  </p>
+                  <p className="text-xs text-gray-500">{seller.profile?.email}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <SellerStatus status={seller.status} />
+                    {seller.stripe_connect_account_id && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-0.5">
+                        <Link2 className="h-3 w-3" />
+                        {seller.stripe_connect_account_id}
+                      </span>
+                    )}
+                    <span>Joined {formatDistanceToNow(new Date(seller.created_at), { addSuffix: true })}</span>
+                    {seller.country && <span>{seller.country}</span>}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+                  <CapabilityPill active={seller.charges_enabled} label="Charges" />
+                  <CapabilityPill active={seller.payouts_enabled} label="Payouts" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <EarningsCard label="Total earnings" amount={seller.earnings?.total_cents} />
+                <EarningsCard label="Pending" amount={seller.earnings?.pending_cents} accent="text-yellow-600" />
+                <EarningsCard label="Paid" amount={seller.earnings?.paid_cents} accent="text-green-600" />
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <button
+                  onClick={() => handleStatusChange(seller.id, seller.status === 'suspended' ? 'active' : 'suspended')}
+                  className="rounded-lg border px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  {seller.status === 'suspended' ? 'Unsuspend seller' : 'Suspend seller'}
+                </button>
+                {seller.status === 'pending' && (
+                  <button
+                    onClick={() => handleStatusChange(seller.id, 'active')}
+                    className="rounded-lg border px-4 py-2 text-sm text-green-700 hover:bg-green-50"
+                  >
+                    Approve seller
+                  </button>
+                )}
+                {seller.status === 'pending' && (
+                  <button
+                    onClick={() => handleResendOnboarding(seller.id)}
+                    className="rounded-lg border px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                  >
+                    Resend onboarding link
+                  </button>
+                )}
+              </div>
+            </div>
+          ))
         )}
       </div>
+    </div>
+  )
+}
+
+function MetricCard({
+  label,
+  value,
+  icon: Icon,
+  valueClass,
+}: {
+  label: string
+  value: number
+  icon: React.ComponentType<{ className?: string }>
+  valueClass?: string
+}) {
+  return (
+    <div className="bg-white border rounded-lg p-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-500">{label}</p>
+          <p className={`text-3xl font-bold mt-2 ${valueClass || 'text-gray-900'}`}>{value}</p>
+        </div>
+        <Icon className="h-8 w-8 text-gray-300" />
+      </div>
+    </div>
+  )
+}
+
+function SellerStatus({ status }: { status: SellerStatus }) {
+  const config = statusBadge[status]
+  const Icon = config.icon
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${config.color} ${config.border}`}>
+      <Icon className="h-3 w-3" />
+      {config.label}
+    </span>
+  )
+}
+
+function CapabilityPill({ active, label }: { active: boolean; label: string }) {
+  if (active) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+        <CheckCircle2 className="h-3 w-3" />
+        {label} on
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs text-red-700">
+      <AlertTriangle className="h-3 w-3" />
+      {label} off
+    </span>
+  )
+}
+
+function EarningsCard({ label, amount = 0, accent }: { label: string; amount?: number; accent?: string }) {
+  return (
+    <div className="rounded-lg border bg-gray-50 p-3 text-center">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className={`text-lg font-semibold ${accent || 'text-gray-900'}`}>{currency(amount)}</p>
     </div>
   )
 }

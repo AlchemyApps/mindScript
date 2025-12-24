@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { BuilderForm } from './components/BuilderForm';
+import { BuilderForm, type BuilderFormData } from './components/BuilderForm';
 import { useAuth } from '@mindscript/auth/hooks';
 import Link from 'next/link';
 
@@ -57,16 +57,18 @@ export default function BuilderPage() {
     }
   };
 
-  const calculateTotal = (formData: any) => {
+  const calculateTotal = (formData: BuilderFormData) => {
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
-    if (formData.backgroundMusic && formData.backgroundMusic.id !== 'none') {
-      total += formData.backgroundMusic.price || 0;
+    // Note: BuilderForm sends 'music' not 'backgroundMusic'
+    if (formData.music?.id && formData.music.id !== 'none') {
+      // Add-on prices are hardcoded for now since form doesn't send them
+      total += 0.99; // Background music add-on price
     }
     if (formData.solfeggio?.enabled) {
-      total += formData.solfeggio.price || 0;
+      total += 0.49; // Solfeggio add-on price
     }
     if (formData.binaural?.enabled) {
-      total += formData.binaural.price || 0;
+      total += 0.49; // Binaural add-on price
     }
     return total;
   };
@@ -83,7 +85,7 @@ export default function BuilderPage() {
     return null;
   }
 
-  const handleSubmit = async (data: any) => {
+  const handleSubmit = async (data: BuilderFormData) => {
     setIsCreating(true);
 
     try {
@@ -93,7 +95,14 @@ export default function BuilderPage() {
       // Prepare checkout data
       const checkoutData = {
         userId: user.id,
-        builderState: data,
+        builderState: {
+          ...data,
+          duration: data.duration || 10,
+          loop: {
+            enabled: data.loop?.enabled ?? true,
+            pause_seconds: data.loop?.pause_seconds ?? 5,
+          },
+        },
         successUrl: `${window.location.origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
         cancelUrl: window.location.href,
         priceAmount: Math.round(total * 100), // Convert to cents

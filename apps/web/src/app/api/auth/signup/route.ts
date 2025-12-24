@@ -7,7 +7,6 @@ const SignupSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   fullName: z.string().optional(),
-  trackConfig: z.any().optional(), // Track configuration from guest builder
 });
 
 export async function POST(request: NextRequest) {
@@ -24,30 +23,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { email, password, fullName, trackConfig } = validation.data;
+    const { email, password, fullName } = validation.data;
     console.log('[API] Attempting signup for:', email);
 
     // Create Supabase client
     const supabase = await serverSupabase();
-
-    // Store track config temporarily if provided
-    let tempTrackId: string | undefined;
-    if (trackConfig) {
-      tempTrackId = crypto.randomUUID();
-      const { error: trackError } = await supabase
-        .from('pending_tracks')
-        .insert({
-          id: tempTrackId,
-          user_email: email.toLowerCase(),
-          track_config: trackConfig,
-          created_at: new Date().toISOString()
-        });
-
-      if (trackError) {
-        console.error('[API] Failed to store pending track:', trackError);
-        // Continue anyway - not critical
-      }
-    }
 
     // Attempt signup
     const { data, error } = await supabase.auth.signUp({
@@ -56,7 +36,6 @@ export async function POST(request: NextRequest) {
       options: {
         data: {
           full_name: fullName,
-          temp_track_id: tempTrackId,
         },
       },
     });
@@ -96,9 +75,6 @@ export async function POST(request: NextRequest) {
     if (!data.session) {
       const url = new URL("/auth/verify", siteUrl);
       url.searchParams.set("email", email);
-      if (tempTrackId) {
-        url.searchParams.set("track_id", tempTrackId);
-      }
       console.log('[SIGNUP] Email verification required, redirecting to:', url.toString());
 
       // Use 303 redirect to commit cookies properly
@@ -106,12 +82,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Session created - prepare redirect URL
-    const destinationPath = tempTrackId ? "/api/checkout/create" : "/library";
-    const url = new URL(destinationPath, siteUrl);
-
-    if (tempTrackId) {
-      url.searchParams.set("track_id", tempTrackId);
-    }
+    const url = new URL("/library", siteUrl);
 
     console.log('[SIGNUP] Session created, returning redirect URL:', url.toString());
 

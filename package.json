@@ -25,7 +25,8 @@
     "seed": "node scripts/seed-data.js dev",
     "seed:prod": "node scripts/seed-data.js prod",
     "migrate:dev": "node scripts/apply-migrations-api.js",
-    "setup": "npm install && npm run check:env"
+    "setup": "npm install && npm run check:env",
+    "stripe:listen": "stripe listen --events checkout.session.completed,payment_intent.succeeded,payment_intent.payment_failed --forward-to http://localhost:3001/api/webhooks/stripe"
   },
   "dependencies": {
     "resend": "^3.2.0"

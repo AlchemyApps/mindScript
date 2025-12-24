@@ -52,7 +52,11 @@ export async function startTrackBuild({
         output_config: {
           format: 'mp3',
           quality: 'standard',
-          is_public: false
+          is_public: false,
+          loop: trackConfig.loop || {
+            enabled: true,
+            pause_seconds: 5,
+          },
         },
         status: 'draft', // Start as draft, will be updated when rendering completes
         created_at: new Date().toISOString()
@@ -72,12 +76,13 @@ export async function startTrackBuild({
         track_id: track.id,
         user_id: userId,
         status: 'pending',
-        job_data: trackConfig,
+        payload: trackConfig,
         created_at: new Date().toISOString()
       });
 
     if (jobError) {
       console.error('[BUILD] Failed to enqueue job:', jobError);
+      throw new Error(`Failed to enqueue audio job: ${jobError.message}`);
     }
 
     // Grant track access

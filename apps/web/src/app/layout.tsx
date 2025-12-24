@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Sora } from "next/font/google";
 import { Providers } from "../providers";
+import { MiniPlayer } from "@/components/MiniPlayer";
 import "../styles/globals.css";
 
 const inter = Inter({
@@ -41,6 +42,7 @@ export default function RootLayout({
       <body className="min-h-screen bg-background font-sans antialiased">
         <Providers>
           {children}
+          <MiniPlayer />
         </Providers>
       </body>
     </html>

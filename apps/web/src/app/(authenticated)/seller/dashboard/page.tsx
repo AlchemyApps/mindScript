@@ -14,6 +14,7 @@ import {
   Download,
 } from "lucide-react";
 import { EarningsSummary } from "@mindscript/schemas";
+import { useAuth } from "@mindscript/auth/hooks";
 
 interface DashboardStats {
   totalSales: number;
@@ -32,6 +33,7 @@ interface RecentSale {
 
 export default function SellerDashboardPage() {
   const router = useRouter();
+  const { profile: authProfile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [earnings, setEarnings] = useState<EarningsSummary | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -148,6 +150,9 @@ export default function SellerDashboardPage() {
     }
   };
 
+  const sellerUsername = authProfile?.profile?.username || "";
+  const publicProfileUrl = sellerUsername ? `https://mindscript.app/u/${sellerUsername}` : null;
+
   const formatCurrency = (cents: number) => {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
@@ -178,6 +183,44 @@ export default function SellerDashboardPage() {
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Seller Dashboard</h1>
         <p className="text-gray-600 mt-2">Track your sales and earnings</p>
+      </div>
+
+      <div className="mb-8 rounded-lg border bg-white p-6 shadow-sm flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm uppercase tracking-wide text-indigo-600 font-semibold">Public Profile</p>
+          {publicProfileUrl ? (
+            <div className="mt-2 text-gray-800">
+              <a href={publicProfileUrl} target="_blank" rel="noopener noreferrer" className="text-lg font-medium text-indigo-600 hover:text-indigo-800">
+                {publicProfileUrl}
+              </a>
+              <p className="text-sm text-gray-500 mt-1">
+                This is the page buyers see. Customize your story, slug, and business info.
+              </p>
+            </div>
+          ) : (
+            <p className="mt-2 text-gray-700">
+              Choose a username to generate your public profile URL.
+            </p>
+          )}
+        </div>
+        <div className="flex gap-3">
+          {publicProfileUrl && (
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(publicProfileUrl)}
+              className="rounded-lg border border-indigo-200 px-4 py-2 text-sm font-medium text-indigo-600 hover:bg-indigo-50"
+            >
+              Copy Link
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push("/seller/profile")}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          >
+            Customize Profile
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}

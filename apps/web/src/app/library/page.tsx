@@ -128,7 +128,7 @@ export default function LibraryPage() {
       if (!response.ok) {
         if (response.status === 401) {
           router.push("/auth/login?redirectTo=/library");
-          return;
+          return null;
         }
         throw new Error("Failed to fetch tracks");
       }
@@ -137,8 +137,10 @@ export default function LibraryPage() {
       setTracks(data.tracks);
       setTotalPages(data.pagination.totalPages);
       setTotalTracks(data.pagination.total);
+      return data.tracks as Track[];
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -270,8 +272,11 @@ export default function LibraryPage() {
 
     const pollForTrack = async () => {
       try {
+        const latestTracks = await fetchTracks();
+        if (!latestTracks) return;
+
         // Check if tracks list has a new track (any status)
-        const newTrack = tracks.find(t =>
+        const newTrack = latestTracks.find(t =>
           t.status === 'rendering' ||
           t.status === 'draft' ||
           t.status === 'published'
@@ -327,7 +332,7 @@ export default function LibraryPage() {
       clearTimeout(initialTimeout);
       clearInterval(pollInterval);
     };
-  }, [isNewTrack, sessionId, tracks, newTrackStatus]);
+  }, [isNewTrack, sessionId, fetchTracks, newTrackStatus]);
 
   // Set up Supabase Realtime subscription for rendering tracks
   useEffect(() => {
@@ -411,6 +416,35 @@ export default function LibraryPage() {
       playTrackAtIndex(actualIndex);
     }
   }, [tracks, currentTrack, setQueue, playTrackAtIndex, togglePlayPause]);
+
+  const renderRenderProgress = (track: Track) => {
+    if (track.status !== "rendering") {
+      return null;
+    }
+
+    const progress = Math.max(
+      0,
+      Math.min(100, track.renderStatus?.progress ?? 0)
+    );
+    const stage = track.renderStatus?.status
+      ? track.renderStatus.status.replace(/_/g, " ")
+      : "Preparing render";
+
+    return (
+      <div className="mt-3">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>{stage}</span>
+          <span>{progress}%</span>
+        </div>
+        <div className="mt-1 h-2 rounded-full bg-gray-200">
+          <div
+            className="h-2 rounded-full bg-blue-500 transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+    );
+  };
   
   // Handle track download
   const handleDownloadTrack = useCallback(async (track: Track) => {
@@ -516,6 +550,7 @@ export default function LibraryPage() {
                   ))}
                 </div>
               )}
+              {renderRenderProgress(track)}
             </div>
             
             {/* Actions */}
@@ -650,6 +685,7 @@ export default function LibraryPage() {
               </Button>
             )}
           </div>
+          {renderRenderProgress(track)}
         </CardContent>
       </Card>
     );

@@ -52,6 +52,7 @@ export async function GET(req: NextRequest) {
     const isActive = searchParams.get('is_active')
     const isPlatform = searchParams.get('is_platform')
     const search = searchParams.get('search')
+    const tag = searchParams.get('tag')
     const page = parseInt(searchParams.get('page') || '1')
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = (page - 1) * limit
@@ -76,6 +77,9 @@ export async function GET(req: NextRequest) {
     if (mood) query = query.eq('mood', mood)
     if (isActive !== null) query = query.eq('is_active', isActive === 'true')
     if (isPlatform !== null) query = query.eq('is_platform_asset', isPlatform === 'true')
+    if (tag) {
+      query = query.contains('tags', [tag])
+    }
 
     if (search) {
       query = query.or(`title.ilike.%${search}%,artist.ilike.%${search}%`)

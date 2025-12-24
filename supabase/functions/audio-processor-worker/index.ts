@@ -20,16 +20,16 @@ serve(async (req) => {
     console.log('Audio processor worker started')
 
     // Check for pending jobs
-    const { data: pendingJobs, error: countError } = await supabase
+    const { data: pendingJobs, error: countError, count } = await supabase
       .from('audio_job_queue')
-      .select('id', { count: 'exact', head: true })
+      .select('id', { count: 'exact' })
       .eq('status', 'pending')
 
     if (countError) {
       throw countError
     }
 
-    const pendingCount = pendingJobs?.length || 0
+    const pendingCount = count || 0
     console.log(`Found ${pendingCount} pending jobs`)
 
     // Process up to 5 jobs in this invocation

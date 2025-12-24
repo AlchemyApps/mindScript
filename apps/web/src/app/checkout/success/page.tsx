@@ -10,7 +10,7 @@ export default function CheckoutSuccessPage() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("cs"); // Checkout session ID from Stripe
   const [loading, setLoading] = useState(true);
-  const [trackCreationStatus, setTrackCreationStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [pollStatus, setPollStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
 
   // Trigger track creation immediately (works in both dev and production)
@@ -22,7 +22,7 @@ export default function CheckoutSuccessPage() {
 
     // Call local trigger endpoint to ensure track creation
     // This is idempotent - if webhook already processed it, this will just return success
-    setTrackCreationStatus('processing');
+    setPollStatus('processing');
 
     fetch('/api/webhooks/stripe/local-trigger', {
       method: 'POST',
@@ -31,29 +31,70 @@ export default function CheckoutSuccessPage() {
     })
       .then(res => res.json())
       .then(data => {
-        if (data.success) {
-          console.log('[SUCCESS-PAGE] Track creation initiated:', data);
-          setTrackCreationStatus('success');
-
-          // Redirect to library after 2 seconds
-          setTimeout(() => {
-            window.location.href = `/library?new=true&session=${sessionId}`;
-          }, 2000);
-        } else {
+        if (!data.success) {
           console.error('[SUCCESS-PAGE] Track creation failed:', data);
-          setTrackCreationStatus('error');
+          setPollStatus('error');
           setError(data.error || 'Failed to create track');
+          return;
         }
+        console.log('[SUCCESS-PAGE] Track creation initiated:', data);
+        setPollStatus('processing');
+        pollForTrackCompletion();
       })
       .catch(err => {
         console.error('[SUCCESS-PAGE] Error calling local trigger:', err);
-        setTrackCreationStatus('error');
+        setPollStatus('error');
         setError(err.message || 'Network error');
       })
       .finally(() => {
         setLoading(false);
       });
   }, [sessionId]);
+
+  const pollForTrackCompletion = () => {
+    if (!sessionId) return;
+
+    let pollCount = 0;
+    const maxPolls = 60; // ~5 minutes
+
+    const poll = async () => {
+      try {
+        const response = await fetch('/api/library/tracks?status=all&ownership=owned&includeRenderStatus=true');
+        if (!response.ok) {
+          throw new Error('Failed to fetch tracks');
+        }
+        const data = await response.json();
+        const track = (data.tracks || []).find((t: any) => t.renderStatus && t.renderStatus.id);
+
+        if (track && (track.audio_url || track.status === 'published')) {
+          setPollStatus('success');
+          setTimeout(() => {
+            window.location.href = `/library?new=true&session=${sessionId}`;
+          }, 1500);
+          return;
+        }
+
+        pollCount += 1;
+        if (pollCount < maxPolls) {
+          setTimeout(poll, 5000);
+        } else {
+          setPollStatus('error');
+          setError('Track is taking longer than expected. Check your library in a few minutes.');
+        }
+      } catch (err) {
+        console.error('[SUCCESS-PAGE] Polling error:', err);
+        pollCount += 1;
+        if (pollCount < maxPolls) {
+          setTimeout(poll, 5000);
+        } else {
+          setPollStatus('error');
+          setError('Track is taking longer than expected. Visit your library in a few minutes.');
+        }
+      }
+    };
+
+    poll();
+  };
 
   if (loading) {
     return (
@@ -71,74 +112,86 @@ export default function CheckoutSuccessPage() {
     <div className="min-h-screen bg-gradient-to-b from-white to-indigo-50 flex items-center justify-center p-4">
       <Card className="max-w-md w-full p-8">
         <div className="text-center">
-          {/* Success Icon */}
-          <div className="mb-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full">
-              <CheckCircle className="h-10 w-10 text-green-600" />
-            </div>
-          </div>
-
-          {/* Success Message */}
-          <h1 className="text-2xl font-bold text-gray-900 mb-3">
-            Payment Successful!
-          </h1>
-          <p className="text-gray-600 mb-6">
-            Thank you for your purchase. Your custom audio track is being created and will be ready in 2-5 minutes.
-          </p>
-
-          {/* Error Message (if track creation failed) */}
-          {trackCreationStatus === 'error' && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <p className="text-sm text-red-800">
-                <strong>Track Creation Error:</strong> {error || 'An error occurred while creating your track.'}
+          {pollStatus === 'success' ? (
+            <>
+              <div className="mb-6">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 rounded-full">
+                  <CheckCircle className="h-10 w-10 text-green-600" />
+                </div>
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-3">
+                Your track is ready!
+              </h1>
+              <p className="text-gray-600">
+                Redirecting you to the library...
               </p>
-              <p className="text-xs text-red-600 mt-2">
-                Your payment was successful, but we couldn't start building your track. Please contact support.
+            </>
+          ) : (
+            <>
+              <div className="mb-6">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full">
+                  <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+                </div>
+              </div>
+
+              <h1 className="text-2xl font-bold text-gray-900 mb-3">
+                Payment Successful!
+              </h1>
+              <p className="text-gray-600 mb-6">
+                Your custom audio track is being rendered. This usually takes 2-5 minutes. We'll redirect you once it's ready.
               </p>
-            </div>
-          )}
 
-          {/* What Happens Next */}
-          <div className="bg-blue-50 rounded-lg p-4 mb-6 text-left">
-            <h3 className="font-semibold text-blue-900 mb-2">What happens next?</h3>
-            <ul className="text-sm text-blue-800 space-y-2">
-              <li className="flex items-start">
-                <span className="mr-2">•</span>
-                <span>Your track is being rendered with your selected voice and audio layers</span>
-              </li>
-              <li className="flex items-start">
-                <span className="mr-2">•</span>
-                <span>You'll receive an email when your track is ready</span>
-              </li>
-              <li className="flex items-start">
-                <span className="mr-2">•</span>
-                <span>You can download and listen to your track from your library</span>
-              </li>
-            </ul>
-          </div>
+              {pollStatus === 'error' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                  <p className="text-sm text-red-800">
+                    <strong>Render Delay:</strong> {error || 'Your track is taking longer than expected.'}
+                  </p>
+                  <p className="text-xs text-red-600 mt-2">
+                    We’ll keep building it in the background. You can check your library manually if the redirect doesn’t happen.
+                  </p>
+                </div>
+              )}
 
-          {/* Actions */}
-          <div className="space-y-3">
-            <Link href="/library" className="block">
-              <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
-                <Music className="h-4 w-4 mr-2" />
-                Go to My Library
-              </Button>
-            </Link>
-            <Link href="/builder" className="block">
-              <Button variant="outline" className="w-full">
-                Create Another Track
-              </Button>
-            </Link>
-          </div>
+              <div className="bg-blue-50 rounded-lg p-4 mb-6 text-left">
+                <h3 className="font-semibold text-blue-900 mb-2">What happens next?</h3>
+                <ul className="text-sm text-blue-800 space-y-2">
+                  <li className="flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>We’re rendering each layer (voice, music, tones) with your settings</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>We’ll email you when the track is ready</span>
+                  </li>
+                  <li className="flex items-start">
+                    <span className="mr-2">•</span>
+                    <span>You can monitor progress from your library</span>
+                  </li>
+                </ul>
+              </div>
 
-          {/* Order Reference */}
-          {sessionId && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <p className="text-xs text-gray-500">
-                Order reference: {sessionId.slice(0, 20)}...
-              </p>
-            </div>
+              <div className="space-y-3">
+                <Link href="/library" className="block">
+                  <Button className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                    <Music className="h-4 w-4 mr-2" />
+                    Go to My Library
+                  </Button>
+                </Link>
+                <Link href="/builder" className="block">
+                  <Button variant="outline" className="w-full">
+                    Create Another Track
+                  </Button>
+                </Link>
+              </div>
+
+              {sessionId && (
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <p className="text-xs text-gray-500">
+                    Order reference: {sessionId.slice(0, 20)}...
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </div>
       </Card>
