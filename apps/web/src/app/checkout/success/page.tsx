@@ -8,7 +8,7 @@ import { CheckCircle, Music, Loader2 } from "lucide-react";
 
 export default function CheckoutSuccessPage() {
   const searchParams = useSearchParams();
-  const sessionId = searchParams.get("cs"); // Checkout session ID from Stripe
+  const sessionId = searchParams.get("session_id") || searchParams.get("cs"); // Stripe sends session_id
   const [loading, setLoading] = useState(true);
   const [pollStatus, setPollStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);

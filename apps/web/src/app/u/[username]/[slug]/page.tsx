@@ -249,6 +249,7 @@ function AudioPlayer({ track, previewUrl }: { track: any; previewUrl?: string | 
             <audio
               controls
               preload="none"
+              crossOrigin="anonymous"
               src={previewUrl}
               className="w-full"
             >

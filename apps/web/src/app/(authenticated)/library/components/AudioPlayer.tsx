@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@mindscript/ui';
 import { usePlayerStore } from '@/store/playerStore';
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils';
 
 type AudioPlayerMode = 'mini' | 'full';
@@ -52,7 +53,7 @@ export function AudioPlayer({ mode = 'full', onExpand }: AudioPlayerProps) {
     setVolume,
     isMuted,
     toggleMute,
-  } = usePlayerStore(state => ({
+  } = usePlayerStore(useShallow(state => ({
     currentTrack: state.currentTrack,
     isPlaying: state.isPlaying,
     playNext: state.playNext,
@@ -70,7 +71,7 @@ export function AudioPlayer({ mode = 'full', onExpand }: AudioPlayerProps) {
     setVolume: state.setVolume,
     isMuted: state.isMuted,
     toggleMute: state.toggleMute,
-  }));
+  })));
 
   useEffect(() => {
     if (!audioRef.current) return;
@@ -243,6 +244,7 @@ export function AudioPlayer({ mode = 'full', onExpand }: AudioPlayerProps) {
         <audio
           ref={audioRef}
           hidden
+          crossOrigin="anonymous"
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={playNext}
@@ -296,6 +298,7 @@ export function AudioPlayer({ mode = 'full', onExpand }: AudioPlayerProps) {
       <audio
         ref={audioRef}
         hidden
+        crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
         onEnded={playNext}

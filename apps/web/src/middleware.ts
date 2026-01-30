@@ -53,9 +53,11 @@ const securityHeaders = {
   ].join(', '),
   
   // Cross-Origin policies
+  // Note: Using 'credentialless' for COEP to allow cross-origin audio from Supabase Storage
+  // while maintaining isolation. 'require-corp' is too strict for signed storage URLs.
   'Cross-Origin-Opener-Policy': 'same-origin',
   'Cross-Origin-Resource-Policy': 'same-origin',
-  'Cross-Origin-Embedder-Policy': 'require-corp',
+  'Cross-Origin-Embedder-Policy': 'credentialless',
   
   // DNS Prefetch Control
   'X-DNS-Prefetch-Control': 'on',

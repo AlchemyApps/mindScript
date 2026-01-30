@@ -1,0 +1,22 @@
+{
+  "name": "mindscript-audio-worker",
+  "version": "1.0.0",
+  "description": "MindScript Audio Processing Worker with FFmpeg",
+  "main": "worker.js",
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "start": "node worker.js",
+    "dev": "node --watch worker.js",
+    "test:ffmpeg": "node -e \"const { execSync } = require('child_process'); console.log(execSync('ffmpeg -version').toString().split('\\n')[0]);\""
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "fluent-ffmpeg": "^2.1.2",
+    "openai": "^4.20.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1"
+  }
+}
