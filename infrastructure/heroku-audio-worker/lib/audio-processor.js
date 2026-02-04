@@ -23,7 +23,10 @@ const {
   applyFade,
   getDuration,
   convertFormat,
+  loopVoiceTrack,
+  prepareBackgroundMusic,
   DEFAULT_GAINS,
+  BINAURAL_BANDS,
 } = require('./ffmpeg-utils');
 
 const { synthesize } = require('./tts-client');
@@ -68,11 +71,50 @@ async function processAudioJob(job) {
   const payload = job.payload;
 
   console.log(`\n[Job ${jobId}] Starting processing for track ${trackId}`);
-  console.log(`[Job ${jobId}] Payload:`, JSON.stringify(payload, null, 2));
+  console.log(`[Job ${jobId}] Raw payload:`, JSON.stringify(payload, null, 2));
+
+  // Detailed config logging for debugging variable flow
+  console.log(`[Job ${jobId}] Parsed config:`, {
+    hasScript: !!(payload.script && payload.script.length > 0),
+    scriptLength: payload.script?.length || 0,
+    voice: {
+      provider: payload.voice?.provider,
+      id: payload.voice?.id || payload.voice?.voice_id,
+    },
+    durationMin: payload.durationMin ?? payload.duration,
+    pauseSec: payload.pauseSec ?? payload.loop?.pause_seconds,
+    loopMode: payload.loopMode ?? payload.loop?.enabled,
+    backgroundMusic: payload.backgroundMusic ? {
+      id: payload.backgroundMusic.id,
+      hasUrl: !!payload.backgroundMusic.url,
+    } : null,
+    solfeggio: payload.solfeggio ? {
+      enabled: payload.solfeggio.enabled,
+      hz: payload.solfeggio.hz || payload.solfeggio.frequency,
+      volumeDb: payload.solfeggio.volume_db,
+    } : null,
+    binaural: payload.binaural ? {
+      enabled: payload.binaural.enabled,
+      band: payload.binaural.band,
+      beatHz: payload.binaural.beatHz,
+      carrierHz: payload.binaural.carrierHz,
+      volumeDb: payload.binaural.volume_db,
+    } : null,
+    gains: {
+      voiceDb: payload.gains?.voiceDb,
+      musicDb: payload.gains?.musicDb,
+      solfeggioDb: payload.gains?.solfeggioDb,
+      binauralDb: payload.gains?.binauralDb,
+    },
+  });
 
   // Create temp directory for this job
   const tempDir = createTempDir(jobId);
   console.log(`[Job ${jobId}] Temp directory: ${tempDir}`);
+
+  // Calculate target duration (used by all layers)
+  const durationSec = (payload.durationMin || payload.duration || 5) * 60;
+  console.log(`[Job ${jobId}] Target duration: ${durationSec}s (${durationSec / 60} minutes)`);
 
   try {
     // Stage 1: Generate TTS voice (20%)
@@ -81,7 +123,7 @@ async function processAudioJob(job) {
     let voicePath = null;
     if (payload.script && payload.voice) {
       console.log(`[Job ${jobId}] Generating TTS...`);
-      voicePath = path.join(tempDir, 'voice.mp3');
+      const voiceRawPath = path.join(tempDir, 'voice_raw.mp3');
 
       await synthesize(payload.script, {
         provider: payload.voice.provider || 'openai',
@@ -89,24 +131,51 @@ async function processAudioJob(job) {
         model: payload.voice.model || 'tts-1',
         speed: payload.voice.speed || 1.0,
         voiceId: payload.voice.id, // For ElevenLabs
-      }, voicePath);
+      }, voiceRawPath);
 
-      console.log(`[Job ${jobId}] TTS complete: ${voicePath}`);
+      console.log(`[Job ${jobId}] TTS complete: ${voiceRawPath}`);
+
+      // Loop voice to fill target duration with pauses between repetitions
+      // PRD: "Repeat base script; pause 1–30s between repetitions"
+      const pauseSec = payload.pauseSec ?? payload.loop?.pause_seconds ?? 5;
+      voicePath = path.join(tempDir, 'voice.mp3');
+
+      await loopVoiceTrack({
+        voicePath: voiceRawPath,
+        targetDurationSec: durationSec,
+        pauseSec,
+        outputPath: voicePath,
+        tempDir,
+      });
+
+      console.log(`[Job ${jobId}] Voice looped to ${durationSec}s with ${pauseSec}s pauses`);
     }
     await updateJobProgress(jobId, 20, 'Voice generated');
 
-    // Stage 2: Download background music (30%)
+    // Stage 2: Download and prepare background music (30%)
     await updateJobProgress(jobId, 25, 'Preparing background music...');
 
     let musicPath = null;
     if (payload.backgroundMusic?.url) {
       console.log(`[Job ${jobId}] Downloading background music...`);
-      musicPath = path.join(tempDir, 'music.mp3');
+      const musicRawPath = path.join(tempDir, 'music_raw.mp3');
 
-      const downloaded = await downloadBackgroundMusic(payload.backgroundMusic.url, musicPath);
+      const downloaded = await downloadBackgroundMusic(payload.backgroundMusic.url, musicRawPath);
       if (!downloaded) {
         console.warn(`[Job ${jobId}] Failed to download music, continuing without it`);
-        musicPath = null;
+      } else {
+        // Prepare music: loop/trim to match target duration with fades
+        musicPath = path.join(tempDir, 'music.mp3');
+
+        await prepareBackgroundMusic({
+          inputPath: musicRawPath,
+          targetDurationSec: durationSec,
+          outputPath: musicPath,
+          fadeInSec: 1,
+          fadeOutSec: 1.5,
+        });
+
+        console.log(`[Job ${jobId}] Background music prepared for ${durationSec}s duration`);
       }
     }
     await updateJobProgress(jobId, 30, 'Background music ready');
@@ -115,8 +184,6 @@ async function processAudioJob(job) {
     await updateJobProgress(jobId, 35, 'Generating Solfeggio tone...');
 
     let solfeggioPath = null;
-    const durationSec = (payload.durationMin || 5) * 60;
-
     if (payload.solfeggio?.enabled && payload.solfeggio?.hz) {
       console.log(`[Job ${jobId}] Generating Solfeggio ${payload.solfeggio.hz}Hz...`);
       solfeggioPath = path.join(tempDir, 'solfeggio.mp3');
@@ -137,12 +204,28 @@ async function processAudioJob(job) {
 
     let binauralPath = null;
     if (payload.binaural?.enabled) {
-      console.log(`[Job ${jobId}] Generating binaural beat ${payload.binaural.beatHz}Hz...`);
+      // Convert band name to beat frequency if needed
+      let carrierHz = payload.binaural.carrierHz || 200;
+      let beatHz = payload.binaural.beatHz;
+
+      // If beatHz not provided but band name is, look up from BINAURAL_BANDS
+      if (!beatHz && payload.binaural.band) {
+        const bandInfo = BINAURAL_BANDS[payload.binaural.band];
+        if (bandInfo) {
+          beatHz = bandInfo.defaultHz;
+          console.log(`[Job ${jobId}] Converted band "${payload.binaural.band}" to beatHz=${beatHz}`);
+        } else {
+          console.warn(`[Job ${jobId}] Unknown binaural band "${payload.binaural.band}", using default 10Hz`);
+        }
+      }
+      beatHz = beatHz || 10; // Final fallback
+
+      console.log(`[Job ${jobId}] Generating binaural beat: carrier=${carrierHz}Hz, beat=${beatHz}Hz`);
       binauralPath = path.join(tempDir, 'binaural.mp3');
 
       await generateBinaural({
-        carrierHz: payload.binaural.carrierHz || 200,
-        beatHz: payload.binaural.beatHz || 10,
+        carrierHz,
+        beatHz,
         durationSec,
         outputPath: binauralPath,
         gainDb: payload.gains?.binauralDb || DEFAULT_GAINS.BINAURAL,

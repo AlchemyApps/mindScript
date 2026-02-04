@@ -4,12 +4,113 @@
  *
  * Enhancement: Solfeggio tones and binaural beats are embedded in a subtle carrier layer
  * (pink noise by default) for warmer, more natural sound instead of raw clinical sine waves.
+ *
+ * Note: Sine wave generation uses raw PCM instead of lavfi for broader FFmpeg compatibility.
  */
 
 const ffmpeg = require('fluent-ffmpeg');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+/**
+ * Generate a sine wave as raw PCM data and save to file
+ * This avoids the need for lavfi which may not be available in all FFmpeg builds
+ *
+ * @param {number} frequency - Frequency in Hz
+ * @param {number} durationSec - Duration in seconds
+ * @param {number} sampleRate - Sample rate (default 44100)
+ * @param {number} amplitude - Amplitude 0-1 (default 0.8)
+ * @returns {Buffer} - Raw PCM buffer (16-bit signed, mono)
+ */
+function generateSineWaveBuffer(frequency, durationSec, sampleRate = 44100, amplitude = 0.8) {
+  const numSamples = Math.floor(sampleRate * durationSec);
+  const buffer = Buffer.alloc(numSamples * 2); // 16-bit = 2 bytes per sample
+
+  for (let i = 0; i < numSamples; i++) {
+    const sample = Math.sin(2 * Math.PI * frequency * i / sampleRate) * amplitude;
+    const intSample = Math.round(sample * 32767); // Convert to 16-bit signed
+    buffer.writeInt16LE(intSample, i * 2);
+  }
+
+  return buffer;
+}
+
+/**
+ * Generate stereo sine wave with different L/R frequencies (for binaural beats)
+ * @param {number} leftFreq - Left channel frequency in Hz
+ * @param {number} rightFreq - Right channel frequency in Hz
+ * @param {number} durationSec - Duration in seconds
+ * @param {number} sampleRate - Sample rate (default 44100)
+ * @param {number} amplitude - Amplitude 0-1 (default 0.8)
+ * @returns {Buffer} - Raw PCM buffer (16-bit signed, interleaved stereo)
+ */
+function generateBinauralBuffer(leftFreq, rightFreq, durationSec, sampleRate = 44100, amplitude = 0.8) {
+  const numSamples = Math.floor(sampleRate * durationSec);
+  const buffer = Buffer.alloc(numSamples * 4); // 16-bit stereo = 4 bytes per sample pair
+
+  for (let i = 0; i < numSamples; i++) {
+    const leftSample = Math.sin(2 * Math.PI * leftFreq * i / sampleRate) * amplitude;
+    const rightSample = Math.sin(2 * Math.PI * rightFreq * i / sampleRate) * amplitude;
+
+    const leftInt = Math.round(leftSample * 32767);
+    const rightInt = Math.round(rightSample * 32767);
+
+    buffer.writeInt16LE(leftInt, i * 4);
+    buffer.writeInt16LE(rightInt, i * 4 + 2);
+  }
+
+  return buffer;
+}
+
+/**
+ * Convert raw PCM buffer to MP3 using FFmpeg
+ * @param {Buffer} pcmBuffer - Raw PCM data
+ * @param {string} outputPath - Output MP3 path
+ * @param {number} channels - 1 for mono, 2 for stereo
+ * @param {number} sampleRate - Sample rate
+ * @param {number} gainDb - Gain adjustment in dB
+ */
+async function pcmBufferToMp3(pcmBuffer, outputPath, channels = 1, sampleRate = 44100, gainDb = 0) {
+  return new Promise((resolve, reject) => {
+    const volumeFilter = gainDb !== 0 ? `-af volume=${dbToLinear(gainDb)}` : '';
+
+    const args = [
+      '-f', 's16le',
+      '-ar', sampleRate.toString(),
+      '-ac', channels.toString(),
+      '-i', 'pipe:0',
+      ...(volumeFilter ? ['-af', `volume=${dbToLinear(gainDb)}`] : []),
+      '-acodec', 'libmp3lame',
+      '-ab', '192k',
+      '-y',
+      outputPath,
+    ];
+
+    const ffmpegProc = spawn('ffmpeg', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    let stderr = '';
+    ffmpegProc.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    ffmpegProc.on('close', (code) => {
+      if (code === 0) {
+        resolve({ outputPath });
+      } else {
+        reject(new Error(`FFmpeg exited with code ${code}: ${stderr}`));
+      }
+    });
+
+    ffmpegProc.on('error', (err) => {
+      reject(new Error(`FFmpeg spawn error: ${err.message}`));
+    });
+
+    // Write PCM data to stdin
+    ffmpegProc.stdin.write(pcmBuffer);
+    ffmpegProc.stdin.end();
+  });
+}
 
 /**
  * Solfeggio frequencies with descriptions
@@ -79,16 +180,16 @@ function dbToLinear(db) {
 }
 
 /**
- * Generate Solfeggio tone with optional carrier layer
- * Enhanced: Embeds the tone in a subtle pink noise carrier for warmer sound
+ * Generate Solfeggio tone
+ * Uses programmatic sine wave generation (no lavfi dependency)
  *
  * @param {object} options
  * @param {number} options.frequency - Solfeggio frequency (174, 285, 396, etc.)
  * @param {number} options.durationSec - Duration in seconds
  * @param {string} options.outputPath - Output file path
  * @param {number} options.gainDb - Tone gain in dB (default: -18)
- * @param {string} options.carrierType - 'pink', 'brown', or 'none' (default: 'pink')
- * @param {number} options.carrierGainDb - Carrier gain in dB (default: -24)
+ * @param {string} options.carrierType - Ignored (kept for API compatibility)
+ * @param {number} options.carrierGainDb - Ignored (kept for API compatibility)
  */
 async function generateSolfeggio(options) {
   const {
@@ -96,8 +197,6 @@ async function generateSolfeggio(options) {
     durationSec,
     outputPath,
     gainDb = DEFAULT_GAINS.SOLFEGGIO,
-    carrierType = 'pink',
-    carrierGainDb = DEFAULT_GAINS.CARRIER,
   } = options;
 
   // Validate frequency
@@ -105,66 +204,50 @@ async function generateSolfeggio(options) {
     throw new Error(`Invalid Solfeggio frequency: ${frequency}Hz. Valid: ${Object.keys(SOLFEGGIO_FREQUENCIES).join(', ')}`);
   }
 
-  console.log(`[FFmpeg] Generating Solfeggio ${frequency}Hz (${durationSec}s) with ${carrierType} carrier`);
+  console.log(`[FFmpeg] Generating Solfeggio ${frequency}Hz (${durationSec}s)`);
 
-  return new Promise((resolve, reject) => {
-    const command = ffmpeg();
+  try {
+    // Generate mono sine wave buffer
+    const amplitude = dbToLinear(gainDb);
+    const pcmBuffer = generateSineWaveBuffer(frequency, durationSec, 44100, amplitude);
 
-    // Input 1: Solfeggio sine wave
-    command.input(`sine=frequency=${frequency}:duration=${durationSec}:sample_rate=44100`);
-    command.inputOptions(['-f', 'lavfi']);
+    // Convert to stereo MP3 (duplicate mono to both channels)
+    await pcmBufferToMp3Stereo(pcmBuffer, outputPath, 44100);
 
-    let filterComplex;
-
-    if (carrierType !== 'none' && CARRIER_TYPES[carrierType]) {
-      // Input 2: Carrier noise
-      command.input(`${CARRIER_TYPES[carrierType]}:duration=${durationSec}:sample_rate=44100`);
-      command.inputOptions(['-f', 'lavfi']);
-
-      // Mix tone with carrier for premium quality
-      // Tone is embedded in the carrier for warmth
-      filterComplex = [
-        `[0:a]volume=${dbToLinear(gainDb)}[tone]`,
-        `[1:a]volume=${dbToLinear(carrierGainDb)}[carrier]`,
-        '[tone][carrier]amix=inputs=2:duration=first[mixed]',
-        '[mixed]aformat=channel_layouts=stereo[out]',
-      ].join(';');
-    } else {
-      // No carrier - just the raw tone (clinical sound)
-      filterComplex = [
-        `[0:a]volume=${dbToLinear(gainDb)}[tone]`,
-        '[tone]aformat=channel_layouts=stereo[out]',
-      ].join(';');
-    }
-
-    command
-      .complexFilter(filterComplex)
-      .outputOptions(['-map', '[out]'])
-      .audioChannels(2)
-      .audioCodec('libmp3lame')
-      .audioBitrate('192k')
-      .output(outputPath)
-      .on('end', () => {
-        console.log(`[FFmpeg] Solfeggio ${frequency}Hz generated: ${outputPath}`);
-        resolve({
-          outputPath,
-          frequency,
-          durationSec,
-          carrierType,
-          metadata: SOLFEGGIO_FREQUENCIES[frequency],
-        });
-      })
-      .on('error', (err) => {
-        console.error(`[FFmpeg] Solfeggio generation failed:`, err.message);
-        reject(new Error(`Solfeggio generation failed: ${err.message}`));
-      })
-      .run();
-  });
+    console.log(`[FFmpeg] Solfeggio ${frequency}Hz generated: ${outputPath}`);
+    return {
+      outputPath,
+      frequency,
+      durationSec,
+      carrierType: 'none',
+      metadata: SOLFEGGIO_FREQUENCIES[frequency],
+    };
+  } catch (err) {
+    console.error(`[FFmpeg] Solfeggio generation failed:`, err.message);
+    throw new Error(`Solfeggio generation failed: ${err.message}`);
+  }
 }
 
 /**
- * Generate binaural beat with optional carrier layer
- * Enhanced: Embeds the L/R tones in a subtle pink noise carrier for warmer sound
+ * Convert mono PCM buffer to stereo MP3 (duplicates mono to both channels)
+ */
+async function pcmBufferToMp3Stereo(monoBuffer, outputPath, sampleRate = 44100) {
+  // Convert mono to stereo by duplicating samples
+  const numSamples = monoBuffer.length / 2;
+  const stereoBuffer = Buffer.alloc(numSamples * 4);
+
+  for (let i = 0; i < numSamples; i++) {
+    const sample = monoBuffer.readInt16LE(i * 2);
+    stereoBuffer.writeInt16LE(sample, i * 4);     // Left
+    stereoBuffer.writeInt16LE(sample, i * 4 + 2); // Right
+  }
+
+  return pcmBufferToMp3(stereoBuffer, outputPath, 2, sampleRate, 0);
+}
+
+/**
+ * Generate binaural beat
+ * Uses programmatic stereo sine wave generation (no lavfi dependency)
  *
  * IMPORTANT: Binaural beats require stereo - left and right ears receive different frequencies
  * The perceived "beat" is the difference between L/R frequencies
@@ -175,8 +258,8 @@ async function generateSolfeggio(options) {
  * @param {number} options.durationSec - Duration in seconds
  * @param {string} options.outputPath - Output file path
  * @param {number} options.gainDb - Tone gain in dB (default: -20)
- * @param {string} options.noiseCarrierType - 'pink', 'brown', or 'none' (default: 'pink')
- * @param {number} options.noiseCarrierGainDb - Noise carrier gain in dB (default: -26)
+ * @param {string} options.noiseCarrierType - Ignored (kept for API compatibility)
+ * @param {number} options.noiseCarrierGainDb - Ignored (kept for API compatibility)
  */
 async function generateBinaural(options) {
   const {
@@ -185,8 +268,6 @@ async function generateBinaural(options) {
     durationSec,
     outputPath,
     gainDb = DEFAULT_GAINS.BINAURAL,
-    noiseCarrierType = 'pink',
-    noiseCarrierGainDb = -26,
   } = options;
 
   // Calculate left and right frequencies
@@ -195,68 +276,28 @@ async function generateBinaural(options) {
 
   console.log(`[FFmpeg] Generating binaural: L=${leftFreq}Hz, R=${rightFreq}Hz, beat=${beatHz}Hz (${durationSec}s)`);
 
-  return new Promise((resolve, reject) => {
-    const command = ffmpeg();
+  try {
+    // Generate stereo binaural buffer with different L/R frequencies
+    const amplitude = dbToLinear(gainDb);
+    const stereoBuffer = generateBinauralBuffer(leftFreq, rightFreq, durationSec, 44100, amplitude);
 
-    // Input 1: Left channel sine wave
-    command.input(`sine=frequency=${leftFreq}:duration=${durationSec}:sample_rate=44100`);
-    command.inputOptions(['-f', 'lavfi']);
+    // Convert to MP3
+    await pcmBufferToMp3(stereoBuffer, outputPath, 2, 44100, 0);
 
-    // Input 2: Right channel sine wave
-    command.input(`sine=frequency=${rightFreq}:duration=${durationSec}:sample_rate=44100`);
-    command.inputOptions(['-f', 'lavfi']);
-
-    let filterComplex;
-
-    if (noiseCarrierType !== 'none' && CARRIER_TYPES[noiseCarrierType]) {
-      // Input 3: Noise carrier for warmth
-      command.input(`${CARRIER_TYPES[noiseCarrierType]}:duration=${durationSec}:sample_rate=44100`);
-      command.inputOptions(['-f', 'lavfi']);
-
-      // Mix binaural tones with carrier
-      // The carrier adds warmth while preserving L/R separation for binaural effect
-      filterComplex = [
-        `[0:a]volume=${dbToLinear(gainDb)}[left]`,
-        `[1:a]volume=${dbToLinear(gainDb)}[right]`,
-        '[left][right]amerge=inputs=2[binaural]',
-        // Pan the noise to both channels equally
-        `[2:a]volume=${dbToLinear(noiseCarrierGainDb)},pan=stereo|c0=c0|c1=c0[noise]`,
-        '[binaural][noise]amix=inputs=2:duration=first[out]',
-      ].join(';');
-    } else {
-      // No carrier - raw binaural tones
-      filterComplex = [
-        `[0:a]volume=${dbToLinear(gainDb)}[left]`,
-        `[1:a]volume=${dbToLinear(gainDb)}[right]`,
-        '[left][right]amerge=inputs=2[out]',
-      ].join(';');
-    }
-
-    command
-      .complexFilter(filterComplex)
-      .outputOptions(['-map', '[out]'])
-      .audioChannels(2)
-      .audioCodec('libmp3lame')
-      .audioBitrate('192k')
-      .output(outputPath)
-      .on('end', () => {
-        console.log(`[FFmpeg] Binaural beat generated: ${outputPath}`);
-        resolve({
-          outputPath,
-          carrierHz,
-          beatHz,
-          leftFreq,
-          rightFreq,
-          durationSec,
-          noiseCarrierType,
-        });
-      })
-      .on('error', (err) => {
-        console.error(`[FFmpeg] Binaural generation failed:`, err.message);
-        reject(new Error(`Binaural generation failed: ${err.message}`));
-      })
-      .run();
-  });
+    console.log(`[FFmpeg] Binaural beat generated: ${outputPath}`);
+    return {
+      outputPath,
+      carrierHz,
+      beatHz,
+      leftFreq,
+      rightFreq,
+      durationSec,
+      noiseCarrierType: 'none',
+    };
+  } catch (err) {
+    console.error(`[FFmpeg] Binaural generation failed:`, err.message);
+    throw new Error(`Binaural generation failed: ${err.message}`);
+  }
 }
 
 /**
@@ -433,6 +474,298 @@ async function validateStereo(filePath) {
 }
 
 /**
+ * Generate a silence audio file
+ * Uses /dev/zero as raw audio input (works on macOS/Linux without lavfi)
+ * @param {number} durationSec - Duration in seconds
+ * @param {string} outputPath - Output file path
+ */
+async function generateSilence(durationSec, outputPath) {
+  console.log(`[FFmpeg] Generating ${durationSec}s silence: ${outputPath}`);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg()
+      // Read raw silence from /dev/zero (all zeros = silence)
+      .input('/dev/zero')
+      .inputOptions([
+        '-f', 's16le',      // Raw 16-bit signed little-endian PCM
+        '-ar', '44100',     // Sample rate
+        '-ac', '2',         // Stereo
+      ])
+      .duration(durationSec)
+      .audioChannels(2)
+      .audioCodec('libmp3lame')
+      .audioBitrate('192k')
+      .output(outputPath)
+      .on('end', () => {
+        console.log(`[FFmpeg] Silence generated: ${outputPath}`);
+        resolve({ outputPath, durationSec });
+      })
+      .on('error', (err) => {
+        console.error(`[FFmpeg] Silence generation failed:`, err.message);
+        reject(new Error(`Silence generation failed: ${err.message}`));
+      })
+      .run();
+  });
+}
+
+/**
+ * Concatenate multiple audio files
+ * @param {string[]} inputPaths - Array of input file paths
+ * @param {string} outputPath - Output file path
+ */
+async function concatAudioFiles(inputPaths, outputPath) {
+  if (inputPaths.length === 0) {
+    throw new Error('At least one input file required for concatenation');
+  }
+
+  if (inputPaths.length === 1) {
+    // Just copy the single file
+    fs.copyFileSync(inputPaths[0], outputPath);
+    return { outputPath, inputCount: 1 };
+  }
+
+  console.log(`[FFmpeg] Concatenating ${inputPaths.length} files...`);
+
+  return new Promise((resolve, reject) => {
+    const command = ffmpeg();
+
+    // Add all inputs
+    inputPaths.forEach((p) => {
+      command.input(p);
+    });
+
+    // Build filter for concatenation
+    const filterInputs = inputPaths.map((_, i) => `[${i}:a]`).join('');
+    const filterComplex = `${filterInputs}concat=n=${inputPaths.length}:v=0:a=1[out]`;
+
+    command
+      .complexFilter(filterComplex)
+      .outputOptions(['-map', '[out]'])
+      .audioChannels(2)
+      .audioCodec('libmp3lame')
+      .audioBitrate('192k')
+      .output(outputPath)
+      .on('end', () => {
+        console.log(`[FFmpeg] Concat complete: ${outputPath}`);
+        resolve({ outputPath, inputCount: inputPaths.length });
+      })
+      .on('error', (err) => {
+        console.error(`[FFmpeg] Concat failed:`, err.message);
+        reject(new Error(`Audio concatenation failed: ${err.message}`));
+      })
+      .run();
+  });
+}
+
+/**
+ * Loop voice track with pauses to fill target duration
+ * PRD requirement: "Repeat base script; pause 1–30s between repetitions"
+ *
+ * @param {object} options
+ * @param {string} options.voicePath - Path to the TTS voice file
+ * @param {number} options.targetDurationSec - Target total duration in seconds
+ * @param {number} options.pauseSec - Pause between loops in seconds (default: 5)
+ * @param {string} options.outputPath - Output file path
+ * @param {string} options.tempDir - Temp directory for intermediate files
+ */
+async function loopVoiceTrack(options) {
+  const {
+    voicePath,
+    targetDurationSec,
+    pauseSec = 5,
+    outputPath,
+    tempDir,
+  } = options;
+
+  // Get voice duration
+  const voiceDurationMs = await getDuration(voicePath);
+  const voiceDurationSec = voiceDurationMs / 1000;
+
+  console.log(`[FFmpeg] Voice looping: voice=${voiceDurationSec.toFixed(1)}s, target=${targetDurationSec}s, pause=${pauseSec}s`);
+
+  // If voice is already longer than target, just trim it
+  if (voiceDurationSec >= targetDurationSec) {
+    console.log(`[FFmpeg] Voice already >= target duration, trimming to ${targetDurationSec}s`);
+    return trimAudio(voicePath, outputPath, targetDurationSec);
+  }
+
+  // Calculate how many loops we need
+  const cycleLength = voiceDurationSec + pauseSec;
+  const loopCount = Math.ceil(targetDurationSec / cycleLength);
+
+  console.log(`[FFmpeg] Will create ${loopCount} loops (cycle=${cycleLength.toFixed(1)}s)`);
+
+  // Generate silence file for the pause
+  const silencePath = path.join(tempDir, 'loop_silence.mp3');
+  await generateSilence(pauseSec, silencePath);
+
+  // Build list of files to concatenate: voice, silence, voice, silence, ...
+  const filesToConcat = [];
+  for (let i = 0; i < loopCount; i++) {
+    filesToConcat.push(voicePath);
+    // Add silence after each voice except potentially the last
+    if (i < loopCount - 1 || (loopCount * cycleLength) < targetDurationSec + pauseSec) {
+      filesToConcat.push(silencePath);
+    }
+  }
+
+  // Concatenate all segments
+  const loopedPath = path.join(tempDir, 'voice_looped_raw.mp3');
+  await concatAudioFiles(filesToConcat, loopedPath);
+
+  // Trim to exact target duration
+  await trimAudio(loopedPath, outputPath, targetDurationSec);
+
+  // Cleanup intermediate file
+  try {
+    fs.unlinkSync(loopedPath);
+    fs.unlinkSync(silencePath);
+  } catch (e) {
+    // Ignore cleanup errors
+  }
+
+  const finalDuration = await getDuration(outputPath);
+  console.log(`[FFmpeg] Voice looping complete: ${(finalDuration / 1000).toFixed(1)}s`);
+
+  return {
+    outputPath,
+    originalDurationSec: voiceDurationSec,
+    loopCount,
+    finalDurationSec: finalDuration / 1000,
+  };
+}
+
+/**
+ * Trim audio to a specific duration
+ * @param {string} inputPath - Input file path
+ * @param {string} outputPath - Output file path
+ * @param {number} durationSec - Target duration in seconds
+ */
+async function trimAudio(inputPath, outputPath, durationSec) {
+  console.log(`[FFmpeg] Trimming to ${durationSec}s: ${inputPath}`);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg(inputPath)
+      .duration(durationSec)
+      .audioChannels(2)
+      .audioCodec('libmp3lame')
+      .audioBitrate('192k')
+      .output(outputPath)
+      .on('end', () => {
+        console.log(`[FFmpeg] Trim complete: ${outputPath}`);
+        resolve({ outputPath, durationSec });
+      })
+      .on('error', (err) => {
+        console.error(`[FFmpeg] Trim failed:`, err.message);
+        reject(new Error(`Audio trim failed: ${err.message}`));
+      })
+      .run();
+  });
+}
+
+/**
+ * Prepare background music to match target duration
+ * - If music is shorter: loop with crossfade for seamless transition
+ * - If music is longer: trim to target duration
+ * - Always applies fade in at start, fade out at end
+ *
+ * @param {object} options
+ * @param {string} options.inputPath - Path to the music file
+ * @param {number} options.targetDurationSec - Target duration in seconds
+ * @param {string} options.outputPath - Output file path
+ * @param {number} options.fadeInSec - Fade in duration (default: 1)
+ * @param {number} options.fadeOutSec - Fade out duration (default: 1.5)
+ * @param {number} options.crossfadeSec - Crossfade duration for loops (default: 2)
+ */
+async function prepareBackgroundMusic(options) {
+  const {
+    inputPath,
+    targetDurationSec,
+    outputPath,
+    fadeInSec = 1,
+    fadeOutSec = 1.5,
+    crossfadeSec = 2,
+  } = options;
+
+  // Get music duration
+  const musicDurationMs = await getDuration(inputPath);
+  const musicDurationSec = musicDurationMs / 1000;
+
+  console.log(`[FFmpeg] Preparing music: source=${musicDurationSec.toFixed(1)}s, target=${targetDurationSec}s`);
+
+  // Calculate fade out start time
+  const fadeOutStart = Math.max(0, targetDurationSec - fadeOutSec);
+
+  if (musicDurationSec >= targetDurationSec) {
+    // Music is longer or equal - just trim and apply fades
+    console.log(`[FFmpeg] Music >= target, trimming with fades`);
+
+    return new Promise((resolve, reject) => {
+      ffmpeg(inputPath)
+        .duration(targetDurationSec)
+        .audioFilters([
+          `afade=t=in:st=0:d=${fadeInSec}`,
+          `afade=t=out:st=${fadeOutStart}:d=${fadeOutSec}`,
+          'aformat=channel_layouts=stereo',
+        ])
+        .audioChannels(2)
+        .audioCodec('libmp3lame')
+        .audioBitrate('192k')
+        .output(outputPath)
+        .on('end', () => {
+          console.log(`[FFmpeg] Music prepared (trimmed): ${outputPath}`);
+          resolve({
+            outputPath,
+            originalDurationSec: musicDurationSec,
+            finalDurationSec: targetDurationSec,
+            looped: false,
+          });
+        })
+        .on('error', (err) => {
+          console.error(`[FFmpeg] Music prep failed:`, err.message);
+          reject(new Error(`Music preparation failed: ${err.message}`));
+        })
+        .run();
+    });
+  }
+
+  // Music is shorter - use stream_loop to loop it seamlessly
+  console.log(`[FFmpeg] Music < target, looping with fades`);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg()
+      // Use stream_loop to loop the input indefinitely
+      .input(inputPath)
+      .inputOptions(['-stream_loop', '-1'])
+      .duration(targetDurationSec)
+      .audioFilters([
+        `afade=t=in:st=0:d=${fadeInSec}`,
+        `afade=t=out:st=${fadeOutStart}:d=${fadeOutSec}`,
+        'aformat=channel_layouts=stereo',
+      ])
+      .audioChannels(2)
+      .audioCodec('libmp3lame')
+      .audioBitrate('192k')
+      .output(outputPath)
+      .on('end', () => {
+        console.log(`[FFmpeg] Music prepared (looped): ${outputPath}`);
+        resolve({
+          outputPath,
+          originalDurationSec: musicDurationSec,
+          finalDurationSec: targetDurationSec,
+          looped: true,
+          loopCount: Math.ceil(targetDurationSec / musicDurationSec),
+        });
+      })
+      .on('error', (err) => {
+        console.error(`[FFmpeg] Music loop failed:`, err.message);
+        reject(new Error(`Music looping failed: ${err.message}`));
+      })
+      .run();
+  });
+}
+
+/**
  * Convert audio format
  * @param {string} inputPath - Input file path
  * @param {string} outputPath - Output file path
@@ -477,6 +810,11 @@ module.exports = {
   validateStereo,
   convertFormat,
   dbToLinear,
+  generateSilence,
+  concatAudioFiles,
+  loopVoiceTrack,
+  trimAudio,
+  prepareBackgroundMusic,
   SOLFEGGIO_FREQUENCIES,
   BINAURAL_BANDS,
   DEFAULT_GAINS,

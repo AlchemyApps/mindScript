@@ -1,3 +1,179 @@
+# Session History - Builder Variable Flow Fix & Audio Pipeline Completion
+
+## Session Date: 2026-02-04
+
+## Initial Context
+First track was built but had multiple critical issues:
+1. **Binaural beats caused an error** — band name ("theta") passed but worker expected numeric frequencies
+2. **Track was only 13 seconds instead of 5 minutes** — no voice looping implemented
+3. **FFmpeg lavfi not available** — sine wave generation failed on standard FFmpeg builds
+4. **RPC parameter name mismatch** — Supabase function calls using wrong parameter names
+5. **Schema column mismatch** — Worker using non-existent columns (`duration_ms`, `render_status`)
+
+Root cause: Builder variables were not being fully captured and processed through the pipeline, plus infrastructure mismatches.
+
+## Issues Fixed
+
+### Issue 1: Binaural Band Name → Frequency Conversion
+**Problem:** Builder UI sends `binaural: { band: "theta" }` but worker expected `beatHz: 6`
+**Solution:** Added band-to-frequency conversion in audio processor using existing `BINAURAL_BANDS` mapping
+**File:** `infrastructure/heroku-audio-worker/lib/audio-processor.js`
+
+### Issue 2: Voice Looping Not Implemented
+**Problem:** User selects 5-min duration, TTS generates ~13 seconds, remaining time is silence
+**PRD Requirement:** "Repeat base script; pause 1–30s between repetitions (configurable per build)"
+**Solution:** Implemented `loopVoiceTrack()` function that loops TTS with configurable pause gaps
+**File:** `infrastructure/heroku-audio-worker/lib/ffmpeg-utils.js`
+
+### Issue 3: Background Music Duration Mismatch
+**Problem:** Music didn't match target duration (too short = silence, too long = abrupt cut)
+**Solution:** Implemented `prepareBackgroundMusic()` that loops (with crossfade) or trims music to target duration
+**File:** `infrastructure/heroku-audio-worker/lib/ffmpeg-utils.js`
+
+### Issue 4: Background Music URL Empty
+**Problem:** `guest-conversion/route.ts` set `backgroundMusic.url: ''` — worker couldn't download music
+**Solution:** Added database lookup to resolve music URL from `background_music` table before storing config
+**File:** `apps/web/src/app/api/checkout/guest-conversion/route.ts`
+
+### Issue 5: Field Name Inconsistencies
+**Problem:** Builder uses `duration`, `loop.pause_seconds`, `frequency` — worker expected `durationMin`, `pauseSec`, `hz`
+**Solution:** Added `normalizeWorkerPayload()` function to translate field names and build gains object
+**File:** `apps/web/src/lib/track-builder.ts`
+
+### Issue 6: FFmpeg lavfi Not Available
+**Problem:** Standard FFmpeg builds don't include `lavfi` — silence, solfeggio, and binaural generation failed
+**Error:** `Input format lavfi is not available`
+**Solution:** Rewrote all tone generation to use programmatic PCM buffer generation instead of lavfi:
+- Silence: Uses `/dev/zero` as raw PCM input
+- Solfeggio: Generates sine wave buffer in JavaScript, pipes to FFmpeg
+- Binaural: Generates stereo sine wave buffer with different L/R frequencies
+**File:** `infrastructure/heroku-audio-worker/lib/ffmpeg-utils.js`
+
+### Issue 7: RPC Parameter Name Mismatch
+**Problem:** Supabase RPC calls used wrong parameter names (`p_job_id` vs `job_id`)
+**Error:** `Could not find the function public.update_job_progress(p_job_id, p_progress, p_stage)`
+**Solution:** Fixed parameter names to match database function signatures:
+- `update_job_progress`: `job_id`, `new_progress`, `new_stage`
+- `complete_job`: `job_id`, `job_result`, `job_error`
+**File:** `infrastructure/heroku-audio-worker/lib/supabase-client.js`
+
+### Issue 8: Schema Column Mismatch
+**Problem:** Worker tried to update non-existent columns (`duration_ms`, `render_status`, `rendered_at`)
+**Error:** `Could not find the 'duration_ms' column of 'tracks' in the schema cache`
+**Solution:** Fixed to use actual column names:
+- `duration_ms` → `duration_seconds` (with ms to seconds conversion)
+- `render_status: 'completed'` → `status: 'published'`
+- Removed `rendered_at`, added `updated_at`
+**File:** `infrastructure/heroku-audio-worker/lib/supabase-client.js`
+
+## Code Changes Summary
+
+### `infrastructure/heroku-audio-worker/lib/audio-processor.js`
+- Added `BINAURAL_BANDS` import
+- Added band name → beatHz conversion before calling `generateBinaural()`
+- Integrated `loopVoiceTrack()` — TTS now loops with pauses to fill duration
+- Integrated `prepareBackgroundMusic()` — music loops/trims to match duration
+- Moved `durationSec` calculation to top (was defined too late causing reference error)
+- Added detailed payload logging at job start for debugging
+
+### `infrastructure/heroku-audio-worker/lib/ffmpeg-utils.js`
+- Added `generateSineWaveBuffer()` — programmatic mono sine wave generation
+- Added `generateBinauralBuffer()` — programmatic stereo sine wave with different L/R frequencies
+- Added `pcmBufferToMp3()` — converts raw PCM buffer to MP3 via FFmpeg pipe
+- Added `pcmBufferToMp3Stereo()` — converts mono PCM to stereo MP3
+- Rewrote `generateSilence()` — uses `/dev/zero` instead of lavfi
+- Rewrote `generateSolfeggio()` — uses programmatic sine wave instead of lavfi
+- Rewrote `generateBinaural()` — uses programmatic stereo sine wave instead of lavfi
+- Added `concatAudioFiles(inputPaths, outputPath)` — concatenates audio files
+- Added `loopVoiceTrack({voicePath, targetDurationSec, pauseSec, outputPath, tempDir})`
+- Added `trimAudio(inputPath, outputPath, durationSec)`
+- Added `prepareBackgroundMusic({inputPath, targetDurationSec, outputPath, fadeInSec, fadeOutSec})`
+- Exported all new functions
+
+### `infrastructure/heroku-audio-worker/lib/supabase-client.js`
+- Fixed `updateJobProgress()` parameter names: `p_job_id` → `job_id`, `p_progress` → `new_progress`, `p_stage` → `new_stage`
+- Fixed `completeJob()` parameter names: `p_job_id` → `job_id`, `p_result` → `job_result`, `p_error` → `job_error`
+- Fixed `updateTrackAudio()` column names: `duration_ms` → `duration_seconds`, `render_status` → `status`
+
+### `apps/web/src/lib/track-builder.ts`
+- Added `normalizeWorkerPayload()` function that:
+  - Normalizes `duration` → `durationMin`
+  - Normalizes `loop.pause_seconds` → `pauseSec`
+  - Normalizes `frequency` → `hz`
+  - Builds explicit `gains` object with proper defaults
+- Added logging for raw and normalized payloads
+
+### `apps/web/src/app/api/checkout/guest-conversion/route.ts`
+- Added database lookup for background music URL from `background_music` table
+- Added explicit `gains` object to trackConfig
+- Fixed volume defaults to match PRD gain staging
+
+### `apps/web/src/app/api/webhooks/stripe/route.ts`
+- Added warning log when metadata fallback path triggers (for monitoring)
+
+## Audit Findings
+
+### Variable Flow Traced: Builder → Checkout → Webhook → Worker
+
+| Variable | Status |
+|----------|--------|
+| `duration` → `durationMin` | ✅ Fixed |
+| `loop.pause_seconds` → `pauseSec` | ✅ Fixed |
+| `binaural.band` → `beatHz` | ✅ Fixed |
+| `solfeggio.frequency` → `hz` | ✅ Fixed |
+| `backgroundMusic.url` | ✅ Fixed (was empty) |
+| `gains.*` | ✅ Fixed (now explicit) |
+
+### Remaining Edge Case (Low Priority)
+Webhook fallback path (when `pending_tracks` AND `track_config` metadata both fail) still hardcodes volumes to `-20 dB`. Added warning log to monitor if this ever triggers in production.
+
+## Testing Recommendations
+
+1. **Unit test binaural conversion:**
+   - Input: `{ enabled: true, band: "theta" }`
+   - Expected: `beatHz: 6`
+
+2. **Unit test voice looping:**
+   - Input: 13s voice, 5min duration, 3s pause
+   - Expected: ~18 loops, 5min total
+
+3. **Unit test music preparation:**
+   - Short music (3min) → loops with crossfade to 5min
+   - Long music (8min) → trims to 5min with fade out
+
+4. **E2E test:**
+   - Create track: 5min, theta binaural, 3s pause, background music
+   - Verify: 5-minute audio, binaural present, voice loops, music matches duration
+
+## Current State
+
+### ✅ Working End-to-End
+- **Builder → Checkout → Webhook → Worker → Library** flow complete
+- First track "Bruce Lee Positive Affirmation" successfully rendered (10 minutes)
+- Binaural beat generation from band name (theta → 6Hz)
+- Voice looping with configurable pauses (5s default)
+- Background music looping/trimming (not tested this session)
+- Field name normalization working
+- Gains passthrough from builder
+- FFmpeg works without lavfi dependency
+- RPC functions called with correct parameters
+- Track status updates to "published" correctly
+
+### ⚠️ Monitor
+- Webhook fallback path (warning log added)
+- Pink/brown noise carrier temporarily disabled (pure sine waves only until lavfi available)
+
+### 🎉 First Successful Track Render
+- Track: "Bruce Lee Positive Affirmation"
+- Duration: 10 minutes (600 seconds)
+- Features: Voice looping with 5s pauses, Theta binaural beats (6Hz)
+- Status: Published and playable in library
+
+## Branch
+`feature/fix-builder-variable-flow`
+
+---
+
 # Session History - Audio Rendering Pipeline Deployment & FFmpeg Blocker
 
 ## Session Date: 2025-11-20

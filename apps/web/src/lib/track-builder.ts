@@ -13,6 +13,75 @@ const supabaseAdmin = createClient(
 );
 
 /**
+ * Normalize track config to worker payload format
+ * Ensures all builder variables are properly passed through
+ */
+function normalizeWorkerPayload(trackConfig: any): any {
+  // Extract duration - builder may send as duration (minutes) or durationMin
+  const durationMin = trackConfig.durationMin ?? trackConfig.duration ?? 5;
+
+  // Extract pause between loops
+  const pauseSec = trackConfig.pauseSec ?? trackConfig.loop?.pause_seconds ?? 5;
+
+  // Extract loop mode
+  const loopMode = trackConfig.loopMode ?? trackConfig.loop?.enabled ?? true;
+
+  // Normalize voice config
+  const voice = trackConfig.voice ? {
+    provider: trackConfig.voice.provider || 'openai',
+    id: trackConfig.voice.voice_id || trackConfig.voice.id || 'nova',
+    model: trackConfig.voice.model || 'tts-1',
+    speed: trackConfig.voice.speed || 1.0,
+  } : null;
+
+  // Normalize solfeggio config
+  const solfeggio = trackConfig.solfeggio?.enabled ? {
+    enabled: true,
+    hz: trackConfig.solfeggio.hz || trackConfig.solfeggio.frequency,
+    volume_db: trackConfig.solfeggio.volume_db ?? -18,
+  } : null;
+
+  // Normalize binaural config - keep band name for worker to convert
+  const binaural = trackConfig.binaural?.enabled ? {
+    enabled: true,
+    band: trackConfig.binaural.band,
+    // Also pass through explicit frequencies if provided
+    carrierHz: trackConfig.binaural.carrierHz,
+    beatHz: trackConfig.binaural.beatHz,
+    volume_db: trackConfig.binaural.volume_db ?? -20,
+  } : null;
+
+  // Normalize gains - use builder values or defaults
+  const gains = {
+    voiceDb: trackConfig.gains?.voiceDb ?? -1,
+    musicDb: trackConfig.gains?.musicDb ?? trackConfig.backgroundMusic?.volume_db ?? -10,
+    solfeggioDb: trackConfig.gains?.solfeggioDb ?? solfeggio?.volume_db ?? -18,
+    binauralDb: trackConfig.gains?.binauralDb ?? binaural?.volume_db ?? -20,
+  };
+
+  return {
+    script: trackConfig.script || '',
+    voice,
+    durationMin,
+    pauseSec,
+    loopMode,
+    backgroundMusic: trackConfig.backgroundMusic ? {
+      id: trackConfig.backgroundMusic.id,
+      name: trackConfig.backgroundMusic.name,
+      url: trackConfig.backgroundMusic.url,
+    } : null,
+    solfeggio,
+    binaural,
+    gains,
+    // Preserve any additional config
+    fade: trackConfig.fade,
+    safety: trackConfig.safety,
+    carrierType: trackConfig.carrierType,
+    carrierGainDb: trackConfig.carrierGainDb,
+  };
+}
+
+/**
  * Start track build process
  */
 export async function startTrackBuild({
@@ -26,6 +95,11 @@ export async function startTrackBuild({
 }) {
   try {
     console.log('[BUILD] Starting track build for user:', userId);
+    console.log('[BUILD] Raw trackConfig:', JSON.stringify(trackConfig, null, 2));
+
+    // Normalize payload for worker
+    const workerPayload = normalizeWorkerPayload(trackConfig);
+    console.log('[BUILD] Normalized worker payload:', JSON.stringify(workerPayload, null, 2));
 
     // Create track record
     const { data: track, error: trackError } = await supabaseAdmin
@@ -35,27 +109,28 @@ export async function startTrackBuild({
         title: trackConfig.title || `Track - ${new Date().toLocaleDateString()}`,
         script: trackConfig.script || '',
         voice_config: {
-          provider: trackConfig.voice?.provider || 'openai',
-          voice_id: trackConfig.voice?.voice_id || 'alloy',
+          provider: workerPayload.voice?.provider || 'openai',
+          voice_id: workerPayload.voice?.id || 'alloy',
           settings: trackConfig.voice?.settings || {}
         },
-        music_config: trackConfig.backgroundMusic ? {
-          id: trackConfig.backgroundMusic.id,
-          name: trackConfig.backgroundMusic.name,
-          url: trackConfig.backgroundMusic.url,
-          volume_db: trackConfig.backgroundMusic.volume_db || -20
+        music_config: workerPayload.backgroundMusic ? {
+          id: workerPayload.backgroundMusic.id,
+          name: workerPayload.backgroundMusic.name,
+          url: workerPayload.backgroundMusic.url,
+          volume_db: workerPayload.gains.musicDb
         } : null,
-        frequency_config: (trackConfig.solfeggio || trackConfig.binaural) ? {
-          solfeggio: trackConfig.solfeggio,
-          binaural: trackConfig.binaural
+        frequency_config: (workerPayload.solfeggio || workerPayload.binaural) ? {
+          solfeggio: workerPayload.solfeggio,
+          binaural: workerPayload.binaural
         } : null,
         output_config: {
           format: 'mp3',
           quality: 'standard',
           is_public: false,
-          loop: trackConfig.loop || {
-            enabled: true,
-            pause_seconds: 5,
+          durationMin: workerPayload.durationMin,
+          loop: {
+            enabled: workerPayload.loopMode,
+            pause_seconds: workerPayload.pauseSec,
           },
         },
         status: 'draft', // Start as draft, will be updated when rendering completes
@@ -69,14 +144,14 @@ export async function startTrackBuild({
       throw new Error('Failed to create track');
     }
 
-    // Enqueue audio rendering job
+    // Enqueue audio rendering job with normalized payload
     const { error: jobError } = await supabaseAdmin
       .from('audio_job_queue')
       .insert({
         track_id: track.id,
         user_id: userId,
         status: 'pending',
-        payload: trackConfig,
+        payload: workerPayload,
         created_at: new Date().toISOString()
       });
 

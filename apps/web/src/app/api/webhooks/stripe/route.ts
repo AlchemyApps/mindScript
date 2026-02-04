@@ -128,6 +128,15 @@ async function loadTrackConfigFromMetadata(metadata: StripeMetadata) {
         console.error('[WEBHOOK] Failed to parse track_config_partial:', error);
       }
     } else {
+      // FALLBACK PATH: Building config from individual metadata fields
+      // This means pending_tracks lookup failed AND no track_config in metadata
+      // Volume settings will use defaults - user's custom volumes may be lost
+      console.warn('[WEBHOOK] ⚠️ Using metadata fallback path - custom volume settings will use defaults!', {
+        pending_track_id: metadata.pending_track_id || metadata.track_id,
+        has_track_config: !!metadata.track_config,
+        has_track_config_partial: !!metadata.track_config_partial,
+      });
+
       const chunksCount = parseInt(metadata.script_chunks_count || '0', 10);
       let script = '';
       if (chunksCount > 0) {

@@ -61,9 +61,9 @@ async function getNextPendingJob() {
 async function updateJobProgress(jobId, progress, stage) {
   const client = getClient();
   const { error } = await client.rpc('update_job_progress', {
-    p_job_id: jobId,
-    p_progress: progress,
-    p_stage: stage,
+    job_id: jobId,
+    new_progress: progress,
+    new_stage: stage,
   });
 
   if (error) {
@@ -83,9 +83,9 @@ async function updateJobProgress(jobId, progress, stage) {
 async function completeJob(jobId, result, errorMessage = null) {
   const client = getClient();
   const { error } = await client.rpc('complete_job', {
-    p_job_id: jobId,
-    p_result: result,
-    p_error: errorMessage,
+    job_id: jobId,
+    job_result: result,
+    job_error: errorMessage,
   });
 
   if (error) {
@@ -165,9 +165,9 @@ async function updateTrackAudio(trackId, audioUrl, durationMs) {
     .from('tracks')
     .update({
       audio_url: audioUrl,
-      duration_ms: durationMs,
-      render_status: 'completed',
-      rendered_at: new Date().toISOString(),
+      duration_seconds: Math.round(durationMs / 1000),
+      status: 'published',
+      updated_at: new Date().toISOString(),
     })
     .eq('id', trackId);
 

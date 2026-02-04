@@ -126,6 +126,37 @@ export async function POST(request: NextRequest) {
       },
     ];
 
+    // Look up background music details if selected
+    let backgroundMusicData: { id: string; name: string; url: string; volume_db: number } | null = null;
+    if (builderState.music?.id && builderState.music.id !== 'none') {
+      try {
+        const { data: musicTrack, error: musicError } = await supabaseAdmin
+          .from('background_music')
+          .select('id, name, storage_path')
+          .eq('id', builderState.music.id)
+          .single();
+
+        if (musicError) {
+          console.error('Failed to look up background music:', musicError);
+        } else if (musicTrack) {
+          // Get public URL for the music file
+          const { data: urlData } = supabaseAdmin.storage
+            .from('background-music')
+            .getPublicUrl(musicTrack.storage_path);
+
+          backgroundMusicData = {
+            id: musicTrack.id,
+            name: musicTrack.name || 'Background Music',
+            url: urlData?.publicUrl || '',
+            volume_db: builderState.music.volume_db ?? -10,
+          };
+          console.log('Resolved background music URL:', backgroundMusicData.url);
+        }
+      } catch (error) {
+        console.error('Error looking up background music:', error);
+      }
+    }
+
     // Create full track config for webhook processing
     const trackConfig = {
       title: builderState.title || `Track - ${new Date().toLocaleDateString()}`,
@@ -141,24 +172,24 @@ export async function POST(request: NextRequest) {
         enabled: true,
         pause_seconds: 5,
       },
-      backgroundMusic: builderState.music?.id && builderState.music.id !== 'none'
-        ? {
-            id: builderState.music.id,
-            name: 'Background Music', // We'll need to look this up in production
-            url: '', // Will be populated by the system
-            volume_db: builderState.music.volume_db || -20
-          }
-        : null,
+      backgroundMusic: backgroundMusicData,
       solfeggio: builderState.solfeggio?.enabled ? {
         enabled: true,
         frequency: builderState.solfeggio.frequency || 528,
-        volume_db: builderState.solfeggio.volume_db || -20
+        volume_db: builderState.solfeggio.volume_db ?? -18,
       } : null,
       binaural: builderState.binaural?.enabled ? {
         enabled: true,
         band: builderState.binaural.band || 'theta',
-        volume_db: builderState.binaural.volume_db || -20
+        volume_db: builderState.binaural.volume_db ?? -20,
       } : null,
+      // Include gains object for explicit volume control
+      gains: {
+        voiceDb: -1,
+        musicDb: builderState.music?.volume_db ?? -10,
+        solfeggioDb: builderState.solfeggio?.volume_db ?? -18,
+        binauralDb: builderState.binaural?.volume_db ?? -20,
+      },
     };
 
     // Store track config in pending_tracks table for persistence
