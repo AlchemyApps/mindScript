@@ -4,11 +4,16 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@mindscript/auth/hooks';
 import { Button, Card } from '@mindscript/ui';
+import { Header } from '@/components/navigation/Header';
+import { FloatingOrbs } from '@/components/landing/FloatingOrbs';
+import { usePlayerStore } from '@/store/playerStore';
+import { cn } from '@/lib/utils';
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, profile, loading, signOut } = useAuth();
   const [hasRedirected, setHasRedirected] = useState(false);
+  const { currentTrack } = usePlayerStore();
 
   useEffect(() => {
     // Only redirect once to prevent loops
@@ -28,18 +33,24 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+      <div className={cn('min-h-screen bg-warm-gradient relative', currentTrack && 'pb-24')}>
+        <Header variant="solid" />
+        <FloatingOrbs variant="subtle" />
+        <div className="relative z-10 pt-16 flex items-center justify-center min-h-[calc(100vh-4rem)]">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted">Loading...</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className={cn('min-h-screen bg-warm-gradient relative', currentTrack && 'pb-24')}>
+      <Header variant="solid" />
+      <FloatingOrbs variant="subtle" />
+      <div className="relative z-10 pt-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex justify-between items-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
           <Button onClick={handleSignOut} variant="outline">

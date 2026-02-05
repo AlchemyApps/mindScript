@@ -376,10 +376,8 @@ export const usePlayerStore = create<PlayerStore>()(
       }),
 
       toggleRepeat: () => set(state => {
-        const modes: RepeatMode[] = ['none', 'all', 'one'];
-        const currentIndex = modes.indexOf(state.repeatMode);
-        const nextIndex = (currentIndex + 1) % modes.length;
-        state.repeatMode = modes[nextIndex];
+        // Simple toggle: off or repeat current track
+        state.repeatMode = state.repeatMode === 'none' ? 'one' : 'none';
       }),
 
       // UI states
@@ -399,10 +397,17 @@ export const usePlayerStore = create<PlayerStore>()(
       name: 'mindscript-player',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
+        // Playback settings
         volume: state.volume,
         isMuted: state.isMuted,
         shuffleMode: state.shuffleMode,
         repeatMode: state.repeatMode,
+        // Track & queue state for persistence across navigation
+        currentTrack: state.currentTrack,
+        queue: state.queue,
+        currentIndex: state.currentIndex,
+        originalQueue: state.originalQueue,
+        // Note: isPlaying intentionally NOT persisted - don't auto-play on page load
       }),
     }
   )
