@@ -1,0 +1,221 @@
+{
+  "generated": "2026-02-05T19:11:56.037Z",
+  "voices": {
+    "openai": [
+      {
+        "id": "alloy",
+        "displayName": "Sage",
+        "previewUrl": "/audio-previews/voices/openai-alloy.mp3"
+      },
+      {
+        "id": "nova",
+        "displayName": "Aurora",
+        "previewUrl": "/audio-previews/voices/openai-nova.mp3"
+      },
+      {
+        "id": "onyx",
+        "displayName": "Summit",
+        "previewUrl": "/audio-previews/voices/openai-onyx.mp3"
+      },
+      {
+        "id": "shimmer",
+        "displayName": "Breeze",
+        "previewUrl": "/audio-previews/voices/openai-shimmer.mp3"
+      },
+      {
+        "id": "echo",
+        "displayName": "Ember",
+        "previewUrl": "/audio-previews/voices/openai-echo.mp3"
+      },
+      {
+        "id": "fable",
+        "displayName": "River",
+        "previewUrl": "/audio-previews/voices/openai-fable.mp3"
+      }
+    ],
+    "elevenlabs": [
+      {
+        "id": "21m00Tcm4TlvDq8ikWAM",
+        "displayName": "Celeste",
+        "previewUrl": "/audio-previews/voices/elevenlabs-21m00Tcm.mp3"
+      },
+      {
+        "id": "EXAVITQu4vr4xnSDxMaL",
+        "displayName": "Luna",
+        "previewUrl": "/audio-previews/voices/elevenlabs-EXAVITQu.mp3"
+      },
+      {
+        "id": "MF3mGyEYCl7XYWbV9V6O",
+        "displayName": "Willow",
+        "previewUrl": "/audio-previews/voices/elevenlabs-MF3mGyEY.mp3"
+      },
+      {
+        "id": "XB0fDUnXU5powFXDhCwa",
+        "displayName": "Harmony",
+        "previewUrl": "/audio-previews/voices/elevenlabs-XB0fDUnX.mp3"
+      },
+      {
+        "id": "ThT5KcBeYPX3keUQqHPh",
+        "displayName": "Grace",
+        "previewUrl": "/audio-previews/voices/elevenlabs-ThT5KcBe.mp3"
+      },
+      {
+        "id": "pNInz6obpgDQGcFmaJgB",
+        "displayName": "Atlas",
+        "previewUrl": "/audio-previews/voices/elevenlabs-pNInz6ob.mp3"
+      },
+      {
+        "id": "TxGEqnHWrfWFTfGW9XjX",
+        "displayName": "Orion",
+        "previewUrl": "/audio-previews/voices/elevenlabs-TxGEqnHW.mp3"
+      },
+      {
+        "id": "VR6AewLTigWG4xSOukaG",
+        "displayName": "Stone",
+        "previewUrl": "/audio-previews/voices/elevenlabs-VR6AewLT.mp3"
+      },
+      {
+        "id": "yoZ06aMxZJJ28mfd3POQ",
+        "displayName": "Haven",
+        "previewUrl": "/audio-previews/voices/elevenlabs-yoZ06aMx.mp3"
+      },
+      {
+        "id": "ErXwobaYiN019PkySvjV",
+        "displayName": "Zen",
+        "previewUrl": "/audio-previews/voices/elevenlabs-ErXwobaY.mp3"
+      },
+      {
+        "id": "AZnzlk1XvdvUeBnXmlld",
+        "displayName": "Spirit",
+        "previewUrl": "/audio-previews/voices/elevenlabs-AZnzlk1X.mp3"
+      },
+      {
+        "id": "D38z5RcWu1voky8WS1ja",
+        "displayName": "Cloud",
+        "previewUrl": "/audio-previews/voices/elevenlabs-D38z5RcW.mp3"
+      },
+      {
+        "id": "z9fAnlkpzviPz146aGWa",
+        "displayName": "Dawn",
+        "previewUrl": "/audio-previews/voices/elevenlabs-z9fAnlkp.mp3"
+      },
+      {
+        "id": "jsCqWAovK2LkecY7zXl4",
+        "displayName": "Ocean",
+        "previewUrl": "/audio-previews/voices/elevenlabs-jsCqWAov.mp3"
+      }
+    ]
+  },
+  "solfeggio": [
+    {
+      "hz": 174,
+      "name": "Pain Relief",
+      "description": "Foundation frequency for physical healing",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-174hz.mp3"
+    },
+    {
+      "hz": 285,
+      "name": "Tissue Healing",
+      "description": "Promotes cellular regeneration",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-285hz.mp3"
+    },
+    {
+      "hz": 396,
+      "name": "Liberation",
+      "description": "Releases fear and guilt",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-396hz.mp3"
+    },
+    {
+      "hz": 417,
+      "name": "Change",
+      "description": "Facilitates change and transformation",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-417hz.mp3"
+    },
+    {
+      "hz": 528,
+      "name": "Transformation",
+      "description": "DNA repair, miracle tone",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-528hz.mp3"
+    },
+    {
+      "hz": 639,
+      "name": "Connection",
+      "description": "Enhances relationships and communication",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-639hz.mp3"
+    },
+    {
+      "hz": 741,
+      "name": "Expression",
+      "description": "Awakens intuition and self-expression",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-741hz.mp3"
+    },
+    {
+      "hz": 852,
+      "name": "Intuition",
+      "description": "Returns to spiritual order",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-852hz.mp3"
+    },
+    {
+      "hz": 963,
+      "name": "Awakening",
+      "description": "Crown chakra activation",
+      "previewUrl": "/audio-previews/solfeggio/solfeggio-963hz.mp3"
+    }
+  ],
+  "binaural": [
+    {
+      "band": "delta",
+      "beatHz": 2,
+      "carrierHz": 100,
+      "name": "Deep Sleep",
+      "description": "0.5-4 Hz for deep sleep and healing",
+      "previewUrl": "/audio-previews/binaural/binaural-delta.mp3"
+    },
+    {
+      "band": "theta",
+      "beatHz": 6,
+      "carrierHz": 150,
+      "name": "Meditation",
+      "description": "4-8 Hz for deep meditation and creativity",
+      "previewUrl": "/audio-previews/binaural/binaural-theta.mp3"
+    },
+    {
+      "band": "alpha",
+      "beatHz": 10,
+      "carrierHz": 200,
+      "name": "Relaxation",
+      "description": "8-13 Hz for calm focus and relaxation",
+      "previewUrl": "/audio-previews/binaural/binaural-alpha.mp3"
+    },
+    {
+      "band": "beta",
+      "beatHz": 20,
+      "carrierHz": 250,
+      "name": "Focus",
+      "description": "13-30 Hz for alertness and concentration",
+      "previewUrl": "/audio-previews/binaural/binaural-beta.mp3"
+    },
+    {
+      "band": "gamma",
+      "beatHz": 40,
+      "carrierHz": 300,
+      "name": "Peak Performance",
+      "description": "30-100 Hz for peak mental activity",
+      "previewUrl": "/audio-previews/binaural/binaural-gamma.mp3"
+    }
+  ],
+  "music": [
+    {
+      "id": "serene-spa-flow",
+      "name": "Serene Spa Flow",
+      "description": "Gentle ambient spa soundscape",
+      "previewUrl": "/audio-previews/music/serene-spa-flow.mp3"
+    },
+    {
+      "id": "tibetan-singing-bowls",
+      "name": "Tibetan Singing Bowls",
+      "description": "Resonant singing bowl soundscape",
+      "previewUrl": "/audio-previews/music/tibetan-singing-bowls.mp3"
+    }
+  ]
+}

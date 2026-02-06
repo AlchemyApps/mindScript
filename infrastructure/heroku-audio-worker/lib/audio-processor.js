@@ -310,14 +310,15 @@ async function processAudioJob(job) {
       throw new Error('Failed to upload rendered audio to storage');
     }
 
-    console.log(`[Job ${jobId}] Upload complete: ${uploadResult.url}`);
+    console.log(`[Job ${jobId}] Upload complete: audio-renders/${uploadResult.path}`);
 
     // Get final duration
     const durationMs = await getDuration(outputPath);
     console.log(`[Job ${jobId}] Final duration: ${Math.round(durationMs / 1000)}s`);
 
-    // Update track with audio URL
-    await updateTrackAudio(trackId, uploadResult.url, durationMs);
+    // Update track with storage path (not signed URL) so the web app can re-sign on demand
+    const storagePath = 'audio-renders/' + uploadResult.path;
+    await updateTrackAudio(trackId, storagePath, durationMs);
 
     // Mark job as complete
     await completeJob(jobId, {

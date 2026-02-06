@@ -96,18 +96,23 @@ export default function LibraryPage() {
 
   const debouncedSearch = useDebounce(filters.search, 300);
 
-  // New track creation state
+  // New track or edit re-render state
   const isNewTrack = searchParams.get("new") === "true";
+  const isEditedTrack = searchParams.get("edited") === "true";
+  const isAwaitingRender = isNewTrack || isEditedTrack;
   const sessionId = searchParams.get("session");
   const [newTrackStatus, setNewTrackStatus] = useState<"creating" | "rendering" | "complete" | null>(
-    isNewTrack ? "creating" : null
+    isAwaitingRender ? "creating" : null
   );
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 
-  // Fetch tracks
-  const fetchTracks = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  // Core fetch — silent flag skips loading UI (used by polling/realtime)
+  const fetchTracks = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const params = new URLSearchParams();
@@ -137,10 +142,10 @@ export default function LibraryPage() {
       setTotalTracks(data.pagination.total);
       return data.tracks as Track[];
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      if (!silent) setError(err instanceof Error ? err.message : "An error occurred");
       return null;
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   }, [filters.ownership, filters.status, filters.sort, filters.order, filters.tags, debouncedSearch, page, router]);
 
@@ -167,9 +172,9 @@ export default function LibraryPage() {
     fetchUser();
   }, []);
 
-  // Poll for new track completion
+  // Poll for new track / edit completion — silently refreshes in background
   useEffect(() => {
-    if (!isNewTrack || !sessionId) return;
+    if (!isAwaitingRender) return;
 
     let pollInterval: NodeJS.Timeout;
     let pollCount = 0;
@@ -177,7 +182,7 @@ export default function LibraryPage() {
 
     const pollForTrack = async () => {
       try {
-        const latestTracks = await fetchTracks();
+        const latestTracks = await fetchTracks({ silent: true });
         if (!latestTracks) return;
 
         const newTrack = latestTracks.find(
@@ -196,6 +201,7 @@ export default function LibraryPage() {
             setTimeout(() => {
               const url = new URL(window.location.href);
               url.searchParams.delete("new");
+              url.searchParams.delete("edited");
               url.searchParams.delete("session");
               window.history.replaceState({}, "", url.toString());
             }, 6000);
@@ -223,11 +229,13 @@ export default function LibraryPage() {
       clearTimeout(initialTimeout);
       clearInterval(pollInterval);
     };
-  }, [isNewTrack, sessionId, fetchTracks, newTrackStatus]);
+  }, [isAwaitingRender, fetchTracks, newTrackStatus]);
 
-  // Realtime subscription
+  // Realtime subscription — listen for job updates, refresh silently
   useEffect(() => {
-    if (!isNewTrack) return;
+    if (!isAwaitingRender) return;
+
+    let cleanup: (() => void) | undefined;
 
     const setupRealtime = async () => {
       const { getSupabaseBrowserClient } = await import("@mindscript/auth/client");
@@ -246,15 +254,17 @@ export default function LibraryPage() {
             table: "audio_job_queue",
             filter: `user_id=eq.${user.id}`,
           },
-          () => fetchTracks()
+          () => fetchTracks({ silent: true })
         )
         .subscribe();
 
-      return () => subscription.unsubscribe();
+      cleanup = () => { subscription.unsubscribe(); };
     };
 
     setupRealtime();
-  }, [isNewTrack, fetchTracks]);
+
+    return () => { cleanup?.(); };
+  }, [isAwaitingRender, fetchTracks]);
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -346,7 +356,7 @@ export default function LibraryPage() {
 
   const handleEditTrack = useCallback(
     (trackId: string) => {
-      router.push(`/builder/${trackId}`);
+      router.push(`/library/${trackId}/edit`);
     },
     [router]
   );
@@ -472,7 +482,7 @@ export default function LibraryPage() {
         </section>
 
         {/* New Track Banner */}
-        {isNewTrack && newTrackStatus && newTrackStatus !== "complete" && (
+        {isAwaitingRender && newTrackStatus && newTrackStatus !== "complete" && (
           <div className="container mx-auto px-4 py-4">
             <RenderProgressBanner
               status={newTrackStatus}
@@ -568,8 +578,8 @@ export default function LibraryPage() {
 
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8 relative z-10">
-        {/* Loading State */}
-        {isLoading && (
+        {/* Loading State — only show full spinner on initial load when we have no tracks yet */}
+        {isLoading && tracks.length === 0 && (
           <div className="flex items-center justify-center py-12">
             <GlassCard className="text-center">
               <Spinner className="h-12 w-12 mx-auto mb-4 text-primary" />
@@ -588,8 +598,8 @@ export default function LibraryPage() {
           </GlassCard>
         )}
 
-        {/* Tracks Grid/List */}
-        {!isLoading && !error && tracks.length > 0 && (
+        {/* Tracks Grid/List — always show if we have tracks (no flash on refetch) */}
+        {!error && tracks.length > 0 && (
           <div
             className={
               viewMode === "grid"

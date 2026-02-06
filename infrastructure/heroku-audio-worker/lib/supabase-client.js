@@ -108,21 +108,41 @@ async function uploadRenderedAudio(filePath, trackId, format = 'mp3') {
   const bucket = 'audio-renders';
   const storagePath = `tracks/${trackId}/rendered.${format}`;
 
+  const MAX_RETRIES = 3;
+
   try {
     // Read the file
     const fileBuffer = fs.readFileSync(filePath);
+    console.log(`[Upload] File size: ${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB`);
 
-    // Upload to Supabase Storage
-    const { data, error } = await client.storage
-      .from(bucket)
-      .upload(storagePath, fileBuffer, {
-        contentType: format === 'mp3' ? 'audio/mpeg' : 'audio/wav',
-        upsert: true,
-      });
+    // Upload to Supabase Storage with retry for network errors
+    let data, error;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const result = await client.storage
+        .from(bucket)
+        .upload(storagePath, fileBuffer, {
+          contentType: format === 'mp3' ? 'audio/mpeg' : 'audio/wav',
+          upsert: true,
+        });
 
-    if (error) {
-      console.error('Upload error:', error);
-      return null;
+      data = result.data;
+      error = result.error;
+
+      if (!error) break;
+
+      const isRetryable = error.message?.includes('fetch failed') ||
+        error.message?.includes('EPIPE') ||
+        error.message?.includes('ECONNRESET') ||
+        error.statusCode >= 500;
+
+      if (isRetryable && attempt < MAX_RETRIES) {
+        const delay = attempt * 2000;
+        console.log(`[Upload] Attempt ${attempt} failed (${error.message}), retrying in ${delay}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        console.error(`[Upload] Failed after ${attempt} attempt(s):`, error);
+        return null;
+      }
     }
 
     // Get signed URL (valid for 1 year)

@@ -101,7 +101,7 @@ async function synthesizeElevenLabs(text, options, outputPath) {
   }
 
   const voiceId = options.voiceId || '21m00Tcm4TlvDq8ikWAM'; // Default: Rachel
-  const modelId = options.modelId || 'eleven_monolingual_v1';
+  const modelId = options.modelId || 'eleven_multilingual_v2';
   const stability = options.stability || 0.5;
   const similarity = options.similarity || 0.75;
 

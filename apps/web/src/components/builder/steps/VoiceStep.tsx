@@ -1,30 +1,20 @@
 'use client';
 
-import { useState } from 'react';
-import { Play, Pause, Volume2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '../../../lib/utils';
+import { VoicePicker } from '../VoicePicker';
+import { type VoiceMetadata, type VoiceTier } from '@mindscript/schemas';
 
 export type VoiceProvider = 'openai' | 'elevenlabs';
 
-export interface VoiceOption {
-  id: string;
-  name: string;
-  description: string;
+// Extended voice data that includes tier info for pricing
+export interface VoiceSelection {
   provider: VoiceProvider;
-  preview?: string;
+  voice_id: string;
+  name: string;
+  tier?: VoiceTier;
+  internalCode?: string;
 }
-
-const VOICE_OPTIONS: VoiceOption[] = [
-  { id: 'alloy', name: 'Alloy', description: 'Neutral and versatile', provider: 'openai' },
-  { id: 'echo', name: 'Echo', description: 'Warm male voice', provider: 'openai' },
-  { id: 'fable', name: 'Fable', description: 'British accent', provider: 'openai' },
-  { id: 'onyx', name: 'Onyx', description: 'Deep and resonant', provider: 'openai' },
-  { id: 'nova', name: 'Nova', description: 'Clear female voice', provider: 'openai' },
-  { id: 'shimmer', name: 'Shimmer', description: 'Soft and gentle', provider: 'openai' },
-  { id: 'rachel', name: 'Rachel', description: 'Natural and warm', provider: 'elevenlabs' },
-  { id: 'domi', name: 'Domi', description: 'Strong and confident', provider: 'elevenlabs' },
-  { id: 'bella', name: 'Bella', description: 'Soft and calming', provider: 'elevenlabs' },
-];
 
 const DURATION_OPTIONS = [
   { value: 5, label: '5 min', description: 'Quick session' },
@@ -33,11 +23,13 @@ const DURATION_OPTIONS = [
 ];
 
 interface VoiceStepProps {
-  selectedVoice: { provider: VoiceProvider; voice_id: string; name: string };
+  selectedVoice: VoiceSelection;
   duration: number;
   loopEnabled: boolean;
   loopPause: number;
-  onVoiceChange: (voice: { provider: VoiceProvider; voice_id: string; name: string }) => void;
+  scriptLength?: number;
+  isAuthenticated?: boolean;
+  onVoiceChange: (voice: VoiceSelection) => void;
   onDurationChange: (duration: number) => void;
   onLoopChange: (enabled: boolean, pause: number) => void;
   className?: string;
@@ -48,36 +40,26 @@ export function VoiceStep({
   duration,
   loopEnabled,
   loopPause,
+  scriptLength = 0,
+  isAuthenticated = false,
   onVoiceChange,
   onDurationChange,
   onLoopChange,
   className,
 }: VoiceStepProps) {
-  const [selectedProvider, setSelectedProvider] = useState<VoiceProvider>(selectedVoice.provider);
-  const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  // Track the selected VoiceMetadata for the picker
+  const [selectedVoiceMetadata, setSelectedVoiceMetadata] = useState<VoiceMetadata | null>(null);
 
-  const filteredVoices = VOICE_OPTIONS.filter((v) => v.provider === selectedProvider);
-
-  const handleProviderChange = (provider: VoiceProvider) => {
-    setSelectedProvider(provider);
-    const firstVoice = VOICE_OPTIONS.find((v) => v.provider === provider);
-    if (firstVoice) {
-      onVoiceChange({
-        provider,
-        voice_id: firstVoice.id,
-        name: firstVoice.name,
-      });
-    }
-  };
-
-  const handlePreviewVoice = (voiceId: string) => {
-    if (playingVoice === voiceId) {
-      setPlayingVoice(null);
-    } else {
-      setPlayingVoice(voiceId);
-      // Simulate audio preview ending
-      setTimeout(() => setPlayingVoice(null), 3000);
-    }
+  // Handle voice selection from VoicePicker
+  const handleVoiceSelect = (voice: VoiceMetadata) => {
+    setSelectedVoiceMetadata(voice);
+    onVoiceChange({
+      provider: voice.provider as VoiceProvider,
+      voice_id: voice.providerVoiceId,
+      name: voice.displayName,
+      tier: voice.tier,
+      internalCode: voice.internalCode,
+    });
   };
 
   return (
@@ -91,47 +73,13 @@ export function VoiceStep({
         </p>
       </div>
 
-      {/* Provider Selection */}
-      <div className="space-y-3">
-        <label className="text-sm font-medium text-text">Voice Provider</label>
-        <div className="grid grid-cols-2 gap-4">
-          <ProviderCard
-            name="OpenAI"
-            description="Natural AI voices"
-            isSelected={selectedProvider === 'openai'}
-            onClick={() => handleProviderChange('openai')}
-          />
-          <ProviderCard
-            name="ElevenLabs"
-            description="Premium realistic voices"
-            isSelected={selectedProvider === 'elevenlabs'}
-            onClick={() => handleProviderChange('elevenlabs')}
-          />
-        </div>
-      </div>
-
-      {/* Voice Selection */}
-      <div className="space-y-3">
-        <label className="text-sm font-medium text-text">Select Voice</label>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          {filteredVoices.map((voice) => (
-            <VoiceCard
-              key={voice.id}
-              voice={voice}
-              isSelected={selectedVoice.voice_id === voice.id}
-              isPlaying={playingVoice === voice.id}
-              onSelect={() =>
-                onVoiceChange({
-                  provider: voice.provider,
-                  voice_id: voice.id,
-                  name: voice.name,
-                })
-              }
-              onPreview={() => handlePreviewVoice(voice.id)}
-            />
-          ))}
-        </div>
-      </div>
+      {/* Voice Picker */}
+      <VoicePicker
+        selectedVoice={selectedVoiceMetadata}
+        onVoiceSelect={handleVoiceSelect}
+        isAuthenticated={isAuthenticated}
+        scriptLength={scriptLength}
+      />
 
       {/* Duration Selection */}
       <div className="space-y-3">
@@ -209,101 +157,6 @@ export function VoiceStep({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-interface ProviderCardProps {
-  name: string;
-  description: string;
-  isSelected: boolean;
-  onClick: () => void;
-}
-
-function ProviderCard({ name, description, isSelected, onClick }: ProviderCardProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'p-4 rounded-xl border-2 text-left transition-all duration-200 hover-lift',
-        isSelected
-          ? 'border-primary bg-primary/5'
-          : 'border-gray-100 bg-white hover:border-gray-200'
-      )}
-    >
-      <div className={cn('font-semibold', isSelected ? 'text-primary' : 'text-text')}>
-        {name}
-      </div>
-      <div className="text-sm text-muted">{description}</div>
-    </button>
-  );
-}
-
-interface VoiceCardProps {
-  voice: VoiceOption;
-  isSelected: boolean;
-  isPlaying: boolean;
-  onSelect: () => void;
-  onPreview: () => void;
-}
-
-function VoiceCard({ voice, isSelected, isPlaying, onSelect, onPreview }: VoiceCardProps) {
-  return (
-    <div
-      className={cn(
-        'relative p-4 rounded-xl border-2 transition-all duration-200',
-        isSelected
-          ? 'border-primary bg-primary/5'
-          : 'border-gray-100 bg-white hover:border-gray-200'
-      )}
-    >
-      <button
-        type="button"
-        onClick={onSelect}
-        className="w-full text-left"
-      >
-        {/* Waveform visualization placeholder */}
-        <div className="mb-3 flex items-center justify-center h-8">
-          <div className="flex items-end gap-0.5 h-full">
-            {[...Array(12)].map((_, i) => (
-              <div
-                key={i}
-                className={cn(
-                  'w-1 rounded-full transition-all duration-300',
-                  isSelected ? 'bg-primary' : 'bg-gray-300',
-                  isPlaying && 'animate-pulse'
-                )}
-                style={{
-                  height: `${20 + Math.sin(i * 0.8) * 40 + Math.random() * 20}%`,
-                  animationDelay: `${i * 50}ms`,
-                }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className={cn('font-medium', isSelected ? 'text-primary' : 'text-text')}>
-          {voice.name}
-        </div>
-        <div className="text-xs text-muted">{voice.description}</div>
-      </button>
-
-      {/* Preview button */}
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onPreview();
-        }}
-        className={cn(
-          'absolute top-2 right-2 p-1.5 rounded-full transition-colors',
-          'bg-gray-100 hover:bg-gray-200 text-muted hover:text-text'
-        )}
-        aria-label={`Preview ${voice.name}`}
-      >
-        {isPlaying ? <Pause className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-      </button>
     </div>
   );
 }

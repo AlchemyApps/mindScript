@@ -1,5 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
+
+// Service-role client for storage signing (private buckets have no RLS policies)
+function getAdminClient(): SupabaseClient {
+  return createAdminClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+}
 
 export interface TrackAccessCheck {
   hasAccess: boolean;
@@ -57,23 +67,55 @@ export async function checkTrackAccess(
 export async function generateSignedUrl(
   audioUrl: string,
   expiresIn: number = 3600,
-  supabase?: SupabaseClient
+  _supabase?: SupabaseClient
 ): Promise<{ signedUrl: string | null; error: Error | null }> {
-  const client = supabase || await createClient();
+  // Always use admin client — audio-renders is a private bucket with no RLS policies,
+  // so user-scoped clients get 400 on createSignedUrl
+  const client = getAdminClient();
 
   // Extract bucket and path from the audio URL
-  // Expected format: tracks-private/user-id/track-id/audio.mp3
-  const urlParts = audioUrl.split('/');
-  const bucket = urlParts[0];
-  const path = urlParts.slice(1).join('/');
+  // The URL can be either:
+  // 1. A simple storage path: "audio-renders/tracks/.../rendered.mp3"
+  // 2. A full Supabase signed URL: "https://xxx.supabase.co/storage/v1/object/sign/audio-renders/tracks/.../rendered.mp3?token=..."
+  // 3. A full Supabase public URL: "https://xxx.supabase.co/storage/v1/object/public/audio-renders/tracks/.../rendered.mp3"
+  let bucket: string;
+  let storagePath: string;
+
+  if (audioUrl.startsWith('http')) {
+    // Full URL — extract the storage path from it
+    try {
+      const url = new URL(audioUrl);
+      const pathMatch = url.pathname.match(/\/storage\/v1\/object\/(?:public|sign)\/([^?]+)/);
+      if (pathMatch) {
+        const fullPath = decodeURIComponent(pathMatch[1]);
+        const parts = fullPath.split('/');
+        bucket = parts[0];
+        storagePath = parts.slice(1).join('/');
+      } else {
+        // Can't parse — return the original URL as-is (it's already signed)
+        return { signedUrl: audioUrl, error: null };
+      }
+    } catch {
+      return { signedUrl: audioUrl, error: null };
+    }
+  } else {
+    // Simple storage path
+    const parts = audioUrl.split('/');
+    bucket = parts[0];
+    storagePath = parts.slice(1).join('/');
+  }
 
   try {
     const { data, error } = await client.storage
       .from(bucket)
-      .createSignedUrl(path, expiresIn);
+      .createSignedUrl(storagePath, expiresIn);
 
     if (error) {
       console.error('Error generating signed URL:', error);
+      // Fall back to original URL if it looks like it might work
+      if (audioUrl.startsWith('http')) {
+        return { signedUrl: audioUrl, error: null };
+      }
       return { signedUrl: null, error };
     }
 

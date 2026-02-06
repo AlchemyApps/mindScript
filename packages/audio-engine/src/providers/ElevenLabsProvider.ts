@@ -79,7 +79,7 @@ export class ElevenLabsProvider extends BaseTTSProvider {
     const chunks = this.chunkText(normalizedText);
     
     // Prepare request parameters
-    const model: ElevenLabsModel = (request.model as ElevenLabsModel) || "eleven_monolingual_v1";
+    const model: ElevenLabsModel = (request.model as ElevenLabsModel) || "eleven_multilingual_v2";
     const format = request.format || "mp3_44100_128";
 
     try {
@@ -160,7 +160,7 @@ export class ElevenLabsProvider extends BaseTTSProvider {
     }
 
     // Prepare request parameters
-    const model: ElevenLabsModel = (request.model as ElevenLabsModel) || "eleven_monolingual_v1";
+    const model: ElevenLabsModel = (request.model as ElevenLabsModel) || "eleven_multilingual_v2";
 
     try {
       const stream = await this.withRateLimit(async () => {

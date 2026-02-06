@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { z } from "zod";
 import { createClient } from '@supabase/supabase-js';
+import { calculateVoiceFee, type VoiceTier } from '@mindscript/schemas';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -29,6 +30,9 @@ const GuestCheckoutRequestSchema = z.object({
     voice: z.object({
       provider: z.enum(['openai', 'elevenlabs', 'uploaded']),
       voice_id: z.string(),
+      name: z.string().optional(),
+      tier: z.enum(['included', 'premium', 'custom']).optional(),
+      internalCode: z.string().optional(),
       settings: z.object({
         speed: z.number().optional(),
         pitch: z.number().optional(),
@@ -81,11 +85,26 @@ export async function POST(request: NextRequest) {
     // If userId looks like an email, try to find the actual user ID
     if (userId.includes('@')) {
       console.log('UserId is an email, looking up actual user ID...');
-
-      // This is tricky because we can't directly query auth.users
-      // For now, we'll use the email as the identifier in metadata
-      // The webhook will need to handle this appropriately
       console.log('Using email as identifier:', userId);
+    }
+
+    // Look up existing Stripe customer ID for fast checkout (Stripe Link)
+    let stripeCustomerId: string | undefined;
+    if (!userId.includes('@')) {
+      try {
+        const { data: profile } = await supabaseAdmin
+          .from('profiles')
+          .select('stripe_customer_id')
+          .eq('id', userId)
+          .single();
+
+        if (profile?.stripe_customer_id) {
+          stripeCustomerId = profile.stripe_customer_id;
+          console.log('Found existing Stripe customer:', stripeCustomerId);
+        }
+      } catch (error) {
+        console.error('Failed to look up Stripe customer ID:', error);
+      }
     }
 
     // Build description with selected features
@@ -100,17 +119,31 @@ export async function POST(request: NextRequest) {
       features.push(`Binaural: ${builderState.binaural.band || 'theta'}`);
     }
 
-    // Get voice name from voice_id (we'll need to map this properly in production)
-    const voiceName = builderState.voice.voice_id.charAt(0).toUpperCase() + builderState.voice.voice_id.slice(1);
+    // Get voice name - use provided name or fallback to voice_id
+    const voiceName = builderState.voice.name ||
+      (builderState.voice.voice_id.charAt(0).toUpperCase() + builderState.voice.voice_id.slice(1));
+    const voiceTier = (builderState.voice.tier || 'included') as VoiceTier;
     const duration = builderState.duration || 10; // Default to 10 minutes if not specified
+
+    // Calculate voice fee for premium/custom voices based on script length
+    const scriptLength = builderState.script.length;
+    const voiceFeeCents = calculateVoiceFee(scriptLength, voiceTier);
+
+    // Add voice tier to features if premium/custom
+    if (voiceTier === 'premium') {
+      features.push(`Premium Voice: ${voiceName}`);
+    } else if (voiceTier === 'custom') {
+      features.push(`Custom Voice: ${voiceName}`);
+    }
+
     const description = `${duration} min track with ${voiceName}${features.length > 0 ? ` • ${features.join(' • ')}` : ''}`;
 
-    // Create single line item with total price (includes all add-ons)
+    // Create line items - base track plus voice fee if applicable
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
         price_data: {
           currency: 'usd',
-          unit_amount: priceAmount, // Total price from frontend (already includes add-ons)
+          unit_amount: priceAmount, // Base price from frontend (includes add-ons but not voice fee)
           product_data: {
             name: firstTrackDiscount ? 'MindScript First Track (Special Pricing)' : 'MindScript Track',
             description,
@@ -119,6 +152,7 @@ export async function POST(request: NextRequest) {
               has_background_music: (!!builderState.music?.id && builderState.music.id !== 'none').toString(),
               has_solfeggio: (!!builderState.solfeggio?.enabled).toString(),
               has_binaural: (!!builderState.binaural?.enabled).toString(),
+              voice_tier: voiceTier,
             },
           },
         },
@@ -126,27 +160,50 @@ export async function POST(request: NextRequest) {
       },
     ];
 
+    // Add voice fee as separate line item for premium/custom voices
+    if (voiceFeeCents > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'usd',
+          unit_amount: voiceFeeCents,
+          product_data: {
+            name: voiceTier === 'premium' ? 'Premium Voice' : 'Custom Voice',
+            description: `${voiceName} - ${scriptLength} characters`,
+            metadata: {
+              type: 'voice_fee',
+              voice_tier: voiceTier,
+              voice_name: voiceName,
+              voice_id: builderState.voice.voice_id,
+              script_length: scriptLength.toString(),
+            },
+          },
+        },
+        quantity: 1,
+      });
+    }
+
     // Look up background music details if selected
     let backgroundMusicData: { id: string; name: string; url: string; volume_db: number } | null = null;
     if (builderState.music?.id && builderState.music.id !== 'none') {
       try {
         const { data: musicTrack, error: musicError } = await supabaseAdmin
-          .from('background_music')
-          .select('id, name, storage_path')
-          .eq('id', builderState.music.id)
+          .from('background_tracks')
+          .select('id, title, url')
+          .eq('slug', builderState.music.id)
+          .eq('is_active', true)
           .single();
 
         if (musicError) {
           console.error('Failed to look up background music:', musicError);
         } else if (musicTrack) {
-          // Get public URL for the music file
+          // Get public URL for the music file from storage
           const { data: urlData } = supabaseAdmin.storage
             .from('background-music')
-            .getPublicUrl(musicTrack.storage_path);
+            .getPublicUrl(musicTrack.url);
 
           backgroundMusicData = {
             id: musicTrack.id,
-            name: musicTrack.name || 'Background Music',
+            name: musicTrack.title || 'Background Music',
             url: urlData?.publicUrl || '',
             volume_db: builderState.music.volume_db ?? -10,
           };
@@ -165,6 +222,8 @@ export async function POST(request: NextRequest) {
         provider: builderState.voice.provider,
         voice_id: builderState.voice.voice_id,
         name: voiceName, // Use the derived voice name
+        tier: voiceTier,
+        internalCode: builderState.voice.internalCode,
         settings: builderState.voice.settings || {}
       },
       duration: duration,
@@ -236,7 +295,9 @@ export async function POST(request: NextRequest) {
       conversion_type: 'guest_to_user',
       is_first_purchase: firstTrackDiscount.toString(), // Aligned with webhook expectations
       first_track: 'true',
-      total_amount: priceAmount.toString(),
+      total_amount: (priceAmount + voiceFeeCents).toString(),
+      voice_tier: voiceTier,
+      voice_fee_cents: voiceFeeCents.toString(),
     };
 
     // Add pending track ID if we have one
@@ -244,33 +305,52 @@ export async function POST(request: NextRequest) {
       metadata.pending_track_id = pendingTrackId;
     }
 
-    // Try to store full config if it fits, otherwise use chunking approach
-    if (trackConfigStr.length <= 500) {
-      metadata.track_config = trackConfigStr;
-    } else {
-      // Store config without script, then add script chunks separately
-      const configWithoutScript = { ...trackConfig, script: '' };
-      metadata.track_config_partial = JSON.stringify(configWithoutScript);
+    // Only embed track config in metadata if we DON'T have a pending_track_id
+    // (the webhook will fetch from pending_tracks table instead)
+    if (!pendingTrackId) {
+      if (trackConfigStr.length <= 500) {
+        metadata.track_config = trackConfigStr;
+      } else {
+        // Store minimal config without script and without long URLs
+        const minimalConfig = {
+          ...trackConfig,
+          script: '',
+          backgroundMusic: trackConfig.backgroundMusic ? {
+            id: trackConfig.backgroundMusic.id,
+            name: trackConfig.backgroundMusic.name,
+            volume_db: trackConfig.backgroundMusic.volume_db,
+          } : null,
+        };
+        const minimalStr = JSON.stringify(minimalConfig);
+        if (minimalStr.length <= 500) {
+          metadata.track_config_partial = minimalStr;
+        }
 
-      // Add script chunks to metadata
-      scriptChunks.forEach((chunk, index) => {
-        metadata[`script_chunk_${index}`] = chunk;
-      });
-      metadata.script_chunks_count = scriptChunks.length.toString();
+        // Add script chunks to metadata
+        scriptChunks.forEach((chunk, index) => {
+          metadata[`script_chunk_${index}`] = chunk;
+        });
+        metadata.script_chunks_count = scriptChunks.length.toString();
+      }
     }
 
     // Create Stripe checkout session
+    // If returning customer, pass their Stripe customer ID for Stripe Link pre-fill
+    const customerParams: Partial<Stripe.Checkout.SessionCreateParams> = stripeCustomerId
+      ? { customer: stripeCustomerId }
+      : { customer_creation: 'always' as const };
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       line_items: lineItems,
       success_url: successUrl,
       cancel_url: cancelUrl,
       metadata,
-      customer_creation: 'always', // Always create a customer
-      payment_method_types: ['card'],
+      ...customerParams,
+      payment_method_types: ['card', 'link'],
       expires_at: Math.floor(Date.now() / 1000) + 1800, // 30 minutes
-      // Collect email for account creation
-      customer_email: undefined, // Let Stripe collect it
+      // Collect email for account creation (skip if returning customer)
+      customer_email: undefined,
       billing_address_collection: 'auto',
       // Enable promotional codes
       allow_promotion_codes: true,
@@ -286,12 +366,18 @@ export async function POST(request: NextRequest) {
           optional: true,
         },
       ],
-      // Invoice settings
+      // Invoice settings — use minimal metadata to avoid 500 char limit
       invoice_creation: {
         enabled: true,
         invoice_data: {
           description: 'MindScript First Track Purchase',
-          metadata,
+          metadata: {
+            user_id: metadata.user_id,
+            pending_track_id: metadata.pending_track_id || '',
+            is_first_purchase: metadata.is_first_purchase,
+            voice_tier: metadata.voice_tier,
+            total_amount: metadata.total_amount,
+          },
         },
       },
     });

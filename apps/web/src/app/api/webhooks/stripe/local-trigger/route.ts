@@ -131,6 +131,26 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('[LOCAL-TRIGGER] Processing purchase for user:', userId);
+
+    // Save Stripe customer ID for fast checkout (Link / saved cards)
+    const stripeCustomerId = typeof session.customer === 'string'
+      ? session.customer
+      : (session.customer as any)?.id;
+    if (stripeCustomerId) {
+      const { error: custError } = await supabaseAdmin
+        .from('profiles')
+        .update({
+          stripe_customer_id: stripeCustomerId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .is('stripe_customer_id', null);
+
+      if (!custError) {
+        console.log('[LOCAL-TRIGGER] Saved Stripe customer ID:', stripeCustomerId);
+      }
+    }
+
     const { trackConfig, pendingTrackId } = await buildTrackConfig(metadata);
 
     // Create purchase record (idempotent with unique constraint on checkout_session_id)
@@ -186,6 +206,136 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    // === TRACK EDIT FLOW ===
+    if (metadata.type === 'track_edit') {
+      const trackId = metadata.track_id;
+      const editDataStr = metadata.edit_data;
+
+      if (!trackId || !editDataStr) {
+        console.error('[LOCAL-TRIGGER] Missing track_id or edit_data for track edit');
+        return NextResponse.json({ success: false, error: 'Missing edit metadata' }, { status: 400 });
+      }
+
+      try {
+        const editData = JSON.parse(editDataStr);
+
+        const { data: track, error: trackError } = await supabaseAdmin
+          .from('tracks')
+          .select('*')
+          .eq('id', trackId)
+          .eq('user_id', userId)
+          .single();
+
+        if (trackError || !track) {
+          console.error('[LOCAL-TRIGGER] Track not found for edit:', trackId);
+          return NextResponse.json({ success: false, error: 'Track not found' }, { status: 404 });
+        }
+
+        const editCount = (track.edit_count || 0) + 1;
+        const originalConfig = track.original_config || {
+          voice_config: track.voice_config,
+          music_config: track.music_config,
+          frequency_config: track.frequency_config,
+          output_config: track.output_config,
+        };
+
+        // Build updated configs
+        const updatedFrequencyConfig = {
+          solfeggio: editData.solfeggio?.enabled ? {
+            enabled: true,
+            frequency: editData.solfeggio.frequency || track.frequency_config?.solfeggio?.frequency || track.frequency_config?.solfeggio?.hz || 528,
+            volume_db: editData.gains?.solfeggioDb ?? track.frequency_config?.solfeggio?.volume_db,
+          } : null,
+          binaural: editData.binaural?.enabled ? {
+            enabled: true,
+            band: editData.binaural.band || track.frequency_config?.binaural?.band || 'alpha',
+            volume_db: editData.gains?.binauralDb ?? track.frequency_config?.binaural?.volume_db,
+          } : null,
+        };
+
+        const updatedOutputConfig = {
+          ...track.output_config,
+          durationMin: editData.duration || track.output_config?.durationMin || 10,
+          loop: editData.loop || track.output_config?.loop || { enabled: true, pause_seconds: 5 },
+        };
+
+        const updatedMusicConfig = track.music_config ? {
+          ...track.music_config,
+          volume_db: editData.gains?.musicDb ?? track.music_config.volume_db,
+        } : null;
+
+        const updatedVoiceConfig = editData.voiceSpeed != null && track.voice_config ? {
+          ...track.voice_config,
+          settings: { ...track.voice_config.settings, speed: editData.voiceSpeed },
+        } : track.voice_config;
+
+        // Update track — set status to 'draft' for re-render
+        await supabaseAdmin.from('tracks').update({
+          edit_count: editCount,
+          original_config: originalConfig,
+          voice_config: updatedVoiceConfig,
+          frequency_config: updatedFrequencyConfig,
+          output_config: updatedOutputConfig,
+          music_config: updatedMusicConfig,
+          status: 'draft',
+          updated_at: new Date().toISOString(),
+        }).eq('id', trackId);
+
+        // Build worker payload
+        const workerPayload = {
+          script: track.script || '',
+          voice: track.voice_config ? {
+            provider: track.voice_config.provider || 'openai',
+            id: track.voice_config.voice_id || 'nova',
+            model: track.voice_config.model || 'tts-1',
+            speed: editData.voiceSpeed ?? track.voice_config.settings?.speed ?? 1.0,
+          } : null,
+          durationMin: updatedOutputConfig.durationMin,
+          pauseSec: updatedOutputConfig.loop?.pause_seconds ?? 5,
+          loopMode: updatedOutputConfig.loop?.enabled ?? true,
+          backgroundMusic: updatedMusicConfig ? {
+            id: updatedMusicConfig.id,
+            name: updatedMusicConfig.name,
+            url: updatedMusicConfig.url,
+          } : null,
+          solfeggio: updatedFrequencyConfig.solfeggio ? {
+            enabled: true,
+            hz: updatedFrequencyConfig.solfeggio.frequency,
+            volume_db: editData.gains?.solfeggioDb,
+          } : null,
+          binaural: updatedFrequencyConfig.binaural ? {
+            enabled: true,
+            band: updatedFrequencyConfig.binaural.band,
+            volume_db: editData.gains?.binauralDb,
+          } : null,
+          gains: editData.gains,
+        };
+
+        await supabaseAdmin.from('audio_job_queue').insert({
+          track_id: trackId,
+          user_id: userId,
+          status: 'pending',
+          payload: workerPayload,
+          created_at: new Date().toISOString(),
+        });
+
+        console.log('[LOCAL-TRIGGER] Track edit processed and re-render queued:', trackId);
+
+        return NextResponse.json({
+          success: true,
+          message: 'Track edit submitted',
+          purchaseId: purchase.id,
+          trackId,
+          type: 'track_edit',
+        });
+      } catch (error) {
+        console.error('[LOCAL-TRIGGER] Track edit processing error:', error);
+        return NextResponse.json({ success: false, error: 'Failed to process track edit' }, { status: 500 });
+      }
+    }
+
+    // === NEW TRACK FLOW ===
+
     // Mark first-track discount as used
     if (isFirstPurchase) {
       await supabaseAdmin
@@ -211,7 +361,6 @@ export async function POST(request: NextRequest) {
         console.log('[LOCAL-TRIGGER] Track build started:', builtTrackId);
       } catch (error) {
         console.error('[LOCAL-TRIGGER] Failed to start track build:', error);
-        // Don't fail the entire request - we can retry the build later
       }
     }
 

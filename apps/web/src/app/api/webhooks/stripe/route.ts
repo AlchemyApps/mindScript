@@ -302,6 +302,23 @@ async function processCompletedPurchase({
     await markDiscountUsed(userId);
   }
 
+  // Save Stripe customer ID for fast checkout (Stripe Link)
+  if (metadata.stripe_customer_id) {
+    try {
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          stripe_customer_id: metadata.stripe_customer_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userId)
+        .is('stripe_customer_id', null); // Only set if not already saved
+      console.log('[WEBHOOK] Saved Stripe customer ID for user:', userId);
+    } catch (error) {
+      console.error('[WEBHOOK] Failed to save Stripe customer ID:', error);
+    }
+  }
+
   if (trackConfig.script && trackConfig.voice) {
     try {
       await startTrackBuild({
@@ -331,6 +348,342 @@ async function processCompletedPurchase({
   await enqueuePurchaseNotification(userId, purchase.id, trackConfig.title);
 
   return { userId, email, purchaseId: purchase.id };
+}
+
+async function processVoiceClonePurchase({
+  metadata,
+  sessionId,
+  amountTotal,
+  paymentIntentId,
+}: {
+  metadata: StripeMetadata;
+  sessionId: string;
+  amountTotal: number;
+  paymentIntentId?: string | null;
+}) {
+  const userId = metadata.user_id;
+  if (!userId) throw new Error('Missing user_id in voice clone metadata');
+
+  // Record purchase
+  await recordPurchase({
+    userId,
+    sessionId,
+    paymentIntentId,
+    amount: amountTotal,
+    currency: 'usd',
+    metadata: { ...metadata, type: 'voice_clone' },
+  });
+
+  // Save Stripe customer ID
+  if (metadata.stripe_customer_id) {
+    await supabaseAdmin
+      .from('profiles')
+      .update({ stripe_customer_id: metadata.stripe_customer_id, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .is('stripe_customer_id', null);
+  }
+
+  const voiceName = metadata.voice_name || 'My Voice';
+  const sampleFilePath = metadata.sample_file_path;
+  const sampleUrl = metadata.sample_url;
+  const consentData = metadata.consent_data;
+
+  if (!sampleFilePath || !sampleUrl) {
+    console.error('[WEBHOOK] Missing voice sample data in metadata');
+    return;
+  }
+
+  try {
+    // Download audio from Supabase storage
+    const { data: audioData, error: downloadError } = await supabaseAdmin.storage
+      .from('voice-samples')
+      .download(sampleFilePath);
+
+    if (downloadError || !audioData) {
+      console.error('[WEBHOOK] Failed to download voice sample:', downloadError);
+      // Still create the record so user sees "processing" state
+      await supabaseAdmin.from('cloned_voices').insert({
+        user_id: userId,
+        voice_id: 'pending',
+        voice_name: voiceName,
+        status: 'failed',
+        error_message: 'Failed to download audio sample',
+      });
+      return;
+    }
+
+    const audioBuffer = Buffer.from(await audioData.arrayBuffer());
+
+    // Create cloned_voices record with processing status
+    const { data: voiceRecord, error: dbError } = await supabaseAdmin
+      .from('cloned_voices')
+      .insert({
+        user_id: userId,
+        voice_id: 'pending',
+        voice_name: voiceName,
+        sample_file_url: sampleUrl,
+        sample_file_size: audioBuffer.length,
+        status: 'processing',
+      })
+      .select()
+      .single();
+
+    if (dbError || !voiceRecord) {
+      console.error('[WEBHOOK] Failed to create voice record:', dbError);
+      return;
+    }
+
+    // Store consent
+    if (consentData) {
+      try {
+        const consent = JSON.parse(consentData);
+        await supabaseAdmin.from('voice_consent_records').insert({
+          voice_id: voiceRecord.id,
+          user_id: userId,
+          has_consent: consent.hasConsent ?? true,
+          is_over_18: consent.isOver18 ?? true,
+          accepts_terms: consent.acceptsTerms ?? true,
+          owns_voice: consent.ownsVoice ?? true,
+          understands_usage: consent.understandsUsage ?? true,
+          no_impersonation: consent.noImpersonation ?? true,
+          consent_text: 'User consented to voice cloning terms and conditions v1.0',
+          consent_version: '1.0',
+        });
+      } catch (e) {
+        console.error('[WEBHOOK] Failed to store consent:', e);
+      }
+    }
+
+    // Call ElevenLabs to clone the voice
+    // Dynamic import to avoid bundling issues in edge runtime
+    let cloneResult;
+    try {
+      const { ElevenLabsVoiceCloning } = await import('@mindscript/audio-engine/providers/ElevenLabsCloning');
+      const elevenLabs = new ElevenLabsVoiceCloning();
+      cloneResult = await elevenLabs.cloneVoice(
+        {
+          name: voiceName,
+          uploadData: {
+            fileName: sampleFilePath.split('/').pop() || 'voice-sample.wav',
+            fileSize: audioBuffer.length,
+            mimeType: 'audio/wav',
+            duration: 90, // Approximate
+            sampleRate: 44100,
+            bitrate: 256000,
+          },
+          consent: {
+            hasConsent: true,
+            isOver18: true,
+            acceptsTerms: true,
+            ownsVoice: true,
+            understandsUsage: true,
+            noImpersonation: true,
+            timestamp: new Date().toISOString(),
+          },
+        },
+        audioBuffer
+      );
+    } catch (importError) {
+      console.error('[WEBHOOK] ElevenLabs import/clone error:', importError);
+      await supabaseAdmin.from('cloned_voices').update({
+        status: 'failed',
+        error_message: 'Voice cloning service temporarily unavailable',
+      }).eq('id', voiceRecord.id);
+      return;
+    }
+
+    if (!cloneResult.isOk || !cloneResult.value.success || !cloneResult.value.voiceId) {
+      const errorMsg = !cloneResult.isOk
+        ? cloneResult.error.message
+        : cloneResult.value.error || 'Unknown cloning error';
+      console.error('[WEBHOOK] Voice cloning failed:', errorMsg);
+      await supabaseAdmin.from('cloned_voices').update({
+        status: 'failed',
+        error_message: errorMsg,
+      }).eq('id', voiceRecord.id);
+      return;
+    }
+
+    // Update voice record with ElevenLabs voice ID
+    await supabaseAdmin.from('cloned_voices').update({
+      voice_id: cloneResult.value.voiceId,
+      status: 'active',
+    }).eq('id', voiceRecord.id);
+
+    // Also add to voice_catalog for VoicePicker integration
+    await supabaseAdmin.from('voice_catalog').insert({
+      internal_code: `elevenlabs:${cloneResult.value.voiceId}`,
+      display_name: voiceName,
+      description: 'Custom cloned voice',
+      gender: null,
+      tier: 'custom',
+      provider: 'elevenlabs',
+      provider_voice_id: cloneResult.value.voiceId,
+      preview_url: null,
+      is_enabled: true,
+      sort_order: 0,
+      owner_user_id: userId,
+    });
+
+    console.log('[WEBHOOK] Voice cloned successfully:', cloneResult.value.voiceId);
+  } catch (error) {
+    console.error('[WEBHOOK] Voice clone processing error:', error);
+  }
+}
+
+async function processTrackEditPurchase({
+  metadata,
+  sessionId,
+  amountTotal,
+  paymentIntentId,
+}: {
+  metadata: StripeMetadata;
+  sessionId: string;
+  amountTotal: number;
+  paymentIntentId?: string | null;
+}) {
+  const userId = metadata.user_id;
+  const trackId = metadata.track_id;
+  const editDataStr = metadata.edit_data;
+
+  if (!userId || !trackId) {
+    throw new Error('Missing user_id or track_id in track edit metadata');
+  }
+
+  // Record purchase
+  await recordPurchase({
+    userId,
+    sessionId,
+    paymentIntentId,
+    amount: amountTotal,
+    currency: 'usd',
+    metadata: { ...metadata, type: 'track_edit' },
+  });
+
+  // Save Stripe customer ID
+  if (metadata.stripe_customer_id) {
+    await supabaseAdmin
+      .from('profiles')
+      .update({ stripe_customer_id: metadata.stripe_customer_id, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .is('stripe_customer_id', null);
+  }
+
+  if (!editDataStr) {
+    console.error('[WEBHOOK] Missing edit_data in track edit metadata');
+    return;
+  }
+
+  try {
+    const editData = JSON.parse(editDataStr);
+
+    // Fetch current track
+    const { data: track, error: trackError } = await supabaseAdmin
+      .from('tracks')
+      .select('*')
+      .eq('id', trackId)
+      .eq('user_id', userId)
+      .single();
+
+    if (trackError || !track) {
+      console.error('[WEBHOOK] Track not found for edit:', trackId);
+      return;
+    }
+
+    // Save original config on first edit
+    const editCount = (track.edit_count || 0) + 1;
+    const originalConfig = track.original_config || {
+      voice_config: track.voice_config,
+      music_config: track.music_config,
+      frequency_config: track.frequency_config,
+      output_config: track.output_config,
+    };
+
+    // Build updated configs (mirrors logic from /api/tracks/[id]/edit)
+    const updatedFrequencyConfig = {
+      solfeggio: editData.solfeggio?.enabled ? {
+        enabled: true,
+        frequency: editData.solfeggio.frequency || track.frequency_config?.solfeggio?.frequency || track.frequency_config?.solfeggio?.hz || 528,
+        volume_db: editData.gains?.solfeggioDb ?? track.frequency_config?.solfeggio?.volume_db,
+      } : null,
+      binaural: editData.binaural?.enabled ? {
+        enabled: true,
+        band: editData.binaural.band || track.frequency_config?.binaural?.band || 'alpha',
+        volume_db: editData.gains?.binauralDb ?? track.frequency_config?.binaural?.volume_db,
+      } : null,
+    };
+
+    const updatedOutputConfig = {
+      ...track.output_config,
+      durationMin: editData.duration || track.output_config?.durationMin || 10,
+      loop: editData.loop || track.output_config?.loop || { enabled: true, pause_seconds: 5 },
+    };
+
+    const updatedMusicConfig = track.music_config ? {
+      ...track.music_config,
+      volume_db: editData.gains?.musicDb ?? track.music_config.volume_db,
+    } : null;
+
+    const updatedVoiceConfig = editData.voiceSpeed != null && track.voice_config ? {
+      ...track.voice_config,
+      settings: { ...track.voice_config.settings, speed: editData.voiceSpeed },
+    } : track.voice_config;
+
+    // Update track record — set status to 'draft' for re-render
+    await supabaseAdmin.from('tracks').update({
+      edit_count: editCount,
+      original_config: originalConfig,
+      voice_config: updatedVoiceConfig,
+      frequency_config: updatedFrequencyConfig,
+      output_config: updatedOutputConfig,
+      music_config: updatedMusicConfig,
+      status: 'draft',
+      updated_at: new Date().toISOString(),
+    }).eq('id', trackId);
+
+    // Build full worker payload (same structure as free edit route)
+    const workerPayload = {
+      script: track.script || '',
+      voice: track.voice_config ? {
+        provider: track.voice_config.provider || 'openai',
+        id: track.voice_config.voice_id || 'nova',
+        model: track.voice_config.model || 'tts-1',
+        speed: editData.voiceSpeed ?? track.voice_config.settings?.speed ?? 1.0,
+      } : null,
+      durationMin: updatedOutputConfig.durationMin,
+      pauseSec: updatedOutputConfig.loop?.pause_seconds ?? 5,
+      loopMode: updatedOutputConfig.loop?.enabled ?? true,
+      backgroundMusic: updatedMusicConfig ? {
+        id: updatedMusicConfig.id,
+        name: updatedMusicConfig.name,
+        url: updatedMusicConfig.url,
+      } : null,
+      solfeggio: updatedFrequencyConfig.solfeggio ? {
+        enabled: true,
+        hz: updatedFrequencyConfig.solfeggio.frequency,
+        volume_db: editData.gains?.solfeggioDb,
+      } : null,
+      binaural: updatedFrequencyConfig.binaural ? {
+        enabled: true,
+        band: updatedFrequencyConfig.binaural.band,
+        volume_db: editData.gains?.binauralDb,
+      } : null,
+      gains: editData.gains,
+    };
+
+    // Enqueue re-render job with full worker payload
+    await supabaseAdmin.from('audio_job_queue').insert({
+      track_id: trackId,
+      user_id: userId,
+      status: 'pending',
+      payload: workerPayload,
+      created_at: new Date().toISOString(),
+    });
+
+    console.log('[WEBHOOK] Track edit processed and re-render queued:', trackId);
+  } catch (error) {
+    console.error('[WEBHOOK] Track edit processing error:', error);
+  }
 }
 
 /**
@@ -409,6 +762,39 @@ export async function POST(request: NextRequest) {
         }
 
         const metadata = session.metadata || {};
+
+        // Capture Stripe customer ID from the session for fast checkout
+        const stripeCustomerId = typeof session.customer === 'string'
+          ? session.customer
+          : session.customer?.id;
+        if (stripeCustomerId) {
+          metadata.stripe_customer_id = stripeCustomerId;
+        }
+
+        // Handle voice clone checkout
+        if (metadata.type === 'voice_clone') {
+          await processVoiceClonePurchase({
+            metadata,
+            sessionId: session.id,
+            amountTotal: session.amount_total || 0,
+            paymentIntentId: session.payment_intent as string | null,
+          });
+          console.log('[WEBHOOK] Processed voice clone purchase:', session.id);
+          break;
+        }
+
+        // Handle track edit checkout
+        if (metadata.type === 'track_edit') {
+          await processTrackEditPurchase({
+            metadata,
+            sessionId: session.id,
+            amountTotal: session.amount_total || 0,
+            paymentIntentId: session.payment_intent as string | null,
+          });
+          console.log('[WEBHOOK] Processed track edit purchase:', session.id);
+          break;
+        }
+
         await processCompletedPurchase({
           metadata,
           amountTotal: session.amount_total || 0,

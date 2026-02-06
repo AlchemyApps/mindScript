@@ -7,9 +7,10 @@ import { cn } from '../../lib/utils';
 import { StepIndicator, type Step } from './StepIndicator';
 import { IntentionStep, type IntentionCategory } from './steps/IntentionStep';
 import { ScriptStep } from './steps/ScriptStep';
-import { VoiceStep, type VoiceProvider } from './steps/VoiceStep';
+import { VoiceStep, type VoiceProvider, type VoiceSelection } from './steps/VoiceStep';
 import { EnhanceStep, type BinauralBand } from './steps/EnhanceStep';
 import { CreateStep } from './steps/CreateStep';
+import { calculateVoiceFee } from '@mindscript/schemas';
 import { AuthModal } from '../auth-modal';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 import { GlassCard } from '../ui/GlassCard';
@@ -27,11 +28,7 @@ interface BuilderState {
   intention: IntentionCategory | null;
   title: string;
   script: string;
-  voice: {
-    provider: VoiceProvider;
-    voice_id: string;
-    name: string;
-  };
+  voice: VoiceSelection;
   duration: number;
   loop: {
     enabled: boolean;
@@ -217,6 +214,9 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
           voice: {
             provider: state.voice.provider,
             voice_id: state.voice.voice_id,
+            name: state.voice.name,
+            tier: state.voice.tier,
+            internalCode: state.voice.internalCode,
             settings: {},
           },
           music: state.music && state.music.id !== 'none'
@@ -282,6 +282,11 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     if (state.binaural?.enabled) {
       total += state.binaural.price;
     }
+    // Add voice fee for premium/custom voices
+    if (state.voice.tier && state.voice.tier !== 'included') {
+      const voiceFeeCents = calculateVoiceFee(state.script.length, state.voice.tier);
+      total += voiceFeeCents / 100; // Convert cents to dollars
+    }
     return total;
   };
 
@@ -311,6 +316,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             duration={state.duration}
             loopEnabled={state.loop.enabled}
             loopPause={state.loop.pause_seconds}
+            scriptLength={state.script.length}
+            isAuthenticated={!!user}
             onVoiceChange={(voice) => setState((prev) => ({ ...prev, voice }))}
             onDurationChange={(duration) => setState((prev) => ({ ...prev, duration }))}
             onLoopChange={(enabled, pause) =>

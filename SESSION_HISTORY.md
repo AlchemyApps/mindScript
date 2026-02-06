@@ -1095,3 +1095,114 @@ Created shared layouts to provide consistent Header across all pages:
 `feature/frontend-transformation` → merged to `dev`
 
 **Status:** COMPLETE
+
+---
+
+# Session: PLAN.md Execution — Edit Pipeline, Audio Playback & Stripe Fixes
+
+## Session Date: 2026-02-05
+
+## Context
+Continuing execution of PLAN.md on `feature/plan-execution`. Features 1-3 (Voice Picker, Builder Enhance Step, Track Editor UI, Voice Cloning Modal) were previously completed. This session focused on fixing the full edit-to-playback pipeline, audio playback, polling UX, paid edit flow, and Stripe customer persistence.
+
+## Bugs Found & Fixed
+
+### 1. Worker Storing Signed URLs Instead of Storage Paths
+**File:** `infrastructure/heroku-audio-worker/lib/audio-processor.js`
+- Worker called `updateTrackAudio(trackId, uploadResult.url, durationMs)` which stored a signed URL (expires in 1hr) as `audio_url`
+- After expiry, `generateSignedUrl` in the web app tried to sign an already-signed URL → 400 errors
+- **Fix:** Store storage path: `'audio-renders/' + uploadResult.path`
+- **DB Fix:** Updated all 6 existing tracks: `UPDATE tracks SET audio_url = 'audio-renders/tracks/' || id || '/rendered.mp3' WHERE audio_url LIKE 'https://%'`
+- **Note:** Heroku worker NOT redeployed yet — `generateSignedUrl` handles both formats
+
+### 2. Private Storage Bucket Has No RLS Policies
+**File:** `apps/web/src/lib/track-access.ts`
+- `audio-renders` bucket is private with ZERO RLS policies
+- User-scoped Supabase client from `createClient()` has no permission to call `createSignedUrl`
+- ALL sign requests returned 400 regardless of path format
+- **Fix:** Added `getAdminClient()` using service-role key; `generateSignedUrl` always uses admin client
+
+### 3. Library Loading Flash Every 5 Seconds (Polling UX)
+**File:** `apps/web/src/app/library/page.tsx`
+- `fetchTracks` set `setIsLoading(true)` on every call; track grid gated behind `!isLoading`
+- Every 5-second poll cycle: entire library disappears → spinner → tracks reappear
+- **Fix:** Added `{ silent?: boolean }` parameter to `fetchTracks`
+  - Polling uses `fetchTracks({ silent: true })` — skips loading state
+  - Realtime subscription uses `fetchTracks({ silent: true })`
+  - Loading spinner only shows when `tracks.length === 0` (initial load)
+  - Track grid visible during background refreshes
+
+### 4. Paid Edit Checkout 500 Error (Stripe Minimum)
+**Files:** `apps/web/src/app/api/checkout/track-edit/route.ts`, DB `admin_settings`
+- `edit_fee_cents` was 49 in `admin_settings` — below Stripe's $0.50 USD minimum
+- Stripe API rejected the amount, returning 500 to the client
+- **Fix:** Updated `edit_fee_cents` to 99 in DB; added `totalFeeCents < 50` guard in checkout route
+
+### 5. Paid Edit Didn't Apply After Payment
+**Root causes:**
+- Success URL redirected back to edit page instead of checkout success page
+- Webhook `processTrackEditPurchase` built wrong worker payload format
+- Webhook never reaches localhost (no `stripe listen` running)
+
+**Fixes across multiple files:**
+- `apps/web/src/app/library/[trackId]/edit/page.tsx` — Changed success URL to `/checkout/success?session_id={CHECKOUT_SESSION_ID}&type=edit`
+- `apps/web/src/app/api/webhooks/stripe/route.ts` — Rebuilt `processTrackEditPurchase` with proper worker payload (script, voice+speed, gains, frequencies, duration, loop)
+- `apps/web/src/app/api/webhooks/stripe/local-trigger/route.ts` — Added full track edit handling: detects `type=track_edit`, fetches track, builds updated configs, sets track to 'draft', enqueues re-render job
+- `apps/web/src/app/checkout/success/page.tsx` — Added `checkoutType` detection, redirects edits to `/library?edited=true`
+
+### 6. Stripe Creating New Customer Every Checkout (50 Duplicates)
+**File:** `apps/web/src/app/api/webhooks/stripe/local-trigger/route.ts`
+- `local-trigger` never saved `session.customer` ID to profile
+- `stripe_customer_id` was always null → `customer_creation: 'always'` every checkout
+- **Fix:** Added customer ID extraction from session and save to profiles (only when `stripe_customer_id IS NULL`)
+- **DB Fix:** Backfilled profile `d04bd549-4764-4d56-996f-f4e41763fed5` with `cus_TvWa44UmA1j1cz`
+
+## Files Changed
+
+### New Files
+- `apps/web/src/app/api/checkout/track-edit/route.ts` — Stripe checkout for paid edits
+- `apps/web/src/app/api/tracks/[id]/edit-eligibility/route.ts` — Edit eligibility check
+- `apps/web/src/app/api/tracks/[id]/edit/route.ts` — Free edit submission
+- `apps/web/src/app/library/[trackId]/edit/page.tsx` — Track edit page
+- `apps/web/src/components/library/TrackEditor.tsx` — Track editor component
+- `apps/web/src/components/library/VolumeSlider.tsx` — Volume slider component
+- `apps/web/src/components/builder/VoicePicker.tsx` — Voice selection with clone support
+- `apps/web/src/components/builder/VoiceCloneModal.tsx` — Voice cloning modal
+- `apps/web/src/components/builder/VoiceRecorder.tsx` — Audio recording component
+- `apps/web/src/components/builder/ConsentCheckboxes.tsx` — Voice clone consent UI
+- `apps/web/src/app/api/voices/route.ts` — Voice catalog API
+- `apps/web/src/app/api/voices/clone/initiate/route.ts` — Voice clone initiation
+- `apps/web/src/app/api/voices/clone/process/route.ts` — Voice clone processing
+- `scripts/generate-previews.ts` — Voice preview generation script
+
+### Modified Files
+- `apps/web/src/lib/track-access.ts` — Admin client for signed URL generation
+- `apps/web/src/app/library/page.tsx` — Silent polling, no loading flash
+- `apps/web/src/app/api/webhooks/stripe/local-trigger/route.ts` — Track edit handling + customer ID save
+- `apps/web/src/app/api/webhooks/stripe/route.ts` — Fixed paid edit webhook payload
+- `apps/web/src/app/checkout/success/page.tsx` — Edit type redirect to library
+- `apps/web/src/app/api/checkout/track-edit/route.ts` — Stripe minimum charge guard
+- `apps/web/src/components/builder/StepBuilder.tsx` — Integrated VoicePicker + EnhanceStep
+- `apps/web/src/components/builder/steps/VoiceStep.tsx` — Voice step updates
+- `apps/web/src/components/builder/steps/EnhanceStep.tsx` — Enhance step UI
+- `apps/web/src/styles/globals.css` — Volume slider custom styles
+- `infrastructure/heroku-audio-worker/lib/audio-processor.js` — Store storage path not signed URL
+- `infrastructure/heroku-audio-worker/lib/supabase-client.js` — Worker storage client
+- `infrastructure/heroku-audio-worker/lib/tts-client.js` — TTS client updates
+- `packages/audio-engine/src/providers/ElevenLabsProvider.ts` — ElevenLabs provider
+- `packages/schemas/src/audio.ts` — Audio schema updates
+
+## Database Changes (Applied Directly)
+- All track `audio_url` values converted from signed URLs to storage paths
+- `edit_fee_cents` updated from 49 to 99 in `admin_settings`
+- `stripe_customer_id = 'cus_TvWa44UmA1j1cz'` saved to profile `d04bd549-...`
+
+## Known Remaining Items
+- Heroku worker needs redeployment with `audio-processor.js` fix (stores path not URL)
+- `audio-renders` bucket RLS policies should be added for proper user-scoped access
+- Voice cloning flow (Feature 4) UI complete but not end-to-end tested
+
+## Branch
+`feature/plan-execution` → merging to `dev`
+
+**Status:** COMPLETE

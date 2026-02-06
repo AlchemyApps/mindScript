@@ -191,3 +191,115 @@ export const validateAudioLayers = (layers: z.infer<typeof AudioLayersSchema>) =
 
   return true;
 };
+
+// ============================================
+// Voice Catalog & Tier Pricing Schemas
+// ============================================
+
+// Voice tiers
+export const VoiceTierSchema = z.enum(["included", "premium", "custom"]);
+export type VoiceTier = z.infer<typeof VoiceTierSchema>;
+
+// Voice gender
+export const VoiceGenderSchema = z.enum(["male", "female", "neutral"]);
+export type VoiceGender = z.infer<typeof VoiceGenderSchema>;
+
+// Voice metadata schema (for API responses)
+export const VoiceMetadataSchema = z.object({
+  id: z.string().uuid(),
+  internalCode: z.string(),           // "openai:alloy" or "elevenlabs:rachel"
+  displayName: z.string(),            // "Sage" or "Celeste" (white-labeled)
+  description: z.string().nullable(),
+  gender: VoiceGenderSchema.nullable(),
+  tier: VoiceTierSchema,
+  provider: VoiceProviderSchema,
+  providerVoiceId: z.string(),        // Actual ID for API calls
+  previewUrl: z.string().url().nullable(),
+  isEnabled: z.boolean(),
+  sortOrder: z.number().int(),
+});
+
+export type VoiceMetadata = z.infer<typeof VoiceMetadataSchema>;
+
+// Voice catalog item (database row format)
+export const VoiceCatalogRowSchema = z.object({
+  id: z.string().uuid(),
+  internal_code: z.string(),
+  display_name: z.string(),
+  description: z.string().nullable(),
+  gender: VoiceGenderSchema.nullable(),
+  tier: VoiceTierSchema,
+  provider: VoiceProviderSchema,
+  provider_voice_id: z.string(),
+  preview_url: z.string().url().nullable(),
+  is_enabled: z.boolean(),
+  sort_order: z.number().int(),
+  owner_user_id: z.string().uuid().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+export type VoiceCatalogRow = z.infer<typeof VoiceCatalogRowSchema>;
+
+// Transform database row to API format
+export function voiceRowToMetadata(row: VoiceCatalogRow): VoiceMetadata {
+  return {
+    id: row.id,
+    internalCode: row.internal_code,
+    displayName: row.display_name,
+    description: row.description,
+    gender: row.gender,
+    tier: row.tier,
+    provider: row.provider,
+    providerVoiceId: row.provider_voice_id,
+    previewUrl: row.preview_url,
+    isEnabled: row.is_enabled,
+    sortOrder: row.sort_order,
+  };
+}
+
+// ============================================
+// Voice Tier Pricing
+// ============================================
+
+// Character length tiers for premium/custom voice pricing
+export const VOICE_PRICING_TIERS = {
+  short:    { maxChars: 200,  priceCents: 49 },   // $0.49
+  medium:   { maxChars: 500,  priceCents: 79 },   // $0.79
+  long:     { maxChars: 1000, priceCents: 99 },   // $0.99
+  extended: { maxChars: 2000, priceCents: 149 },  // $1.49
+} as const;
+
+// Custom voice creation one-time fee
+export const CUSTOM_VOICE_CREATION_FEE_CENTS = 2900; // $29.00
+
+/**
+ * Calculate voice fee based on script length and voice tier
+ * @param scriptLength - Number of characters in the script
+ * @param tier - Voice tier (included, premium, or custom)
+ * @returns Price in cents (0 for included tier)
+ */
+export function calculateVoiceFee(scriptLength: number, tier: VoiceTier): number {
+  if (tier === 'included') return 0;
+
+  if (scriptLength <= VOICE_PRICING_TIERS.short.maxChars) {
+    return VOICE_PRICING_TIERS.short.priceCents;
+  }
+  if (scriptLength <= VOICE_PRICING_TIERS.medium.maxChars) {
+    return VOICE_PRICING_TIERS.medium.priceCents;
+  }
+  if (scriptLength <= VOICE_PRICING_TIERS.long.maxChars) {
+    return VOICE_PRICING_TIERS.long.priceCents;
+  }
+  return VOICE_PRICING_TIERS.extended.priceCents;
+}
+
+/**
+ * Get the pricing tier name for display
+ */
+export function getVoicePricingTierName(scriptLength: number): keyof typeof VOICE_PRICING_TIERS {
+  if (scriptLength <= VOICE_PRICING_TIERS.short.maxChars) return 'short';
+  if (scriptLength <= VOICE_PRICING_TIERS.medium.maxChars) return 'medium';
+  if (scriptLength <= VOICE_PRICING_TIERS.long.maxChars) return 'long';
+  return 'extended';
+}
