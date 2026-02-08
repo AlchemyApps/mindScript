@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 // POST /api/catalog/upload - Upload audio files
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check admin auth
     const { data: { user } } = await supabase.auth.getUser()
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
       .getPublicUrl(filePath)
 
     // Parse metadata if provided
-    let parsedMetadata = {}
+    let parsedMetadata: Record<string, any> = {}
     if (metadata) {
       try {
         parsedMetadata = JSON.parse(metadata)
@@ -129,7 +129,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Error uploading file:', error)
     return NextResponse.json(
-      { error: 'Failed to upload file', details: error.message },
+      { error: 'Failed to upload file', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
@@ -138,7 +138,7 @@ export async function POST(req: NextRequest) {
 // POST /api/catalog/upload/bulk - Handle bulk upload batch creation
 export async function PUT(req: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check admin auth
     const { data: { user } } = await supabase.auth.getUser()
@@ -205,7 +205,7 @@ export async function PUT(req: NextRequest) {
   } catch (error) {
     console.error('Error creating batch:', error)
     return NextResponse.json(
-      { error: 'Failed to create batch', details: error.message },
+      { error: 'Failed to create batch', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

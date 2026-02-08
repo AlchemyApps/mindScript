@@ -125,7 +125,10 @@ export default function ModerationReviewPage() {
         .neq('id', reportId)
         .order('created_at', { ascending: false })
 
-      setSimilarReports(similar || [])
+      setSimilarReports((similar || []).map((s: any) => ({
+        ...s,
+        reporter: Array.isArray(s.reporter) ? s.reporter[0] : s.reporter,
+      })))
 
       // Get affected user ID based on content type
       let userId: string | null = null
@@ -165,16 +168,18 @@ export default function ModerationReviewPage() {
           .eq('user_id', userId)
 
         // Count reports against user's content
-        const { count: reportsCount } = await supabase
-          .from('content_reports')
-          .select('*', { count: 'exact', head: true })
-          .eq('content_type', 'track')
-          .in('content_id',
-            supabase
-              .from('tracks')
-              .select('id')
-              .eq('user_id', userId)
-          )
+        const { data: userTracks } = await supabase
+          .from('tracks')
+          .select('id')
+          .eq('user_id', userId)
+        const trackIds = (userTracks || []).map((t: any) => t.id)
+        const { count: reportsCount } = trackIds.length > 0
+          ? await supabase
+              .from('content_reports')
+              .select('*', { count: 'exact', head: true })
+              .eq('content_type', 'track')
+              .in('content_id', trackIds)
+          : { count: 0 }
 
         // Count removed content
         const { count: removedCount } = await supabase

@@ -2,10 +2,12 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import Stripe from 'stripe'
 
-// Initialize Stripe
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2023-10-16',
-})
+// Lazy-init Stripe to avoid build-time errors
+function getStripe() {
+  return new Stripe(process.env.STRIPE_SECRET_KEY!, {
+    apiVersion: '2025-02-24.acacia',
+  })
+}
 
 async function ensureAdmin() {
   const supabase = await createClient()
@@ -62,6 +64,7 @@ export async function POST(
     }
 
     // Create Stripe account link for onboarding
+    const stripe = getStripe()
     const accountLink = await stripe.accountLinks.create({
       account: agreement.stripe_connect_account_id,
       refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/admin/sellers?refresh=true`,

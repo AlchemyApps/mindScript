@@ -1,3 +1,96 @@
+# Session: Admin Dashboard Bug Fixes, Analytics Consolidation & RLS Hardening
+
+## Session Date: 2026-02-08
+
+## Branch
+`feature/admin-pricing-analytics` (off `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Overview
+Fixed blocking bugs in the admin app (analytics zeros, pricing 500s, catalog errors), consolidated scattered analytics pages into a single tabbed page with real data, created SECURITY DEFINER RLS function for admin access, and fixed ~10 pre-existing build errors.
+
+## Changes This Session
+
+### Database Changes (via Supabase MCP)
+1. **Updated admin role_flags**: Set `is_admin: true` for admin/super_admin users so tracks RLS policies grant access
+2. **Created `pricing_configurations` table**: With seed data and RLS policies (was referenced by code but never migrated)
+3. **Created `is_admin()` SECURITY DEFINER function**: Safely checks admin status without circular RLS reference on profiles table
+4. **Added admin SELECT policy on `profiles`**: Uses `is_admin()` function — avoids self-referential RLS circular evaluation
+5. **Added admin SELECT policy on `purchases`**: Uses `is_admin() OR user_id = auth.uid()`
+
+### Analytics Consolidation (Fix 4 — major change)
+- **Removed** standalone `/analytics/revenue`, `/analytics/content`, `/analytics/users` pages
+- **Removed** Revenue and Content from admin sidebar
+- **Rewrote** `/analytics/page.tsx` with 4 tabs: Overview | Revenue | Content | Users
+- **Created** `/api/analytics/revenue/route.ts` — real data from `purchases` table
+- **Created** `/api/analytics/content/route.ts` — real data from `tracks` table
+- **Created** `/api/analytics/users/route.ts` — real data from `profiles` table
+- Revenue shows: total, all-time, by type, over time, unique paying users, avg order value
+- Content shows: track count, creation velocity, categories, feature usage, "coming soon" banners
+- Users shows: total, new, active, paying, premium, by tier, by status, signup trends
+
+### Bug Fixes
+- **Catalog 500**: Added missing `await` on `createClient()` in `catalog/route.ts` (4 handlers) and `catalog/upload/route.ts` (2 handlers)
+- **Pricing 500**: Created missing `pricing_configurations` table
+- **Analytics zeros**: Fixed admin `role_flags` + added RLS policies for purchases/profiles
+- **"Access Denied" lockout**: Dropped self-referential profiles RLS policy, replaced with SECURITY DEFINER function approach
+
+### Page Cleanup
+- **Settings**: Removed fake Pricing tab (real pricing at `/pricing`), feature flags marked "not connected"
+- **Sellers**: Added "under construction" banner
+- **Queue Monitor**: Added "Audio rendering runs on Heroku" info banner
+
+### Pre-existing Build Fixes
+- Missing `textarea.tsx` and `use-toast.ts` UI components
+- Missing `CheckCircle` import in moderation/appeals
+- `unknown[]` type from `Map.values()` in activity page
+- Supabase join array types in moderation review + sellers API
+- Outdated Stripe API version `2023-10-16` → `2025-02-24.acacia`
+- `Record<string, any>` for parsed metadata in catalog upload
+- `error` typed as `unknown` in catch blocks
+- Lazy-init Stripe in sellers resend route (build-time crash)
+- `useSearchParams` Suspense wrapper in unauthorized page
+- Supabase `.in()` subquery fix in moderation review
+
+## Files Modified
+- `apps/admin/src/app/(authenticated)/analytics/page.tsx` — full rewrite with tabs
+- `apps/admin/src/components/admin-sidebar.tsx` — removed Revenue/Content entries
+- `apps/admin/src/app/(authenticated)/settings/page.tsx` — removed pricing tab, added banners
+- `apps/admin/src/app/(authenticated)/sellers/page.tsx` — added banner
+- `apps/admin/src/app/(authenticated)/monitoring/queue/page.tsx` — added banner
+- `apps/admin/src/app/api/catalog/route.ts` — await fix
+- `apps/admin/src/app/api/catalog/upload/route.ts` — await + typing fixes
+- `apps/admin/src/app/(authenticated)/activity/page.tsx` — Map generic type
+- `apps/admin/src/app/(authenticated)/moderation/appeals/page.tsx` — CheckCircle import
+- `apps/admin/src/app/(authenticated)/moderation/review/[id]/page.tsx` — join type + subquery fix
+- `apps/admin/src/app/api/moderation/metrics/route.ts` — array join access
+- `apps/admin/src/app/api/sellers/[id]/resend/route.ts` — Stripe version + lazy init
+- `apps/admin/src/app/api/sellers/route.ts` — join type fix
+- `apps/admin/src/app/unauthorized/page.tsx` — Suspense wrapper
+- `apps/admin/src/components/AudioUploader.tsx` — status literal + error typing
+
+## Files Created
+- `apps/admin/src/app/api/analytics/revenue/route.ts`
+- `apps/admin/src/app/api/analytics/content/route.ts`
+- `apps/admin/src/app/api/analytics/users/route.ts`
+- `apps/admin/src/components/ui/textarea.tsx`
+- `apps/admin/src/components/ui/use-toast.ts`
+
+## Files Deleted
+- `apps/admin/src/app/(authenticated)/analytics/revenue/page.tsx`
+- `apps/admin/src/app/(authenticated)/analytics/content/page.tsx`
+- `apps/admin/src/app/(authenticated)/analytics/users/page.tsx`
+
+## Next Session
+- Add friends & family feature to admin
+- Consider adding session/event tracking for user behavior analytics
+- Heroku worker redeployment still pending
+
+---
+
 # Session: Voice Speed Control & Full Branch Commit
 
 ## Session Date: 2026-02-07

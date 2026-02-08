@@ -70,7 +70,7 @@ export default function ActivityLogPage() {
         setFilters(nextFilters)
 
         const uniqueAdmins = Array.from(
-          new Map(
+          new Map<string, { id: string; label: string }>(
             (payload.logs || [])
               .filter((log: ActivityLog) => log.admin?.id)
               .map((log: ActivityLog) => [

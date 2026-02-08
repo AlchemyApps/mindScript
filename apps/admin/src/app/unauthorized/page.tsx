@@ -1,9 +1,10 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ShieldAlert, Home, LogIn } from 'lucide-react'
 
-export default function UnauthorizedPage() {
+function UnauthorizedContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const reason = searchParams.get('reason')
@@ -62,5 +63,17 @@ export default function UnauthorizedPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function UnauthorizedPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 flex items-center justify-center">
+        <ShieldAlert className="w-12 h-12 text-red-400 animate-pulse" />
+      </div>
+    }>
+      <UnauthorizedContent />
+    </Suspense>
   )
 }
