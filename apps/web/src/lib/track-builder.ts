@@ -59,12 +59,16 @@ function normalizeWorkerPayload(trackConfig: any): any {
     binauralDb: trackConfig.gains?.binauralDb ?? binaural?.volume_db ?? -20,
   };
 
+  // Extract start delay
+  const startDelaySec = trackConfig.startDelaySec ?? trackConfig.start_delay_seconds ?? 3;
+
   return {
     script: trackConfig.script || '',
     voice,
     durationMin,
     pauseSec,
     loopMode,
+    startDelaySec,
     backgroundMusic: trackConfig.backgroundMusic ? {
       id: trackConfig.backgroundMusic.id,
       name: trackConfig.backgroundMusic.name,
@@ -133,6 +137,7 @@ export async function startTrackBuild({
             pause_seconds: workerPayload.pauseSec,
           },
         },
+        start_delay_seconds: workerPayload.startDelaySec,
         status: 'draft', // Start as draft, will be updated when rendering completes
         created_at: new Date().toISOString()
       })

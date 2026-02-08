@@ -4,38 +4,28 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
 import { CUSTOM_VOICE_CREATION_FEE_CENTS } from '@mindscript/schemas';
+
+export const maxDuration = 60;
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2024-11-20.acacia',
 });
 
-const supabaseAdmin = createClient(
+const supabaseAdmin = createSupabaseClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
-function getSupabaseClient(request: NextRequest) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: { persistSession: false },
-      global: {
-        headers: { Authorization: request.headers.get('Authorization') || '' },
-      },
-    }
-  );
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient(request);
+    const supabase = await createClient();
 
-    // Authenticate user
+    // Authenticate user via cookies
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -96,17 +86,58 @@ export async function POST(request: NextRequest) {
 
     // Upload audio to Supabase storage
     const audioBuffer = Buffer.from(await audioFile.arrayBuffer());
-    const fileName = `${user.id}/${Date.now()}-voice-sample.${audioFile.name.split('.').pop() || 'wav'}`;
+    const rawType = audioFile.type || 'audio/wav';
+    // Normalize MIME type — Supabase rejects extended types like "audio/webm;codecs=opus"
+    const contentType = rawType.split(';')[0].trim();
+    const ext = contentType === 'audio/webm' ? 'webm'
+      : contentType === 'audio/mp4' ? 'mp4'
+      : contentType === 'audio/ogg' ? 'ogg'
+      : audioFile.name.split('.').pop() || 'wav';
+    const fileName = `${user.id}/${Date.now()}-voice-sample.${ext}`;
 
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from('voice-samples')
-      .upload(fileName, audioBuffer, {
-        contentType: audioFile.type || 'audio/wav',
-        upsert: false,
-      });
+    // Direct REST upload to avoid EPIPE from supabase-js SDK + undici (storage-js#178)
+    console.log('[VOICE-CLONE] Upload starting', {
+      fileName,
+      contentType,
+      size: audioBuffer.length,
+    });
 
-    if (uploadError) {
-      console.error('[VOICE-CLONE] Upload error:', uploadError);
+    const uploadUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/voice-samples/${fileName}`;
+    let uploadOk = false;
+    let lastUploadError: string | null = null;
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+            'Content-Type': contentType,
+            'x-upsert': 'true',
+          },
+          body: audioBuffer,
+        });
+
+        if (res.ok) {
+          uploadOk = true;
+          console.log('[VOICE-CLONE] Upload succeeded on attempt', attempt);
+          break;
+        }
+
+        lastUploadError = `HTTP ${res.status}: ${await res.text()}`;
+        console.warn(`[VOICE-CLONE] Upload attempt ${attempt} failed:`, lastUploadError);
+      } catch (err) {
+        lastUploadError = (err as Error).message;
+        console.warn(`[VOICE-CLONE] Upload attempt ${attempt} error:`, lastUploadError);
+      }
+
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, attempt * 1000));
+      }
+    }
+
+    if (!uploadOk) {
+      console.error('[VOICE-CLONE] Upload failed after 3 attempts:', lastUploadError);
       return NextResponse.json({ error: 'Failed to upload audio sample' }, { status: 500 });
     }
 
@@ -156,6 +187,9 @@ export async function POST(request: NextRequest) {
         consent_data: consentJson,
       },
       ...customerParams,
+      payment_intent_data: {
+        setup_future_usage: 'off_session',
+      },
       payment_method_types: ['card', 'link'],
       expires_at: Math.floor(Date.now() / 1000) + 1800,
     });

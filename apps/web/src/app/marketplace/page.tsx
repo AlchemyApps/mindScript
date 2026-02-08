@@ -17,6 +17,8 @@ import { MarketplaceHero } from "@/components/marketplace/MarketplaceHero";
 import { MoodGrid } from "@/components/marketplace/MoodGrid";
 import { cn } from "@/lib/utils";
 import { Header } from "@/components/navigation/Header";
+import { VoiceCloneCTA } from "@/components/builder/VoiceCloneCTA";
+import { VoiceCloneShelf } from "@/components/builder/VoiceCloneShelf";
 import type {
   MarketplaceCategory,
   MarketplaceSort,
@@ -40,7 +42,7 @@ interface Filters {
 export default function MarketplacePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { currentTrack } = usePlayerStore();
+  const { currentTrack, playerMode } = usePlayerStore();
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [tracks, setTracks] = useState<Publication[]>([]);
@@ -54,6 +56,9 @@ export default function MarketplacePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [user, setUser] = useState<any>(null);
+  const [hasClonedVoice, setHasClonedVoice] = useState(false);
+  const [showCloneShelf, setShowCloneShelf] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [cursor, setCursor] = useState<string | undefined>();
 
@@ -61,6 +66,33 @@ export default function MarketplacePage() {
   const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const debouncedSearch = useDebounce(filters.search, 300);
+
+  // Fetch user + voice clone check
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const { getSupabaseBrowserClient } = await import("@mindscript/auth/client");
+        const supabase = getSupabaseBrowserClient();
+        const { data: { user: currentUser } } = await supabase.auth.getUser();
+        setUser(currentUser);
+
+        if (currentUser) {
+          try {
+            const res = await fetch("/api/voices?includeCustom=true");
+            if (res.ok) {
+              const data = await res.json();
+              setHasClonedVoice((data.voicesByTier?.custom?.length ?? 0) > 0);
+            }
+          } catch {
+            // Non-critical
+          }
+        }
+      } catch {
+        // Not authenticated
+      }
+    };
+    checkUser();
+  }, []);
 
   useEffect(() => {
     fetchFeaturedTracks();
@@ -207,7 +239,7 @@ export default function MarketplacePage() {
   );
 
   return (
-    <div className={cn("min-h-screen bg-warm-gradient relative pt-16", currentTrack && "pb-24")}>
+    <div className={cn("min-h-screen bg-warm-gradient relative pt-16", currentTrack && playerMode === 'bar' && "pb-24")}>
       <Header variant="solid" />
       <FloatingOrbs variant="subtle" />
 
@@ -275,6 +307,16 @@ export default function MarketplacePage() {
             </div>
           </div>
         </GlassCard>
+
+        {/* Voice Clone CTA */}
+        {user && (
+          <VoiceCloneCTA
+            variant="inline"
+            hasClonedVoice={hasClonedVoice}
+            onClick={() => setShowCloneShelf(true)}
+            className="mb-6"
+          />
+        )}
 
         <div className="flex gap-8">
           {/* Filter Panel */}
@@ -353,6 +395,16 @@ export default function MarketplacePage() {
           </main>
         </div>
       </div>
+
+      {/* Voice Clone Shelf */}
+      <VoiceCloneShelf
+        isOpen={showCloneShelf}
+        onClose={() => setShowCloneShelf(false)}
+        onComplete={() => {
+          setShowCloneShelf(false);
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

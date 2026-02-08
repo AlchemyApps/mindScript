@@ -58,6 +58,7 @@ export const TrackSchema = z.object({
   duration_seconds: z.number().int().min(0).optional(),
   play_count: z.number().int().min(0).default(0),
   price_cents: z.number().int().min(0).optional(),
+  cover_image_url: z.string().url().nullable().optional(),
   deleted_at: z.string().datetime().optional(),
 }).merge(TimestampsSchema);
 
@@ -100,6 +101,7 @@ export const UpdateTrackSchema = z.object({
   tags: z.array(z.string()).max(10).optional(),
   is_public: z.boolean().optional(),
   status: TrackStatusSchema.optional(),
+  cover_image_url: z.string().url().nullable().optional(),
 });
 
 // List tracks query parameters

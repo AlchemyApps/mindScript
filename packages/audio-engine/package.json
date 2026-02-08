@@ -15,6 +15,11 @@
       "types": "./dist/constants.d.ts",
       "import": "./dist/constants.mjs",
       "require": "./dist/constants.js"
+    },
+    "./providers/ElevenLabsCloning": {
+      "types": "./dist/providers/ElevenLabsCloning.d.ts",
+      "import": "./dist/providers/ElevenLabsCloning.mjs",
+      "require": "./dist/providers/ElevenLabsCloning.js"
     }
   },
   "files": [

@@ -5,6 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execSync } = require('child_process');
 
 let OpenAI = null;
 try {
@@ -137,9 +138,18 @@ async function synthesizeElevenLabs(text, options, outputPath) {
   const buffer = Buffer.from(await response.arrayBuffer());
   fs.writeFileSync(outputPath, buffer);
 
-  // Estimate duration based on text length
+  // Apply speed adjustment via ffmpeg atempo filter (ElevenLabs has no native speed param)
+  const speed = options.speed || 1.0;
+  if (speed !== 1.0) {
+    console.log(`[TTS] Applying speed adjustment: ${speed}x via ffmpeg atempo`);
+    const tempPath = outputPath + '.tmp.mp3';
+    execSync(`ffmpeg -y -i "${outputPath}" -filter:a "atempo=${speed}" "${tempPath}"`, { stdio: 'pipe' });
+    fs.renameSync(tempPath, outputPath);
+  }
+
+  // Estimate duration based on text length, adjusted for speed
   const wordCount = text.split(/\s+/).length;
-  const estimatedDurationMs = (wordCount / 150) * 60 * 1000;
+  const estimatedDurationMs = (wordCount / 150) * 60 * 1000 / speed;
 
   return {
     outputPath,

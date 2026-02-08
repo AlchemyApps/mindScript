@@ -10,13 +10,14 @@ import {
   calculateVoiceFee,
   VOICE_PRICING_TIERS,
 } from '@mindscript/schemas';
-import { VoiceCloneModal } from './VoiceCloneModal';
+import { VoiceCloneCTA } from './VoiceCloneCTA';
 
 interface VoicePickerProps {
   selectedVoice: VoiceMetadata | null;
   onVoiceSelect: (voice: VoiceMetadata) => void;
   isAuthenticated: boolean;
   scriptLength?: number;
+  onOpenVoiceClone?: () => void;
   className?: string;
 }
 
@@ -55,6 +56,7 @@ export function VoicePicker({
   onVoiceSelect,
   isAuthenticated,
   scriptLength = 0,
+  onOpenVoiceClone,
   className,
 }: VoicePickerProps) {
   const [voices, setVoices] = useState<VoicesResponse | null>(null);
@@ -63,8 +65,9 @@ export function VoicePicker({
   const [searchQuery, setSearchQuery] = useState('');
   const [genderFilter, setGenderFilter] = useState<GenderFilter>('all');
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
-  const [showCloneModal, setShowCloneModal] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const hasClonedVoice = (voices?.voicesByTier.custom.length ?? 0) > 0;
 
   // Fetch voices from API
   useEffect(() => {
@@ -186,6 +189,15 @@ export function VoicePicker({
 
   return (
     <div className={cn('space-y-6', className)}>
+      {/* Hero CTA — top of picker, only if no clone yet */}
+      {isAuthenticated && onOpenVoiceClone && (
+        <VoiceCloneCTA
+          variant="hero"
+          hasClonedVoice={hasClonedVoice}
+          onClick={onOpenVoiceClone}
+        />
+      )}
+
       {/* Search and Filters */}
       <div className="flex flex-col sm:flex-row gap-3">
         {/* Search */}
@@ -275,45 +287,28 @@ export function VoicePicker({
         />
       )}
 
-      {/* Create Your Voice CTA */}
-      {isAuthenticated && (
+      {/* "Clone Another Voice" — only for users who already have clones */}
+      {isAuthenticated && hasClonedVoice && onOpenVoiceClone && (
         <button
           type="button"
-          onClick={() => setShowCloneModal(true)}
+          onClick={onOpenVoiceClone}
           className={cn(
             'w-full flex items-center gap-4 p-4 rounded-xl border-2 border-dashed transition-all duration-300',
             'border-primary/20 hover:border-primary/40 bg-primary/5 hover:bg-primary/10',
           )}
         >
           <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-            {filteredVoicesByTier.custom.length > 0 ? (
-              <Plus className="w-5 h-5 text-primary" />
-            ) : (
-              <Mic className="w-5 h-5 text-primary" />
-            )}
+            <Plus className="w-5 h-5 text-primary" />
           </div>
           <div className="text-left">
-            <span className="text-sm font-semibold text-text block">
-              {filteredVoicesByTier.custom.length > 0 ? 'Create Another Voice' : 'Create Your Voice'}
-            </span>
+            <span className="text-sm font-semibold text-text block">Clone Another Voice</span>
             <span className="text-xs text-muted">
-              Clone your voice with AI — $29 one-time
+              Clone another voice with AI — $29 one-time
             </span>
           </div>
           <Sparkles className="w-4 h-4 text-primary ml-auto flex-shrink-0" />
         </button>
       )}
-
-      {/* Voice Clone Modal */}
-      <VoiceCloneModal
-        isOpen={showCloneModal}
-        onClose={() => setShowCloneModal(false)}
-        onComplete={() => {
-          setShowCloneModal(false);
-          // Refresh voices
-          window.location.reload();
-        }}
-      />
 
       {/* Empty state */}
       {filteredVoicesByTier.included.length === 0 &&

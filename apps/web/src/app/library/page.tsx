@@ -23,6 +23,8 @@ import { LibraryTrackCard } from "@/components/library/LibraryTrackCard";
 import { LibraryEmptyState } from "@/components/library/LibraryEmptyState";
 import { RenderProgressBanner } from "@/components/library/RenderProgressBanner";
 import { Header } from "@/components/navigation/Header";
+import { VoiceCloneCTA } from "@/components/builder/VoiceCloneCTA";
+import { VoiceCloneShelf } from "@/components/builder/VoiceCloneShelf";
 
 type ViewMode = "grid" | "list";
 type OwnershipFilter = "all" | "owned" | "purchased";
@@ -71,7 +73,7 @@ export default function LibraryPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const { currentTrack, isPlaying, setQueue, playTrackAtIndex, togglePlayPause } = usePlayerStore();
+  const { currentTrack, isPlaying, playerMode, setQueue, playTrackAtIndex, togglePlayPause } = usePlayerStore();
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [tracks, setTracks] = useState<Track[]>([]);
@@ -80,6 +82,8 @@ export default function LibraryPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [showCloneShelf, setShowCloneShelf] = useState(false);
+  const [hasClonedVoice, setHasClonedVoice] = useState(false);
 
   const [filters, setFilters] = useState<Filters>({
     search: searchParams.get("search") || "",
@@ -157,7 +161,7 @@ export default function LibraryPage() {
     fetchTracks();
   }, [fetchTracks]);
 
-  // Fetch user info
+  // Fetch user info and check for cloned voices
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -165,6 +169,18 @@ export default function LibraryPage() {
         const supabase = getSupabaseBrowserClient();
         const { data: { user: currentUser } } = await supabase.auth.getUser();
         setUser(currentUser);
+
+        if (currentUser) {
+          try {
+            const res = await fetch("/api/voices?includeCustom=true");
+            if (res.ok) {
+              const data = await res.json();
+              setHasClonedVoice((data.voicesByTier?.custom?.length ?? 0) > 0);
+            }
+          } catch {
+            // Non-critical
+          }
+        }
       } catch (error) {
         console.error("Error fetching user:", error);
       }
@@ -371,7 +387,7 @@ export default function LibraryPage() {
   }, [filters]);
 
   return (
-    <div className={cn("min-h-screen bg-warm-gradient relative", currentTrack && "pb-24")}>
+    <div className={cn("min-h-screen bg-warm-gradient relative", currentTrack && playerMode === 'bar' && "pb-24")}>
       <Header variant="solid" />
       <FloatingOrbs variant="subtle" />
 
@@ -576,6 +592,17 @@ export default function LibraryPage() {
         )}
       </div>
 
+      {/* Voice Clone CTA */}
+      {user && (
+        <div className="container mx-auto px-4 pt-4 relative z-10">
+          <VoiceCloneCTA
+            variant="inline"
+            hasClonedVoice={hasClonedVoice}
+            onClick={() => setShowCloneShelf(true)}
+          />
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="container mx-auto px-4 py-8 relative z-10">
         {/* Loading State — only show full spinner on initial load when we have no tracks yet */}
@@ -661,6 +688,16 @@ export default function LibraryPage() {
           </div>
         )}
       </div>
+
+      {/* Voice Clone Shelf */}
+      <VoiceCloneShelf
+        isOpen={showCloneShelf}
+        onClose={() => setShowCloneShelf(false)}
+        onComplete={() => {
+          setShowCloneShelf(false);
+          window.location.reload();
+        }}
+      />
     </div>
   );
 }

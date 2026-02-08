@@ -122,6 +122,9 @@ module.exports = {
         'slide-up-fade': 'slideUpFade 0.5s ease-out forwards',
         'scale-in': 'scaleIn 0.3s ease-out forwards',
         'spin-slow': 'spin 8s linear infinite',
+        'pip-enter': 'pipEnter 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+        'slide-in-right': 'slideInRight 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards',
+        'slide-out-right': 'slideOutRight 0.25s ease-in forwards',
       },
       keyframes: {
         fadeIn: {
@@ -161,6 +164,18 @@ module.exports = {
         scaleIn: {
           '0%': { transform: 'scale(0.95)', opacity: '0' },
           '100%': { transform: 'scale(1)', opacity: '1' },
+        },
+        pipEnter: {
+          '0%': { transform: 'scale(0.5)', opacity: '0' },
+          '100%': { transform: 'scale(1)', opacity: '1' },
+        },
+        slideInRight: {
+          '0%': { transform: 'translateX(100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
+        slideOutRight: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(100%)' },
         },
       },
       transitionTimingFunction: {

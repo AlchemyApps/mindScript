@@ -14,7 +14,7 @@ export const voiceUploadSchema = z.object({
   fileSize: z.number()
     .min(100000, "File must be at least 100KB")
     .max(10485760, "File must be less than 10MB"),
-  mimeType: z.enum(["audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav"]),
+  mimeType: z.enum(["audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav", "audio/webm", "audio/ogg"]),
   duration: z.number()
     .min(60, "Audio must be at least 60 seconds")
     .max(180, "Audio must be less than 180 seconds"),

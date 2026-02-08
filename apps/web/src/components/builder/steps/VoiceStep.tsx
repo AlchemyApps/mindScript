@@ -32,6 +32,7 @@ interface VoiceStepProps {
   onVoiceChange: (voice: VoiceSelection) => void;
   onDurationChange: (duration: number) => void;
   onLoopChange: (enabled: boolean, pause: number) => void;
+  onOpenVoiceClone?: () => void;
   className?: string;
 }
 
@@ -45,6 +46,7 @@ export function VoiceStep({
   onVoiceChange,
   onDurationChange,
   onLoopChange,
+  onOpenVoiceClone,
   className,
 }: VoiceStepProps) {
   // Track the selected VoiceMetadata for the picker
@@ -79,6 +81,7 @@ export function VoiceStep({
         onVoiceSelect={handleVoiceSelect}
         isAuthenticated={isAuthenticated}
         scriptLength={scriptLength}
+        onOpenVoiceClone={onOpenVoiceClone}
       />
 
       {/* Duration Selection */}

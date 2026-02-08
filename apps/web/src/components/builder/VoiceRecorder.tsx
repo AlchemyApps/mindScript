@@ -1,8 +1,24 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Mic, Square, Upload, Play, Pause, RotateCcw, AlertCircle } from 'lucide-react';
+import { Mic, Square, Upload, Play, Pause, RotateCcw, AlertCircle, BookOpen, ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
+
+const VOICE_CLONE_SCRIPT = `Take a deep breath and let your body relax. Feel the weight of the day begin to lift as you settle into this moment.
+
+You are capable of extraordinary things. Every challenge you have faced has prepared you for what lies ahead. Trust in your journey, even when the path feels uncertain.
+
+Today, I choose to be kind to myself. I release the need for perfection and embrace progress. Small steps forward are still steps forward, and I honor each one.
+
+The world around me is full of beauty and possibility. I notice the warmth of sunlight, the gentle rhythm of my breath, and the quiet strength that lives within me.
+
+I am worthy of love, rest, and joy. These are not rewards to be earned — they are gifts I give myself freely. My well-being matters, and I prioritize it without guilt.
+
+When difficult thoughts arise, I acknowledge them without judgment. They are passing clouds in a vast sky. I am the sky — expansive, calm, and always present.
+
+Each morning brings a fresh beginning. I greet it with curiosity and gratitude, knowing that today holds moments worth savoring. I am exactly where I need to be.`;
+
+
 
 interface VoiceRecorderProps {
   onAudioReady: (file: File, duration: number) => void;
@@ -26,6 +42,7 @@ export function VoiceRecorder({ onAudioReady, onClear, hasAudio, className }: Vo
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const recordingTimeRef = useRef(0);
 
   const MIN_DURATION = 60;
   const MAX_DURATION = 180;
@@ -47,18 +64,17 @@ export function VoiceRecorder({ onAudioReady, onClear, hasAudio, className }: Vo
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
-          sampleRate: 44100,
-          channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true,
         },
       });
 
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-          ? 'audio/webm;codecs=opus'
-          : 'audio/webm',
-      });
+      // Pick the best supported mime type
+      const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(
+        (t) => MediaRecorder.isTypeSupported(t)
+      );
+
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
       chunksRef.current = [];
       mediaRecorderRef.current = mediaRecorder;
@@ -76,10 +92,12 @@ export function VoiceRecorder({ onAudioReady, onClear, hasAudio, className }: Vo
       mediaRecorder.start(1000); // Collect chunks every second
       setState('recording');
       setRecordingTime(0);
+      recordingTimeRef.current = 0;
 
       timerRef.current = setInterval(() => {
         setRecordingTime((prev) => {
           const next = prev + 1;
+          recordingTimeRef.current = next;
           if (next >= MAX_DURATION) {
             stopRecording();
           }
@@ -87,8 +105,13 @@ export function VoiceRecorder({ onAudioReady, onClear, hasAudio, className }: Vo
         });
       }, 1000);
     } catch (err) {
-      setError('Microphone access denied. Please allow microphone access and try again.');
-      console.error('MediaRecorder error:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('Permission') || msg.includes('NotAllowed')) {
+        setError('Microphone access denied. Please allow microphone access in your browser settings and try again.');
+      } else {
+        setError(`Could not start recording: ${msg}`);
+      }
+      console.error('[VoiceRecorder] Recording failed:', err);
     }
   }, []);
 
@@ -101,24 +124,23 @@ export function VoiceRecorder({ onAudioReady, onClear, hasAudio, className }: Vo
     if (mediaRecorderRef.current?.state === 'recording') {
       mediaRecorderRef.current.stop();
 
-      // Process after stop
+      // Process after stop — use recordingTime from timer since
+      // Chrome's MediaRecorder WebM blobs report Infinity for duration
+      const capturedTime = recordingTimeRef.current;
       setTimeout(() => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        const file = new File([blob], 'voice-sample.webm', { type: 'audio/webm' });
+        const recordedType = mediaRecorderRef.current?.mimeType || 'audio/webm';
+        const ext = recordedType.includes('mp4') ? 'mp4' : 'webm';
+        const blob = new Blob(chunksRef.current, { type: recordedType });
+        const file = new File([blob], `voice-sample.${ext}`, { type: recordedType });
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
+        setDuration(capturedTime);
 
-        // Get actual duration
-        const audio = new Audio(url);
-        audio.addEventListener('loadedmetadata', () => {
-          const dur = Math.round(audio.duration);
-          setDuration(dur);
-          if (dur < MIN_DURATION) {
-            setError(`Recording too short. Please record at least ${MIN_DURATION} seconds (you recorded ${dur}s).`);
-          } else {
-            onAudioReady(file, dur);
-          }
-        });
+        if (capturedTime < MIN_DURATION) {
+          setError(`Recording too short. Please record at least ${MIN_DURATION} seconds (you recorded ${capturedTime}s).`);
+        } else {
+          onAudioReady(file, capturedTime);
+        }
 
         setState('recorded');
       }, 100);
@@ -365,28 +387,72 @@ export function VoiceRecorder({ onAudioReady, onClear, hasAudio, className }: Vo
         </div>
       )}
 
-      {/* Recording tips */}
-      {state === 'idle' && (
-        <div className="p-4 rounded-xl bg-soft-lavender/20 border border-soft-lavender/30">
-          <span className="text-xs font-semibold text-text block mb-2">Tips for best results</span>
-          <ul className="text-xs text-muted space-y-1.5">
-            <li className="flex items-start gap-2">
-              <span className="text-primary mt-0.5">&#8226;</span>
-              Record in a quiet room with minimal background noise
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary mt-0.5">&#8226;</span>
-              Speak naturally at a consistent volume
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary mt-0.5">&#8226;</span>
-              Read varied content — try reading a book passage or article
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-primary mt-0.5">&#8226;</span>
-              Use a good microphone if available (headset or USB mic)
-            </li>
-          </ul>
+      {/* Reading script — shown in idle and recording states */}
+      {(state === 'idle' || state === 'recording') && (
+        <ReadingScriptPanel isRecording={state === 'recording'} />
+      )}
+    </div>
+  );
+}
+
+function ReadingScriptPanel({ isRecording }: { isRecording: boolean }) {
+  const [expanded, setExpanded] = useState(isRecording);
+
+  // Auto-expand when recording starts
+  useEffect(() => {
+    if (isRecording) setExpanded(true);
+  }, [isRecording]);
+
+  return (
+    <div className={cn(
+      'rounded-xl border overflow-hidden transition-colors',
+      isRecording
+        ? 'bg-white border-primary/20'
+        : 'bg-soft-lavender/20 border-soft-lavender/30',
+    )}>
+      {/* Header — toggles expand */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2">
+          <BookOpen className={cn('w-4 h-4', isRecording ? 'text-primary' : 'text-primary/70')} />
+          <span className="text-xs font-semibold text-text">
+            {isRecording ? 'Read this aloud' : 'Reading script for recording'}
+          </span>
+        </div>
+        <ChevronDown className={cn(
+          'w-4 h-4 text-muted transition-transform duration-200',
+          expanded && 'rotate-180',
+        )} />
+      </button>
+
+      {/* Script content */}
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-xs text-muted">
+            Read the following at a natural pace. This script is designed to capture the full range of your voice.
+          </p>
+          <div className={cn(
+            'p-4 rounded-lg text-sm leading-relaxed whitespace-pre-line',
+            isRecording
+              ? 'bg-primary/[0.03] border border-primary/10 text-text'
+              : 'bg-white/60 text-text/80',
+          )}>
+            {VOICE_CLONE_SCRIPT}
+          </div>
+
+          {/* Condensed tips */}
+          {!isRecording && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {['Quiet room', 'Natural pace', 'Consistent volume', 'Good mic helps'].map((tip) => (
+                <span key={tip} className="inline-flex items-center px-2.5 py-1 rounded-full bg-white/60 text-[10px] text-muted font-medium">
+                  {tip}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

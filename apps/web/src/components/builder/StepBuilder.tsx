@@ -15,6 +15,8 @@ import { AuthModal } from '../auth-modal';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 import { GlassCard } from '../ui/GlassCard';
 import { GradientButton } from '../ui/GradientButton';
+import { VoiceCloneShelf } from './VoiceCloneShelf';
+import { VoiceCloneCTA } from './VoiceCloneCTA';
 
 const STEPS: Step[] = [
   { id: 'intention', label: 'Intention' },
@@ -83,6 +85,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [supabaseClient, setSupabaseClient] = useState<ReturnType<typeof getSupabaseBrowserClient> | null>(null);
+  const [showCloneShelf, setShowCloneShelf] = useState(false);
+  const [hasClonedVoice, setHasClonedVoice] = useState(false);
   const [pricingInfo, setPricingInfo] = useState({
     basePrice: 2.99,
     discountedPrice: 0.99,
@@ -108,6 +112,16 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
       setUser(currentUser);
       if (currentUser) {
         await checkPricingEligibility();
+        // Check if user has any custom cloned voices
+        try {
+          const res = await fetch('/api/voices?includeCustom=true');
+          if (res.ok) {
+            const data = await res.json();
+            setHasClonedVoice((data.voicesByTier?.custom?.length ?? 0) > 0);
+          }
+        } catch {
+          // Non-critical — leave as false
+        }
       }
     } catch (error) {
       console.error('Error checking auth status:', error);
@@ -326,6 +340,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
                 loop: { enabled, pause_seconds: pause },
               }))
             }
+            onOpenVoiceClone={() => setShowCloneShelf(true)}
           />
         );
       case 3:
@@ -382,6 +397,17 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
                   orientation="vertical"
                   onStepClick={(step) => step < currentStep && setCurrentStep(step)}
                 />
+
+                {/* Sidebar Voice Clone CTA */}
+                {user && (
+                  <div className="mt-6 pt-6 border-t border-gray-100">
+                    <VoiceCloneCTA
+                      variant="sidebar"
+                      hasClonedVoice={hasClonedVoice}
+                      onClick={() => setShowCloneShelf(true)}
+                    />
+                  </div>
+                )}
               </GlassCard>
             </aside>
 
@@ -446,6 +472,16 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
               : `for $${pricingInfo.basePrice.toFixed(2)}`
           }`}
         />
+
+        {/* Voice Clone Shelf */}
+        <VoiceCloneShelf
+          isOpen={showCloneShelf}
+          onClose={() => setShowCloneShelf(false)}
+          onComplete={() => {
+            setShowCloneShelf(false);
+            window.location.reload();
+          }}
+        />
       </div>
     );
   }
@@ -509,6 +545,16 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             ? `with special first-time pricing - only $${pricingInfo.discountedPrice.toFixed(2)}!`
             : `for $${pricingInfo.basePrice.toFixed(2)}`
         }`}
+      />
+
+      {/* Voice Clone Shelf */}
+      <VoiceCloneShelf
+        isOpen={showCloneShelf}
+        onClose={() => setShowCloneShelf(false)}
+        onComplete={() => {
+          setShowCloneShelf(false);
+          window.location.reload();
+        }}
       />
     </div>
   );

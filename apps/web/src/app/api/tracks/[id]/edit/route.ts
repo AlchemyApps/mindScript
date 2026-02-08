@@ -16,6 +16,7 @@ const EditRequestSchema = z.object({
     binauralDb: z.number().min(-30).max(-6),
   }),
   voiceSpeed: z.number().min(0.5).max(1.5).optional(),
+  startDelaySec: z.number().int().min(0).max(300).optional(),
   // Optional feature changes
   solfeggio: z.object({
     enabled: z.boolean(),
@@ -132,6 +133,9 @@ export async function POST(
       },
     } : track.voice_config;
 
+    // Update start delay if provided
+    const startDelaySec = editData.startDelaySec ?? track.start_delay_seconds ?? 3;
+
     // Update track record — set status to 'draft' to indicate re-render in progress
     const { error: updateError } = await supabaseAdmin
       .from('tracks')
@@ -142,6 +146,7 @@ export async function POST(
         frequency_config: updatedFrequencyConfig,
         output_config: updatedOutputConfig,
         music_config: updatedMusicConfig,
+        start_delay_seconds: startDelaySec,
         status: 'draft',
         updated_at: new Date().toISOString(),
       })
@@ -164,6 +169,7 @@ export async function POST(
       durationMin: updatedOutputConfig.durationMin,
       pauseSec: updatedOutputConfig.loop?.pause_seconds ?? 5,
       loopMode: updatedOutputConfig.loop?.enabled ?? true,
+      startDelaySec,
       backgroundMusic: updatedMusicConfig ? {
         id: updatedMusicConfig.id,
         name: updatedMusicConfig.name,

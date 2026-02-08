@@ -21,6 +21,7 @@ const TRACK_FIELDS_BASE = `
   duration_seconds,
   play_count,
   price_cents,
+  cover_image_url,
   deleted_at,
   created_at,
   updated_at,

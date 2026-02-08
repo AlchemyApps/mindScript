@@ -43,7 +43,7 @@ const securityHeaders = {
   // Permissions Policy (formerly Feature Policy)
   'Permissions-Policy': [
     'camera=()',
-    'microphone=()',
+    'microphone=(self)',
     'geolocation=()',
     'payment=(self "https://checkout.stripe.com")',
     'usb=()',

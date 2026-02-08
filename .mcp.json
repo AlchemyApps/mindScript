@@ -15,7 +15,7 @@
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=byicqjniboevzbhbfxui",
       "headers": {
-        "Authorization": "Bearer sbp_68d6606a20a3a8a57fdf1241a778c83f6f3b5003"
+        "Authorization": "Bearer sbp_1a01ac8ebe3256020eb8e43d3956f54917f61177"
       }
     },
     "supabase-prod": {
@@ -24,6 +24,10 @@
       "headers": {
         "Authorization": "Bearer sbp_68d6606a20a3a8a57fdf1241a778c83f6f3b5003"
       }
+    },
+    "stripe": {
+      "type": "http",
+      "url": "https://mcp.stripe.com/"
     }
   }
 }

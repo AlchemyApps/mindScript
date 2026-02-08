@@ -12,6 +12,7 @@ import {
   Sparkles,
   Gauge,
   RotateCcw,
+  Clock,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { VolumeSlider } from './VolumeSlider';
@@ -42,6 +43,7 @@ interface TrackEditorProps {
   trackId: string;
   trackTitle: string;
   config: TrackConfig;
+  startDelaySec?: number;
   eligibility: EditEligibility;
   onSubmit: (editData: EditPayload) => Promise<void>;
   className?: string;
@@ -55,6 +57,7 @@ export interface EditPayload {
     binauralDb: number;
   };
   voiceSpeed?: number;
+  startDelaySec?: number;
   solfeggio?: { enabled: boolean; frequency?: number };
   binaural?: { enabled: boolean; band?: BinauralBand };
   duration?: number;
@@ -74,6 +77,7 @@ export function TrackEditor({
   trackId,
   trackTitle,
   config,
+  startDelaySec: initialStartDelay = 3,
   eligibility,
   onSubmit,
   className,
@@ -99,10 +103,14 @@ export function TrackEditor({
     config.frequencyConfig?.binaural?.enabled ?? false
   );
 
-  // Duration and loop
+  // Duration, loop, and start delay
   const [duration, setDuration] = useState(config.outputConfig?.durationMin ?? 10);
   const [loopEnabled, setLoopEnabled] = useState(config.outputConfig?.loop?.enabled ?? true);
   const [pauseSeconds, setPauseSeconds] = useState(config.outputConfig?.loop?.pause_seconds ?? 5);
+  const [startDelay, setStartDelay] = useState(initialStartDelay);
+
+  // Max delay depends on duration: 5min → 120s, 10/15min → 300s
+  const maxDelay = duration <= 5 ? 120 : 300;
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -124,6 +132,7 @@ export function TrackEditor({
           binauralDb,
         },
         voiceSpeed,
+        startDelaySec: startDelay,
         solfeggio: hasSolfeggio ? { enabled: solfeggioEnabled, frequency: config.frequencyConfig?.solfeggio?.frequency ?? config.frequencyConfig?.solfeggio?.hz } : undefined,
         binaural: hasBinaural ? { enabled: binauralEnabled, band: config.frequencyConfig?.binaural?.band } : undefined,
         duration,
@@ -329,6 +338,41 @@ export function TrackEditor({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Start Delay */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-muted/60" />
+                <span className="text-sm font-medium text-text">Voice Start Delay</span>
+              </div>
+              <span className="text-xs font-mono text-muted tabular-nums">{startDelay}s</span>
+            </div>
+            <div className="relative h-8 flex items-center">
+              <div className="absolute inset-x-0 h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary/40 to-primary transition-all duration-100"
+                  style={{ width: `${(startDelay / maxDelay) * 100}%` }}
+                />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={maxDelay}
+                step={1}
+                value={startDelay}
+                onChange={(e) => setStartDelay(Number(e.target.value))}
+                className="volume-slider-input absolute inset-x-0 w-full h-8 appearance-none bg-transparent cursor-pointer focus-visible:outline-none"
+              />
+            </div>
+            <div className="flex justify-between">
+              <span className="text-[10px] text-muted/40">No delay</span>
+              <span className="text-[10px] text-muted/40">{maxDelay}s</span>
+            </div>
+            <p className="text-[11px] text-muted">
+              Music plays from the start; your voice begins after this delay.
+            </p>
           </div>
 
           {/* Loop toggle */}

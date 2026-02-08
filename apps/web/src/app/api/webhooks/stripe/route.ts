@@ -25,6 +25,67 @@ const supabaseAdmin = createClient(
 
 type StripeMetadata = Record<string, string | undefined>;
 
+const VOICE_PREVIEW_TEXT =
+  "Welcome to your personalized audio experience. Every word you hear is spoken in your own voice, crafted just for you.";
+
+async function generateVoicePreview(
+  elevenLabsVoiceId: string,
+  userId: string,
+): Promise<string | null> {
+  try {
+    // 1. Generate TTS via ElevenLabs
+    const ttsRes = await fetch(
+      `https://api.elevenlabs.io/v1/text-to-speech/${elevenLabsVoiceId}`,
+      {
+        method: 'POST',
+        headers: {
+          'xi-api-key': process.env.ELEVENLABS_API_KEY || '',
+          'Content-Type': 'application/json',
+          Accept: 'audio/mpeg',
+        },
+        body: JSON.stringify({
+          text: VOICE_PREVIEW_TEXT,
+          model_id: 'eleven_monolingual_v1',
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 },
+        }),
+      },
+    );
+
+    if (!ttsRes.ok) {
+      console.warn('[WEBHOOK] TTS preview generation failed:', ttsRes.status, await ttsRes.text());
+      return null;
+    }
+
+    const audioBuffer = Buffer.from(await ttsRes.arrayBuffer());
+
+    // 2. Upload to track-previews bucket
+    const previewPath = `voice-previews/${userId}/${elevenLabsVoiceId}.mp3`;
+    const uploadRes = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/previews/${previewPath}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
+          'Content-Type': 'audio/mpeg',
+          'x-upsert': 'true',
+        },
+        body: audioBuffer,
+      },
+    );
+
+    if (!uploadRes.ok) {
+      console.warn('[WEBHOOK] Preview upload failed:', uploadRes.status, await uploadRes.text());
+      return null;
+    }
+
+    // 3. Return public URL
+    return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/previews/${previewPath}`;
+  } catch (error) {
+    console.warn('[WEBHOOK] Voice preview generation error:', error);
+    return null;
+  }
+}
+
 async function resolveUserIdentity(
   rawUserId: string | undefined,
   fallbackEmail?: string | null
@@ -234,6 +295,7 @@ async function recordPurchase({
     currency: currency || 'usd',
     status: 'completed',
     metadata: {
+      type: metadata.type || null,
       is_first_purchase: metadata.is_first_purchase,
       pending_track_id: metadata.pending_track_id || metadata.track_id || null,
     },
@@ -454,78 +516,81 @@ async function processVoiceClonePurchase({
       }
     }
 
-    // Call ElevenLabs to clone the voice
-    // Dynamic import to avoid bundling issues in edge runtime
-    let cloneResult;
-    try {
-      const { ElevenLabsVoiceCloning } = await import('@mindscript/audio-engine/providers/ElevenLabsCloning');
-      const elevenLabs = new ElevenLabsVoiceCloning();
-      cloneResult = await elevenLabs.cloneVoice(
-        {
-          name: voiceName,
-          uploadData: {
-            fileName: sampleFilePath.split('/').pop() || 'voice-sample.wav',
-            fileSize: audioBuffer.length,
-            mimeType: 'audio/wav',
-            duration: 90, // Approximate
-            sampleRate: 44100,
-            bitrate: 256000,
-          },
-          consent: {
-            hasConsent: true,
-            isOver18: true,
-            acceptsTerms: true,
-            ownsVoice: true,
-            understandsUsage: true,
-            noImpersonation: true,
-            timestamp: new Date().toISOString(),
-          },
-        },
-        audioBuffer
-      );
-    } catch (importError) {
-      console.error('[WEBHOOK] ElevenLabs import/clone error:', importError);
-      await supabaseAdmin.from('cloned_voices').update({
-        status: 'failed',
-        error_message: 'Voice cloning service temporarily unavailable',
-      }).eq('id', voiceRecord.id);
-      return;
+    // Call ElevenLabs directly (bypass SDK to avoid undici fetch issues)
+    const ext = sampleFilePath.split('.').pop()?.toLowerCase();
+    const mimeMap: Record<string, string> = { webm: 'audio/webm', mp3: 'audio/mpeg', wav: 'audio/wav', mp4: 'audio/mp4', ogg: 'audio/ogg' };
+    const derivedMimeType = (ext && mimeMap[ext]) || 'audio/webm';
+
+    const form = new FormData();
+    form.append('name', voiceName);
+    form.append('files', new Blob([audioBuffer], { type: derivedMimeType }), sampleFilePath.split('/').pop() || 'voice-sample.webm');
+
+    let elevenLabsVoiceId: string | null = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const res = await fetch('https://api.elevenlabs.io/v1/voices/add', {
+          method: 'POST',
+          headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY || '' },
+          body: form,
+        });
+
+        if (res.ok) {
+          const body = await res.json();
+          elevenLabsVoiceId = body.voice_id;
+          console.log(`[WEBHOOK] ElevenLabs clone succeeded on attempt ${attempt}:`, elevenLabsVoiceId);
+          break;
+        }
+
+        const errText = await res.text();
+        console.error(`[WEBHOOK] ElevenLabs attempt ${attempt} failed: HTTP ${res.status}`, errText);
+      } catch (fetchErr) {
+        console.error(`[WEBHOOK] ElevenLabs attempt ${attempt} error:`, (fetchErr as Error).message);
+      }
+
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, attempt * 2000));
+      }
     }
 
-    if (!cloneResult.isOk || !cloneResult.value.success || !cloneResult.value.voiceId) {
-      const errorMsg = !cloneResult.isOk
-        ? cloneResult.error.message
-        : cloneResult.value.error || 'Unknown cloning error';
-      console.error('[WEBHOOK] Voice cloning failed:', errorMsg);
+    if (!elevenLabsVoiceId) {
+      console.error('[WEBHOOK] Voice cloning failed after 3 attempts');
       await supabaseAdmin.from('cloned_voices').update({
         status: 'failed',
-        error_message: errorMsg,
+        error_message: 'Voice cloning failed after 3 attempts',
       }).eq('id', voiceRecord.id);
       return;
     }
 
     // Update voice record with ElevenLabs voice ID
     await supabaseAdmin.from('cloned_voices').update({
-      voice_id: cloneResult.value.voiceId,
+      voice_id: elevenLabsVoiceId,
       status: 'active',
     }).eq('id', voiceRecord.id);
 
+    // Generate TTS preview (non-blocking — voice still works if this fails)
+    const previewUrl = await generateVoicePreview(elevenLabsVoiceId, userId);
+    if (previewUrl) {
+      console.log('[WEBHOOK] Voice preview generated:', previewUrl);
+    } else {
+      console.warn('[WEBHOOK] Voice preview generation failed, continuing without preview');
+    }
+
     // Also add to voice_catalog for VoicePicker integration
     await supabaseAdmin.from('voice_catalog').insert({
-      internal_code: `elevenlabs:${cloneResult.value.voiceId}`,
+      internal_code: `elevenlabs:${elevenLabsVoiceId}`,
       display_name: voiceName,
       description: 'Custom cloned voice',
       gender: null,
       tier: 'custom',
       provider: 'elevenlabs',
-      provider_voice_id: cloneResult.value.voiceId,
-      preview_url: null,
+      provider_voice_id: elevenLabsVoiceId,
+      preview_url: previewUrl,
       is_enabled: true,
       sort_order: 0,
       owner_user_id: userId,
     });
 
-    console.log('[WEBHOOK] Voice cloned successfully:', cloneResult.value.voiceId);
+    console.log('[WEBHOOK] Voice cloned successfully:', elevenLabsVoiceId);
   } catch (error) {
     console.error('[WEBHOOK] Voice clone processing error:', error);
   }
@@ -653,6 +718,7 @@ async function processTrackEditPurchase({
       durationMin: updatedOutputConfig.durationMin,
       pauseSec: updatedOutputConfig.loop?.pause_seconds ?? 5,
       loopMode: updatedOutputConfig.loop?.enabled ?? true,
+      startDelaySec: editData.startDelaySec ?? track.start_delay_seconds ?? 3,
       backgroundMusic: updatedMusicConfig ? {
         id: updatedMusicConfig.id,
         name: updatedMusicConfig.name,
@@ -748,6 +814,7 @@ export async function POST(request: NextRequest) {
     event_type: event.type,
     provider: "stripe",
     payload: event,
+    signature: signature || '',
     created_at: new Date().toISOString()
   });
 

@@ -35,6 +35,17 @@ export async function POST(request: NextRequest) {
     // Get current user (optional - support guest checkout)
     const { data: { user } } = await supabase.auth.getUser();
 
+    // Look up existing Stripe customer for returning users
+    let stripeCustomerId: string | undefined;
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('stripe_customer_id')
+        .eq('id', user.id)
+        .single();
+      stripeCustomerId = profile?.stripe_customer_id ?? undefined;
+    }
+
     // Validate all tracks exist and prices match
     const trackIds = items.map(item => item.trackId);
     const { data: tracks, error: tracksError } = await supabase
@@ -161,13 +172,18 @@ export async function POST(request: NextRequest) {
     const finalSuccessUrl = successUrl || `${baseUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`;
     const finalCancelUrl = cancelUrl || `${baseUrl}/checkout/cancel`;
 
+    // Build customer params — use saved customer ID or create new
+    const customerParams: Partial<Stripe.Checkout.SessionCreateParams> = stripeCustomerId
+      ? { customer: stripeCustomerId }
+      : { customer_creation: 'always' as const, customer_email: customerEmail };
+
     // Create checkout session parameters
     const sessionParams: Stripe.Checkout.SessionCreateParams = {
       mode: "payment",
       line_items: lineItems,
       success_url: finalSuccessUrl,
       cancel_url: finalCancelUrl,
-      customer_email: customerEmail,
+      ...customerParams,
       metadata: {
         ...itemMetadata,
         userId: user?.id || "guest",
@@ -186,6 +202,7 @@ export async function POST(request: NextRequest) {
       const sellerAgreement = sellerAgreements[0];
       
       sessionParams.payment_intent_data = {
+        setup_future_usage: 'off_session',
         application_fee_amount: totalPlatformFee,
         transfer_data: {
           destination: sellerAgreement.stripe_connect_account_id!,
@@ -199,6 +216,7 @@ export async function POST(request: NextRequest) {
       // For multiple sellers, we'll process transfers after payment
       // Store the split information in metadata
       sessionParams.payment_intent_data = {
+        setup_future_usage: 'off_session',
         metadata: {
           ...itemMetadata,
           userId: user?.id || "guest",

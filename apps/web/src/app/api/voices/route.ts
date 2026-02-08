@@ -5,7 +5,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/server";
 import {
   VoiceMetadataSchema,
   voiceRowToMetadata,
@@ -14,22 +15,12 @@ import {
   type VoiceGender,
 } from "@mindscript/schemas";
 
-// Initialize Supabase client with user context (for auth check)
-function getSupabaseClient(request: NextRequest) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-    },
-    global: {
-      headers: {
-        Authorization: request.headers.get("Authorization") || "",
-      },
-    },
-  });
-}
+// Service-role client for reading catalog (bypasses RLS)
+const supabaseAdmin = createSupabaseClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { autoRefreshToken: false, persistSession: false } }
+);
 
 /**
  * GET /api/voices
@@ -43,7 +34,6 @@ function getSupabaseClient(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = getSupabaseClient(request);
     const { searchParams } = new URL(request.url);
 
     // Parse query params
@@ -52,12 +42,19 @@ export async function GET(request: NextRequest) {
     const providerFilter = searchParams.get("provider") as "openai" | "elevenlabs" | null;
     const includeCustom = searchParams.get("includeCustom") === "true";
 
-    // Check if user is authenticated (for custom voices)
-    const { data: { user } } = await supabase.auth.getUser();
+    // Check if user is authenticated via cookies (NOT Authorization header)
+    let user: { id: string } | null = null;
+    try {
+      const supabase = await createClient();
+      const { data } = await supabase.auth.getUser();
+      user = data.user;
+    } catch {
+      // Not authenticated — that's fine for public catalog
+    }
     const isAuthenticated = !!user;
 
     // Build query for catalog voices (included + premium)
-    let catalogQuery = supabase
+    let catalogQuery = supabaseAdmin
       .from("voice_catalog")
       .select("*")
       .eq("is_enabled", true)
@@ -91,8 +88,8 @@ export async function GET(request: NextRequest) {
 
     // If authenticated and includeCustom, fetch user's custom voices
     let customVoices: VoiceMetadata[] = [];
-    if (isAuthenticated && includeCustom) {
-      const { data: userCustomVoices, error: customError } = await supabase
+    if (user && includeCustom) {
+      const { data: userCustomVoices, error: customError } = await supabaseAdmin
         .from("voice_catalog")
         .select("*")
         .eq("tier", "custom")

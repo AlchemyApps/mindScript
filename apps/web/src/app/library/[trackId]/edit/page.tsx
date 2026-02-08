@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { TrackEditor, type EditPayload } from '../../../../components/library/TrackEditor';
+import { CoverArtUploader } from '../../../../components/library/CoverArtUploader';
 import { usePlayerStore } from '../../../../store/playerStore';
 import { cn } from '../../../../lib/utils';
 
@@ -15,6 +16,8 @@ interface TrackData {
   frequency_config: any;
   output_config: any;
   edit_count: number;
+  start_delay_seconds: number;
+  cover_image_url: string | null;
 }
 
 interface EligibilityData {
@@ -59,7 +62,7 @@ export default function TrackEditPage() {
         // Fetch track
         const { data: trackData, error: trackError } = await supabase
           .from('tracks')
-          .select('id, title, voice_config, music_config, frequency_config, output_config, edit_count, user_id')
+          .select('id, title, voice_config, music_config, frequency_config, output_config, edit_count, start_delay_seconds, cover_image_url, user_id')
           .eq('id', trackId)
           .single();
 
@@ -199,6 +202,14 @@ export default function TrackEditPage() {
           Back to Library
         </button>
 
+        {/* Cover art */}
+        <div className="glass rounded-2xl p-6 mb-4">
+          <CoverArtUploader
+            trackId={trackId}
+            currentUrl={track.cover_image_url}
+          />
+        </div>
+
         {/* Editor card */}
         <div className="glass rounded-2xl p-6">
           <TrackEditor
@@ -210,6 +221,7 @@ export default function TrackEditPage() {
               frequencyConfig: track.frequency_config,
               outputConfig: track.output_config,
             }}
+            startDelaySec={track.start_delay_seconds ?? 3}
             eligibility={eligibility}
             onSubmit={handleSubmit}
           />

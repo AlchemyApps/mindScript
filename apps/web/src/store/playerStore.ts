@@ -14,6 +14,7 @@ export interface Track {
 }
 
 export type RepeatMode = 'none' | 'one' | 'all';
+export type PlayerMode = 'full' | 'bar' | 'pip';
 
 interface PlayerState {
   // Current track
@@ -39,7 +40,8 @@ interface PlayerState {
   // UI states
   isLoading: boolean;
   error: string | null;
-  
+  playerMode: PlayerMode;
+
   // Shuffle history for maintaining order
   shuffleHistory?: number[];
   originalQueue?: Track[];
@@ -88,6 +90,11 @@ interface PlayerActions {
   setIsLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearError: () => void;
+
+  // Player mode
+  setPlayerMode: (mode: PlayerMode) => void;
+  cyclePlayerMode: () => void;
+  minimizeToPip: () => void;
 }
 
 type PlayerStore = PlayerState & PlayerActions;
@@ -121,6 +128,7 @@ export const usePlayerStore = create<PlayerStore>()(
       repeatMode: 'none',
       isLoading: false,
       error: null,
+      playerMode: 'bar',
 
       // Track management
       setCurrentTrack: (track) => set(state => {
@@ -392,6 +400,22 @@ export const usePlayerStore = create<PlayerStore>()(
       clearError: () => set(state => {
         state.error = null;
       }),
+
+      // Player mode
+      setPlayerMode: (mode) => set(state => {
+        state.playerMode = mode;
+      }),
+
+      cyclePlayerMode: () => set(state => {
+        // bar → full → pip → bar
+        if (state.playerMode === 'bar') state.playerMode = 'full';
+        else if (state.playerMode === 'full') state.playerMode = 'pip';
+        else state.playerMode = 'bar';
+      }),
+
+      minimizeToPip: () => set(state => {
+        state.playerMode = 'pip';
+      }),
     })),
     {
       name: 'mindscript-player',
@@ -407,7 +431,16 @@ export const usePlayerStore = create<PlayerStore>()(
         queue: state.queue,
         currentIndex: state.currentIndex,
         originalQueue: state.originalQueue,
-        // Note: isPlaying intentionally NOT persisted - don't auto-play on page load
+        // Note: isPlaying and playerMode intentionally NOT persisted
+        // - don't auto-play on page load
+        // - always start in bar mode (not stuck in full/pip)
+      }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<PlayerStore>),
+        // Always reset these on load — never restore from storage
+        isPlaying: false,
+        playerMode: 'bar' as const,
       }),
     }
   )

@@ -114,17 +114,6 @@ export function StepIndicator({
               </div>
             )}
 
-            {/* Connector Line (vertical) */}
-            {isVertical && index < steps.length - 1 && (
-              <div className="ml-5 mt-2 mb-2 w-0.5 h-8 bg-gray-200 relative">
-                <div
-                  className={cn(
-                    'absolute top-0 left-0 w-full bg-accent transition-all duration-500',
-                    isCompleted ? 'h-full' : 'h-0'
-                  )}
-                />
-              </div>
-            )}
           </div>
         );
       })}

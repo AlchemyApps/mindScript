@@ -24,12 +24,12 @@ if (process.env.NODE_ENV !== 'production') {
 
 const http = require('http');
 const { execSync } = require('child_process');
-const { getNextPendingJob } = require('./lib/supabase-client');
+const { getClient, getNextPendingJob } = require('./lib/supabase-client');
 const { processAudioJob, validateJobPayload } = require('./lib/audio-processor');
 const { verifyFFmpeg } = require('./lib/ffmpeg-utils');
 
 // Configuration
-const POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '10000', 10);
+const FALLBACK_POLL_INTERVAL = parseInt(process.env.POLL_INTERVAL_MS || '300000', 10); // 5 min fallback
 const MAX_JOBS_PER_CYCLE = parseInt(process.env.MAX_JOBS_PER_CYCLE || '5', 10);
 const PORT = process.env.WORKER_PORT || process.env.PORT || 3002;
 
@@ -195,14 +195,31 @@ async function main() {
 
   // Configuration summary
   console.log('[Worker] Configuration:');
-  console.log(`  - Poll interval: ${POLL_INTERVAL}ms`);
+  console.log(`  - Mode: Realtime subscription + ${FALLBACK_POLL_INTERVAL / 1000}s fallback poll`);
   console.log(`  - Max jobs per cycle: ${MAX_JOBS_PER_CYCLE}`);
   console.log(`  - Health port: ${PORT}`);
   console.log('');
 
+  // Subscribe to new jobs via Supabase Realtime
+  const supabase = getClient();
+  const channel = supabase
+    .channel('audio-job-inserts')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'audio_job_queue' },
+      (payload) => {
+        console.log(`[Worker] Realtime: new job inserted (${payload.new?.id || 'unknown'})`);
+        processQueue();
+      }
+    )
+    .subscribe((status) => {
+      console.log(`[Worker] Realtime subscription: ${status}`);
+    });
+
   // Handle shutdown gracefully
   const shutdown = () => {
     console.log('\n[Worker] Shutting down...');
+    supabase.removeChannel(channel);
     server.close();
     process.exit(0);
   };
@@ -210,12 +227,12 @@ async function main() {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
-  // Process immediately on start
+  // Process immediately on start (pick up anything queued while offline)
   await processQueue();
 
-  // Then poll on interval
-  console.log(`[Worker] Starting poll loop (every ${POLL_INTERVAL / 1000}s)...`);
-  setInterval(processQueue, POLL_INTERVAL);
+  // Fallback poll as safety net for missed realtime events
+  console.log(`[Worker] Listening for new jobs via Realtime (fallback poll every ${FALLBACK_POLL_INTERVAL / 1000}s)...`);
+  setInterval(processQueue, FALLBACK_POLL_INTERVAL);
 }
 
 // Start the worker

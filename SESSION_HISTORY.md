@@ -1,3 +1,389 @@
+# Session: Voice Speed Control & Full Branch Commit
+
+## Session Date: 2026-02-07
+
+## Branch
+`feature/three-state-player-voice-shelf` (off `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Overview
+Final session on this feature branch. Added ElevenLabs voice speed support via ffmpeg `atempo` post-processing, then committed and merged the full branch to dev.
+
+## Changes This Session
+
+### ElevenLabs Voice Speed Control
+**File:** `infrastructure/heroku-audio-worker/lib/tts-client.js`
+- Added `child_process.execSync` import
+- `synthesizeElevenLabs()` now reads `options.speed` (was previously ignored)
+- When `speed !== 1.0`, applies ffmpeg `atempo` filter as post-processing step
+- Duration estimate now divides by speed (matching OpenAI behavior)
+- UI slider range (0.5–1.5) fits within `atempo` filter range (0.5–100), single pass sufficient
+
+### Context
+The voice speed slider already existed end-to-end: TrackEditor UI, edit API validation, Stripe metadata, webhook payload, and audio processor passthrough. Only the ElevenLabs TTS function was missing the actual speed application. OpenAI TTS has native speed support and was already working.
+
+## QA Completed
+- Created and rendered a track using a saved ElevenLabs cloned voice
+- Full pipeline working: builder → checkout → webhook → worker → library playback
+
+---
+
+# Session: Cleanup Plan QA — Background Music, Player Cycling, Checkout, Cover Art
+
+## Session Date: 2026-02-07
+
+## Branch
+`feature/three-state-player-voice-shelf` (off `dev`)
+
+## Status: COMPLETE — Ready for voice clone QA
+
+---
+
+## Overview
+QA and bug-fix session for the 6-task Cleanup Plan. Tasks 1-4 and 6 were completed in a prior session (context ran out). This session focused on fixing issues discovered during live testing: background music catalog not in DB, VoiceCloneCTA layout, player three-state cycling stuck in full mode, Stripe checkout broken, cover art not displaying, and track edit page errors.
+
+---
+
+## Fixes Applied
+
+### Fix 1: Background Music Catalog Not in Database
+**Problem:** Migration `20260207_background_tracks_catalog.sql` was written but never applied. Table was missing `description` and `attributes` columns. Only 4 of 11 tracks existed.
+**Fix:** Applied migration via Supabase MCP — added columns, updated 4 existing tracks, inserted 7 new tracks. Had to use `NULL` BPM for non-rhythmic tracks to satisfy `valid_bpm CHECK (bpm >= 40)` constraint.
+
+### Fix 2: Background Music API Column Mismatch
+**Problem:** `/api/music` route queried `key` column but actual DB column is `key_signature`.
+**Fix:** Changed to PostgREST alias syntax: `key:key_signature` in `.select()`.
+**File:** `apps/web/src/app/api/music/route.ts`
+
+### Fix 3: Audio File Upload (WAV → MP3)
+**Problem:** WAV files were ~50.5MB each, exceeding Supabase's hard 50MB gateway limit. Tried increasing bucket `file_size_limit`, resumable uploads — all failed with 413.
+**Resolution:** User converted all 11 tracks to MP3 (~7-12MB each). Uploaded all 11 to `background-music` bucket. Updated DB URLs from `.wav` to `.mp3`.
+
+### Fix 4: Background Music Previews Only Working for 2 Tracks
+**Problem:** 9 of 11 tracks had no audio on preview. The 2 working ones were original 128kbps MP3s; the 9 user-converted files were 320kbps with possible encoding issues.
+**Fix:** Re-encoded all 9 at 192kbps with ffmpeg and re-uploaded.
+
+### Fix 5: Category Inconsistency
+**Problem:** Original 4 tracks had lowercase categories (`acoustic`, `meditation`), new 7 had Title Case (`Meditation`, `Piano`).
+**Fix:** Updated all categories to Title Case via SQL UPDATE.
+
+### Fix 6: VoiceCloneCTA Sidebar Layout (3 iterations)
+**Problem:** Icon + title not vertically aligned, content too indented, wasted space on left.
+**Fix (final):** Changed to vertical stack layout — icon + title on same row (centered), subtext below both, checklist flush left, pricing at bottom.
+**File:** `apps/web/src/components/builder/VoiceCloneCTA.tsx`
+
+### Fix 7: Track Edit Page "Track Not Found"
+**Problem:** `cover_image_url` and `start_delay_seconds` columns didn't exist in the database.
+**Fix:** Applied migration via Supabase MCP to add both columns.
+
+### Fix 8: Cover Image Not Appearing on Library Track Cards
+**Problem:** `/api/library/tracks` route's `TRACK_FIELDS_BASE` didn't include `cover_image_url`.
+**Fix:** Added `cover_image_url,` to the select constant.
+**File:** `apps/web/src/app/api/library/tracks/route.ts`
+
+### Fix 9: Player Three-State Cycling Stuck in Full Mode
+**Problem:** Clicking the minimize button in full-mode GlassPlayer did nothing. Reported 6-7 times across sessions.
+**Root Cause:** In the full-mode layout, the header div (containing the minimize button) was at `z-10`, but the main content div below it used `h-full -mt-16` which pulled it upward to overlap the header. Both at `z-10`, the content div intercepted all click events.
+**Fix:** Changed header from `z-10` to `z-20` so the minimize button is above the content overlay.
+**File:** `apps/web/src/components/player/GlassPlayer.tsx` (line 197)
+
+### Fix 10: Player Audio Element Architecture
+**Problem:** `<audio>` element was inside GlassPlayer, which unmounts/remounts when cycling modes — causing audio to stop.
+**Fix:** Moved `<audio>` to MiniPlayer as a persistent element that never unmounts. GlassPlayer became purely visual with `onSeek` prop delegating to parent.
+**Files:** `apps/web/src/components/MiniPlayer.tsx`, `apps/web/src/components/player/GlassPlayer.tsx`
+
+### Fix 11: Stripe Checkout "Failed to Start" (StripeInvalidRequestError)
+**Problem:** `payment_method_types: ['card', 'link']` with `setup_future_usage: 'on_session'` — Stripe's `link` payment method requires `off_session`.
+**Error:** `The payment method 'link' requires 'payment_intent_data[setup_future_usage]' to be set to 'off_session'.`
+**Fix:** Changed all 5 occurrences across 4 checkout routes from `'on_session'` to `'off_session'`.
+**Files:**
+- `apps/web/src/app/api/checkout/guest-conversion/route.ts`
+- `apps/web/src/app/api/checkout/track-edit/route.ts`
+- `apps/web/src/app/api/checkout/session/route.ts` (2 occurrences)
+- `apps/web/src/app/api/voices/clone/initiate/route.ts`
+
+---
+
+## Database Changes Applied This Session
+1. Added `description TEXT`, `attributes TEXT[]` columns to `background_tracks`
+2. Updated 4 existing tracks with descriptions, attributes, corrected Title Case categories
+3. Inserted 7 new background tracks (aquatic-guitar, piano-solace, warm-drift, tidal-breath, stone-garden, singing-bowls, music-box-dreams)
+4. Updated all 11 track URLs from `.wav` to `.mp3`
+5. Updated all durations to 300 seconds
+6. Increased `background-music` bucket `file_size_limit` to 60MB
+7. Added `cover_image_url TEXT` column to `tracks`
+8. Added `start_delay_seconds INTEGER DEFAULT 3` to `tracks` with CHECK (0-300)
+9. Created `track-artwork` storage bucket (public, 5MB limit, image types)
+
+---
+
+## Files Modified This Session
+
+### Key Changes
+- `apps/web/src/components/player/GlassPlayer.tsx` — z-20 header fix, purely visual (no audio element)
+- `apps/web/src/components/MiniPlayer.tsx` — Persistent audio element, handles all playback
+- `apps/web/src/components/builder/VoiceCloneCTA.tsx` — Vertical stack layout for sidebar variant
+- `apps/web/src/app/api/library/tracks/route.ts` — Added cover_image_url to select
+- `apps/web/src/app/api/music/route.ts` — key:key_signature alias
+- `apps/web/src/app/api/checkout/guest-conversion/route.ts` — setup_future_usage: off_session
+- `apps/web/src/app/api/checkout/track-edit/route.ts` — setup_future_usage: off_session
+- `apps/web/src/app/api/checkout/session/route.ts` — setup_future_usage: off_session (x2)
+- `apps/web/src/app/api/voices/clone/initiate/route.ts` — setup_future_usage: off_session
+- `supabase/migrations/20260207_background_tracks_catalog.sql` — Rewritten to match applied migration
+
+### New Files (from prior context, included in this branch)
+- `apps/web/src/components/library/CoverArtUploader.tsx` — Drag/click image upload
+- `apps/web/src/app/api/tracks/[id]/artwork/route.ts` — Cover art upload/delete API
+- `apps/web/src/app/api/music/route.ts` — Background music catalog API
+- `apps/web/src/hooks/useBackgroundMusic.ts` — Background music data hook
+
+---
+
+## Next Session Priorities
+1. **QA voice clone flow** — Test full flow: VoiceCloneShelf → record → checkout → webhook → ElevenLabs → voice appears in VoicePicker
+2. **EPIPE upload issue** — Voice sample upload may still fail with EPIPE (last known blocker from 2026-02-06)
+3. **Commit all changes** — Still no commits on this branch
+
+---
+
+# Session: Three-State Player, Voice Clone Shelf, CTAs & Voice Clone Pipeline Fixes
+
+## Session Date: 2026-02-06
+
+## Branch
+`feature/three-state-player-voice-shelf` (off `dev`)
+
+## Status: INCOMPLETE — Blocking issue on voice sample upload (EPIPE)
+
+---
+
+## Overview
+Implemented a three-phase plan (Three-State Player, Voice Clone Shelf, Prominent CTAs), then spent the remainder of the session fixing bugs in the voice cloning end-to-end pipeline as the user tested the flow live.
+
+---
+
+## Phase 1: Three-State Audio Player ✅
+
+### Problem
+Player had 2 states (bar/full). Full-mode collapse buttons didn't work. No way to minimize player without stopping playback.
+
+### Changes
+
+**`apps/web/src/store/playerStore.ts`**
+- Added `PlayerMode` type (`'full' | 'bar' | 'pip'`), `playerMode` state, `setPlayerMode()`, `minimizeToPip()` actions
+- Removed `playerMode` from `partialize` (was causing "stuck in full mode" bug after refresh)
+- Added `merge` function to force `playerMode: 'bar'` and `isPlaying: false` on rehydration
+
+**`apps/web/src/components/player/PIPPlayer.tsx`** (NEW)
+- 64px glass-dark floating orb, fixed bottom-right with animate-pip-enter
+- Rotating conic gradient ring + glow-pulse when playing
+- Click restores to bar mode, icon click toggles play/pause
+
+**`apps/web/src/components/MiniPlayer.tsx`**
+- Replaced local `isExpanded` state with store's `playerMode`
+- Renders PIPPlayer (pip), GlassPlayer full (full), or GlassPlayer mini (bar)
+
+**`apps/web/src/components/player/GlassPlayer.tsx`**
+- Added `onMinimizeToPip` prop with MinusIcon button (desktop only)
+- Fixed full-mode collapse: consolidated minimize/close into single button
+
+**`apps/web/src/app/(authenticated)/layout.tsx`**
+- Dynamic bottom padding: only `pb-24` when `playerMode === 'bar'`
+
+**`apps/web/tailwind.config.js`**
+- Added animations: `pip-enter`, `slide-in-right`, `slide-out-right`
+- Added keyframes: `pipEnter`, `slideInRight`, `slideOutRight`
+
+---
+
+## Phase 2: Voice Clone Shelf (Right Drawer) ✅
+
+### Problem
+Voice clone modal was a centered popup that required scrolling and felt disconnected.
+
+### Changes
+
+**`apps/web/src/components/ui/Drawer.tsx`** (NEW)
+- Generic right-side drawer: 480px desktop, full mobile
+- ESC close, backdrop click dismiss, body scroll lock, animate-slide-in-right
+
+**`apps/web/src/components/builder/VoiceCloneShelf.tsx`** (NEW)
+- 4-step wizard (Intro/Consent/Record/Review) inside Drawer
+- On open: `minimizeToPip()`. On close: `setPlayerMode('bar')`
+- Reuses ConsentCheckboxes and VoiceRecorder components
+
+**`apps/web/src/components/builder/VoicePicker.tsx`**
+- Replaced VoiceCloneModal with VoiceCloneCTA + `onOpenVoiceClone` prop
+- Hero CTA at top for new users, "Clone Another Voice" at bottom for existing cloners
+
+---
+
+## Phase 3: Prominent Voice Clone CTAs ✅
+
+### Changes
+
+**`apps/web/src/components/builder/VoiceCloneCTA.tsx`** (NEW)
+- Three variants: `sidebar` (builder sidebar), `hero` (top of VoicePicker), `inline` (library/marketplace)
+- Returns `null` if `hasClonedVoice` is true
+
+**`apps/web/src/components/builder/StepBuilder.tsx`**
+- Added `showCloneShelf` and `hasClonedVoice` state
+- Fetches custom voice count via `/api/voices?includeCustom=true`
+- Sidebar CTA in desktop step indicator, renders VoiceCloneShelf
+
+**`apps/web/src/components/builder/steps/VoiceStep.tsx`**
+- Added `onOpenVoiceClone` prop, passes through to VoicePicker
+
+**`apps/web/src/app/library/page.tsx`**
+- Added VoiceCloneCTA (inline variant) + VoiceCloneShelf
+
+**`apps/web/src/app/marketplace/page.tsx`**
+- Added VoiceCloneCTA (inline variant) + VoiceCloneShelf
+
+---
+
+## Bug Fixes During Testing
+
+### Fix 1: Player stuck in full mode after refresh
+- **Cause:** `playerMode: 'full'` was persisted to localStorage via Zustand `partialize`
+- **Fix:** Removed `playerMode` from `partialize`, added `merge` function forcing `playerMode: 'bar'` on rehydration
+
+### Fix 2: Voice clone reading script
+- Added `VOICE_CLONE_SCRIPT` constant with affirmation-themed content for voice cloning
+- Added collapsible `ReadingScriptPanel` component that auto-expands during recording
+- **File:** `apps/web/src/components/builder/VoiceRecorder.tsx`
+
+### Fix 3: Microphone access denied despite Chrome permission
+- **Cause:** `Permissions-Policy: microphone=()` in middleware.ts blocked mic for ALL origins
+- **Fix:** Changed to `microphone=(self)` in middleware.ts
+- Also removed `sampleRate: 44100` constraint from getUserMedia and improved MIME type selection
+- **File:** `apps/web/src/middleware.ts`, `apps/web/src/components/builder/VoiceRecorder.tsx`
+
+### Fix 4: Infinity:NaN audio duration
+- **Cause:** Chrome MediaRecorder doesn't write duration metadata into WebM blobs
+- **Fix:** Used `recordingTimeRef` timer tracking instead of `audio.duration`
+- **File:** `apps/web/src/components/builder/VoiceRecorder.tsx`
+
+### Fix 5: Unauthorized error on voice clone submit
+- **Cause:** `/api/voices/clone/initiate` used `Authorization` header but browser sends cookies
+- **Fix:** Switched to `createClient` from `@/lib/supabase/server` (cookie-based auth)
+- **File:** `apps/web/src/app/api/voices/clone/initiate/route.ts`
+
+### Fix 6: Same auth bug in process route
+- **File:** `apps/web/src/app/api/voices/clone/process/route.ts`
+- Same fix: switched from Authorization header to cookie-based `createClient`
+
+### Fix 7: MIME type upload rejection
+- **Cause:** Supabase Storage rejected `audio/webm;codecs=opus` (extended MIME type)
+- **Fix:** Strip `;codecs=opus` suffix before upload, normalize to base MIME type
+- Also changed `upsert: false` to `upsert: true` to allow retries
+- **File:** `apps/web/src/app/api/voices/clone/initiate/route.ts`
+
+### Fix 8: DB trigger blocking free-tier users
+- **Cause:** `check_voice_creation_limit` trigger set `v_max_voices = 0` for free tier; `0 >= 0` always blocks
+- **Fix:** Updated trigger to check `purchases` table for `voice_clone` type with `status = 'completed'`; grants 1 voice slot if paid
+- **Migration applied:** `fix_voice_creation_limit_for_paid_users`
+
+### Fix 9: Purchase metadata missing `type` field
+- **Cause:** `recordPurchase` in webhook only saved `is_first_purchase` and `pending_track_id`, stripped `type`
+- **Fix:** Added `type: metadata.type || null` to saved metadata
+- **File:** `apps/web/src/app/api/webhooks/stripe/route.ts`
+
+### Fix 10: ElevenLabsCloning module not exported
+- **Cause:** `@mindscript/audio-engine` package didn't export `./providers/ElevenLabsCloning`
+- **Fix:** Added entry point in `tsup.config.ts` and export map in `package.json`, rebuilt package
+- **Files:** `packages/audio-engine/tsup.config.ts`, `packages/audio-engine/package.json`
+
+### Fix 11: `cloned_voices` table didn't exist
+- **Cause:** Migration `20240101000010_cloned_voices.sql` was never applied to the database
+- **Fix:** Applied full migration via Supabase MCP: `cloned_voices`, `voice_consent_records`, `voice_usage_logs` tables, RLS policies, triggers, grants
+- **Migration applied:** `create_cloned_voices_tables`
+
+---
+
+## Database Changes Applied This Session
+1. `fix_voice_creation_limit_for_paid_users` — Updated trigger to allow $29 purchasers
+2. `create_cloned_voices_tables` — Created `cloned_voices`, `voice_consent_records`, `voice_usage_logs` with RLS
+3. Updated `storage.buckets` for `voice-samples` — Added `audio/ogg`, `audio/mp4` to allowed MIME types
+4. Deleted 5 placeholder background tracks (fake `storage.example.com` URLs)
+5. Uploaded and added `Deep Forest Float` background track (5min, stereo MP3, $0.99)
+6. Uploaded and added `Acoustic Reflection` background track (5min, stereo MP3, $0.99)
+
+---
+
+## BLOCKING ISSUE: Voice Sample Upload EPIPE Error
+
+### Symptom
+After all fixes above, voice sample upload still fails with:
+```
+EPIPE errno: -32, code: 'EPIPE', syscall: 'write'
+POST /api/voices/clone/initiate 500
+```
+
+### What we know
+- Supabase `voice-samples` bucket exists, is private, 10MB limit
+- Allowed MIME types include `audio/webm` (we normalized the type correctly)
+- Storage policies allow service role to manage and users to upload
+- The `supabaseAdmin` client (service role) is used for upload
+- EPIPE = "broken pipe" — remote server closed connection before client finished writing
+- The upload worked once earlier in the session (MIME type error, not EPIPE)
+
+### What we tried
+- Normalized MIME type (strips `;codecs=opus`)
+- Changed `upsert: false` → `upsert: true`
+- Verified bucket config and policies
+- Added `audio/ogg`, `audio/mp4` to allowed MIME types
+
+### What to try next session
+1. **Add detailed logging** — Log `audioBuffer.length`, `contentType`, `fileName` before upload to see what's being sent
+2. **Check if it's a buffer encoding issue** — The `Buffer.from(await audioFile.arrayBuffer())` might have issues with WebM format
+3. **Try writing to a temp file first** — Upload from file instead of buffer
+4. **Check Supabase storage logs** — Use Supabase dashboard to see if there are server-side errors
+5. **Test with a small static file** — Upload a known-good WAV file to isolate whether it's the audio format or a general upload issue
+6. **Check network/proxy** — EPIPE can be caused by network middleware or proxy timeouts
+
+---
+
+## Files Summary
+
+### Created (7 files)
+- `apps/web/src/components/player/PIPPlayer.tsx`
+- `apps/web/src/components/ui/Drawer.tsx`
+- `apps/web/src/components/builder/VoiceCloneShelf.tsx`
+- `apps/web/src/components/builder/VoiceCloneCTA.tsx`
+- `supabase/migrations/20260206_fix_voice_creation_limit.sql`
+
+### Modified (16 files)
+- `apps/web/src/store/playerStore.ts`
+- `apps/web/src/components/MiniPlayer.tsx`
+- `apps/web/src/components/player/GlassPlayer.tsx`
+- `apps/web/src/app/(authenticated)/layout.tsx`
+- `apps/web/tailwind.config.js`
+- `apps/web/src/components/builder/VoicePicker.tsx`
+- `apps/web/src/components/builder/steps/VoiceStep.tsx`
+- `apps/web/src/components/builder/StepBuilder.tsx`
+- `apps/web/src/components/builder/VoiceRecorder.tsx`
+- `apps/web/src/app/library/page.tsx`
+- `apps/web/src/app/marketplace/page.tsx`
+- `apps/web/src/middleware.ts`
+- `apps/web/src/app/api/voices/clone/initiate/route.ts`
+- `apps/web/src/app/api/voices/clone/process/route.ts`
+- `apps/web/src/app/api/webhooks/stripe/route.ts`
+- `packages/audio-engine/tsup.config.ts`
+- `packages/audio-engine/package.json`
+
+---
+
+## Next Session Priorities
+1. **Fix EPIPE upload error** — This is the only blocker for the voice clone flow
+2. **Test full Stripe → webhook → ElevenLabs → DB flow** — Once upload works
+3. **Commit all changes** — Nothing has been committed yet
+
+---
+
 # Session History - Frontend Transformation: "Therapeutic Warmth" Design System
 
 ## Session Date: 2026-02-05

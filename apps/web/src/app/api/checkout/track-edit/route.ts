@@ -105,6 +105,9 @@ export async function POST(request: NextRequest) {
         edit_data: JSON.stringify(editData),
       },
       ...customerParams,
+      payment_intent_data: {
+        setup_future_usage: 'off_session',
+      },
       payment_method_types: ['card', 'link'],
       expires_at: Math.floor(Date.now() / 1000) + 1800,
     });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   SkipBackIcon,
   SkipForwardIcon,
@@ -8,12 +8,10 @@ import {
   ShuffleIcon,
   Maximize2Icon,
   Minimize2Icon,
-  XIcon,
 } from 'lucide-react';
 import { usePlayerStore } from '@/store/playerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../lib/utils';
-import { GlassCard } from '../ui/GlassCard';
 import { PlayButton } from './PlayButton';
 import { ProgressBar } from './ProgressBar';
 import { VolumeSlider } from './VolumeSlider';
@@ -24,19 +22,15 @@ type PlayerMode = 'mini' | 'full';
 
 interface GlassPlayerProps {
   mode?: PlayerMode;
-  onExpand?: () => void;
-  onMinimize?: () => void;
-  onClose?: () => void;
+  onCycleMode?: () => void;
+  onSeek?: (time: number) => void;
 }
 
 export function GlassPlayer({
   mode = 'mini',
-  onExpand,
-  onMinimize,
-  onClose,
+  onCycleMode,
+  onSeek,
 }: GlassPlayerProps) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
   const {
     currentTrack,
     isPlaying,
@@ -45,8 +39,6 @@ export function GlassPlayer({
     togglePlayPause,
     currentTime,
     duration,
-    setCurrentTime,
-    setDuration,
     repeatMode,
     toggleRepeat,
     shuffleMode,
@@ -64,8 +56,6 @@ export function GlassPlayer({
       togglePlayPause: state.togglePlayPause,
       currentTime: state.currentTime,
       duration: state.duration || state.currentTrack?.duration || 0,
-      setCurrentTime: state.setCurrentTime,
-      setDuration: state.setDuration,
       repeatMode: state.repeatMode,
       toggleRepeat: state.toggleRepeat,
       shuffleMode: state.shuffleMode,
@@ -82,57 +72,11 @@ export function GlassPlayer({
     return Math.min(100, (currentTime / duration) * 100);
   }, [currentTime, duration]);
 
-  // Audio element handlers
-  useEffect(() => {
-    if (!audioRef.current) return;
-    audioRef.current.volume = isMuted ? 0 : volume;
-  }, [volume, isMuted]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !currentTrack) return;
-
-    audio.src = currentTrack.url;
-    audio.load();
-
-    if (isPlaying) {
-      audio.play().catch((error) => console.error('[GlassPlayer] Playback failed:', error));
-    }
-  }, [currentTrack]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !currentTrack) {
-      audio?.pause();
-      return;
-    }
-
-    if (isPlaying) {
-      audio.play().catch((error) => console.error('[GlassPlayer] Playback error:', error));
-    } else {
-      audio.pause();
-    }
-  }, [isPlaying, currentTrack]);
-
-  const handleTimeUpdate = () => {
-    if (!audioRef.current) return;
-    setCurrentTime(audioRef.current.currentTime);
-  };
-
-  const handleLoadedMetadata = () => {
-    if (!audioRef.current) return;
-    setDuration(Math.floor(audioRef.current.duration));
-  };
-
   const handleSeek = (time: number) => {
-    if (!audioRef.current) return;
-    audioRef.current.currentTime = time;
-    setCurrentTime(time);
+    onSeek?.(time);
   };
 
   const handleVolumeChange = (newVolume: number) => {
-    if (!audioRef.current) return;
-    audioRef.current.volume = newVolume;
     setVolume(newVolume);
   };
 
@@ -217,11 +161,12 @@ export function GlassPlayer({
               className="hidden md:flex"
             />
 
-            {onExpand && (
+            {/* Cycle button: bar → full */}
+            {onCycleMode && (
               <button
                 type="button"
                 aria-label="Expand player"
-                onClick={onExpand}
+                onClick={onCycleMode}
                 className="p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-colors"
               >
                 <Maximize2Icon className="h-4 w-4" />
@@ -239,15 +184,6 @@ export function GlassPlayer({
             size="sm"
           />
         </div>
-
-        <audio
-          ref={audioRef}
-          hidden
-          crossOrigin="anonymous"
-          onTimeUpdate={handleTimeUpdate}
-          onLoadedMetadata={handleLoadedMetadata}
-          onEnded={playNext}
-        />
       </div>
     );
   }
@@ -257,26 +193,16 @@ export function GlassPlayer({
     <div className="fixed inset-0 z-50 bg-deep-space overflow-hidden">
       <FloatingOrbs variant="vibrant" />
 
-      {/* Header */}
-      <div className="relative z-10 flex items-center justify-between p-4">
-        {onMinimize && (
+      {/* Header — cycle button (full → pip) */}
+      <div className="relative z-20 flex items-center justify-end p-4">
+        {onCycleMode && (
           <button
             type="button"
-            aria-label="Minimize"
-            onClick={onMinimize}
-            className="p-2 rounded-full glass-dark hover:bg-white/10 text-white/80 hover:text-white transition-colors"
+            aria-label="Minimize to floating player"
+            onClick={onCycleMode}
+            className="p-3 rounded-full glass-dark hover:bg-white/10 text-white/80 hover:text-white transition-colors"
           >
             <Minimize2Icon className="h-5 w-5" />
-          </button>
-        )}
-        {onClose && (
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="p-2 rounded-full glass-dark hover:bg-white/10 text-white/80 hover:text-white transition-colors ml-auto"
-          >
-            <XIcon className="h-5 w-5" />
           </button>
         )}
       </div>
@@ -385,15 +311,6 @@ export function GlassPlayer({
           />
         </div>
       </div>
-
-      <audio
-        ref={audioRef}
-        hidden
-        crossOrigin="anonymous"
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={playNext}
-      />
     </div>
   );
 }

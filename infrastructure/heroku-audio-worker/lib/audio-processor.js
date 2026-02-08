@@ -114,7 +114,8 @@ async function processAudioJob(job) {
 
   // Calculate target duration (used by all layers)
   const durationSec = (payload.durationMin || payload.duration || 5) * 60;
-  console.log(`[Job ${jobId}] Target duration: ${durationSec}s (${durationSec / 60} minutes)`);
+  const startDelaySec = payload.startDelaySec || 0;
+  console.log(`[Job ${jobId}] Target duration: ${durationSec}s (${durationSec / 60} minutes), start delay: ${startDelaySec}s`);
 
   try {
     // Stage 1: Generate TTS voice (20%)
@@ -138,17 +139,43 @@ async function processAudioJob(job) {
       // Loop voice to fill target duration with pauses between repetitions
       // PRD: "Repeat base script; pause 1–30s between repetitions"
       const pauseSec = payload.pauseSec ?? payload.loop?.pause_seconds ?? 5;
-      voicePath = path.join(tempDir, 'voice.mp3');
+
+      // Reduce voice target duration by start delay so total output stays correct
+      const voiceTargetSec = Math.max(durationSec - startDelaySec, 30);
+      const voiceLoopedPath = path.join(tempDir, 'voice_looped.mp3');
 
       await loopVoiceTrack({
         voicePath: voiceRawPath,
-        targetDurationSec: durationSec,
+        targetDurationSec: voiceTargetSec,
         pauseSec,
-        outputPath: voicePath,
+        outputPath: voiceLoopedPath,
         tempDir,
       });
 
-      console.log(`[Job ${jobId}] Voice looped to ${durationSec}s with ${pauseSec}s pauses`);
+      console.log(`[Job ${jobId}] Voice looped to ${voiceTargetSec}s with ${pauseSec}s pauses`);
+
+      // Prepend silence if start delay is set (music/freq play from 0:00, voice starts after delay)
+      voicePath = path.join(tempDir, 'voice.mp3');
+      if (startDelaySec > 0) {
+        const { execSync } = require('child_process');
+        // Generate silence and concatenate with looped voice
+        const silencePath = path.join(tempDir, 'silence.mp3');
+        execSync(
+          `ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${startDelaySec} -c:a libmp3lame -q:a 2 "${silencePath}"`,
+          { stdio: 'pipe' }
+        );
+        // Concatenate silence + voice
+        const concatListPath = path.join(tempDir, 'voice_concat.txt');
+        fs.writeFileSync(concatListPath, `file '${silencePath}'\nfile '${voiceLoopedPath}'\n`);
+        execSync(
+          `ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${voicePath}"`,
+          { stdio: 'pipe' }
+        );
+        console.log(`[Job ${jobId}] Prepended ${startDelaySec}s silence to voice track`);
+      } else {
+        // No delay — just rename
+        fs.renameSync(voiceLoopedPath, voicePath);
+      }
     }
     await updateJobProgress(jobId, 20, 'Voice generated');
 

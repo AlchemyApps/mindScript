@@ -347,6 +347,9 @@ export async function POST(request: NextRequest) {
       cancel_url: cancelUrl,
       metadata,
       ...customerParams,
+      payment_intent_data: {
+        setup_future_usage: 'off_session',
+      },
       payment_method_types: ['card', 'link'],
       expires_at: Math.floor(Date.now() / 1000) + 1800, // 30 minutes
       // Collect email for account creation (skip if returning customer)

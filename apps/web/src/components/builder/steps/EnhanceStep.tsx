@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Music, Waves, Headphones, Play, Pause, Check } from 'lucide-react';
+import { Music, Waves, Headphones, Play, Pause, Check, Loader2 } from 'lucide-react';
 import { cn } from '../../../lib/utils';
+import { useBackgroundMusic, type BackgroundTrack } from '../../../hooks/useBackgroundMusic';
 
 export type BinauralBand = 'delta' | 'theta' | 'alpha' | 'beta' | 'gamma';
 
@@ -23,14 +24,6 @@ interface BinauralOption {
   previewUrl: string;
 }
 
-interface MusicOption {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  previewUrl?: string;
-}
-
 const SOLFEGGIO_FREQUENCIES: SolfeggioFrequency[] = [
   { value: 174, name: '174 Hz', benefit: 'Pain Relief', color: 'from-red-400 to-orange-400', previewUrl: '/audio-previews/solfeggio/solfeggio-174hz.mp3' },
   { value: 285, name: '285 Hz', benefit: 'Healing', color: 'from-orange-400 to-amber-400', previewUrl: '/audio-previews/solfeggio/solfeggio-285hz.mp3' },
@@ -44,18 +37,23 @@ const SOLFEGGIO_FREQUENCIES: SolfeggioFrequency[] = [
 ];
 
 const BINAURAL_OPTIONS: BinauralOption[] = [
-  { id: 'delta', name: 'Delta', frequency: '0.5–4 Hz', benefit: 'Deep Sleep', color: 'from-indigo-500 to-purple-600', previewUrl: '/audio-previews/binaural/binaural-delta.mp3' },
-  { id: 'theta', name: 'Theta', frequency: '4–8 Hz', benefit: 'Meditation', color: 'from-purple-500 to-fuchsia-500', previewUrl: '/audio-previews/binaural/binaural-theta.mp3' },
-  { id: 'alpha', name: 'Alpha', frequency: '8–13 Hz', benefit: 'Relaxation', color: 'from-blue-500 to-cyan-500', previewUrl: '/audio-previews/binaural/binaural-alpha.mp3' },
-  { id: 'beta', name: 'Beta', frequency: '13–30 Hz', benefit: 'Focus', color: 'from-emerald-500 to-teal-500', previewUrl: '/audio-previews/binaural/binaural-beta.mp3' },
-  { id: 'gamma', name: 'Gamma', frequency: '30–100 Hz', benefit: 'Peak Awareness', color: 'from-amber-500 to-orange-500', previewUrl: '/audio-previews/binaural/binaural-gamma.mp3' },
+  { id: 'delta', name: 'Delta', frequency: '0.5-4 Hz', benefit: 'Deep Sleep', color: 'from-indigo-500 to-purple-600', previewUrl: '/audio-previews/binaural/binaural-delta.mp3' },
+  { id: 'theta', name: 'Theta', frequency: '4-8 Hz', benefit: 'Meditation', color: 'from-purple-500 to-fuchsia-500', previewUrl: '/audio-previews/binaural/binaural-theta.mp3' },
+  { id: 'alpha', name: 'Alpha', frequency: '8-13 Hz', benefit: 'Relaxation', color: 'from-blue-500 to-cyan-500', previewUrl: '/audio-previews/binaural/binaural-alpha.mp3' },
+  { id: 'beta', name: 'Beta', frequency: '13-30 Hz', benefit: 'Focus', color: 'from-emerald-500 to-teal-500', previewUrl: '/audio-previews/binaural/binaural-beta.mp3' },
+  { id: 'gamma', name: 'Gamma', frequency: '30-100 Hz', benefit: 'Peak Awareness', color: 'from-amber-500 to-orange-500', previewUrl: '/audio-previews/binaural/binaural-gamma.mp3' },
 ];
 
-const MUSIC_OPTIONS: MusicOption[] = [
-  { id: 'none', name: 'No Background Music', description: 'Voice only', price: 0 },
-  { id: 'serene-spa-flow', name: 'Serene Spa Flow', description: 'Gentle ambient spa soundscape', price: 0.99, previewUrl: '/audio-previews/music/serene-spa-flow.mp3' },
-  { id: 'tibetan-singing-bowls', name: 'Tibetan Singing Bowls', description: 'Resonant singing bowl soundscape', price: 0.99, previewUrl: '/audio-previews/music/tibetan-singing-bowls.mp3' },
-];
+const CATEGORY_COLORS: Record<string, string> = {
+  'Relaxing Guitar': 'from-amber-400 to-orange-400',
+  'Nature Ambient': 'from-emerald-400 to-green-500',
+  'Piano': 'from-blue-400 to-indigo-400',
+  'Meditation': 'from-purple-400 to-violet-500',
+  'Breathwork': 'from-cyan-400 to-blue-400',
+  'Zen': 'from-stone-400 to-stone-500',
+  'Sleep': 'from-indigo-400 to-purple-500',
+  'Spa': 'from-teal-400 to-emerald-400',
+};
 
 interface EnhanceStepProps {
   solfeggio: { enabled: boolean; frequency: number; price: number } | undefined;
@@ -78,8 +76,8 @@ export function EnhanceStep({
 }: EnhanceStepProps) {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const { tracks: musicTracks, grouped: musicGrouped, loading: musicLoading } = useBackgroundMusic();
 
-  // Unified preview handler — stops any currently playing preview, then starts the new one
   const handlePreview = useCallback((id: string, url: string) => {
     if (playingId === id) {
       audioRef.current?.pause();
@@ -107,7 +105,6 @@ export function EnhanceStep({
     };
   }, [playingId]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -144,7 +141,7 @@ export function EnhanceStep({
         </p>
       </div>
 
-      {/* ── Solfeggio Frequencies ── */}
+      {/* Solfeggio Frequencies */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -178,46 +175,25 @@ export function EnhanceStep({
                       : 'border-gray-100 bg-white hover:border-gray-200'
                   )}
                 >
-                  {/* Gradient accent bar */}
                   <div className={cn('h-1 w-full bg-gradient-to-r', freq.color)} />
-
                   <button
                     type="button"
                     onClick={() => onSolfeggioChange({ ...solfeggio, frequency: freq.value })}
                     className="w-full p-3 pt-2.5 text-center"
                   >
-                    <div className={cn(
-                      'text-sm font-bold transition-colors',
-                      isSelected ? 'text-primary' : 'text-text'
-                    )}>
+                    <div className={cn('text-sm font-bold transition-colors', isSelected ? 'text-primary' : 'text-text')}>
                       {freq.name}
                     </div>
                     <div className="text-xs text-muted mt-0.5">{freq.benefit}</div>
                   </button>
-
-                  {/* Preview button */}
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handlePreview(`solfeggio-${freq.value}`, freq.previewUrl);
-                    }}
-                    className={cn(
-                      'absolute top-2.5 right-1.5 p-1.5 rounded-full transition-all duration-200',
-                      isPlaying
-                        ? 'bg-primary/15 text-primary'
-                        : 'text-muted/40 hover:text-muted hover:bg-gray-100'
-                    )}
+                    onClick={(e) => { e.stopPropagation(); handlePreview(`solfeggio-${freq.value}`, freq.previewUrl); }}
+                    className={cn('absolute top-2.5 right-1.5 p-1.5 rounded-full transition-all duration-200', isPlaying ? 'bg-primary/15 text-primary' : 'text-muted/40 hover:text-muted hover:bg-gray-100')}
                     aria-label={`Preview ${freq.name}`}
                   >
-                    {isPlaying ? (
-                      <Pause className="w-3 h-3" />
-                    ) : (
-                      <Play className="w-3 h-3" />
-                    )}
+                    {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                   </button>
-
-                  {/* Playing indicator */}
                   {isPlaying && (
                     <div className="absolute bottom-0 left-0 right-0 h-0.5">
                       <div className={cn('h-full bg-gradient-to-r animate-shimmer', freq.color)} />
@@ -230,7 +206,7 @@ export function EnhanceStep({
         )}
       </section>
 
-      {/* ── Binaural Beats ── */}
+      {/* Binaural Beats */}
       <section className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -264,9 +240,7 @@ export function EnhanceStep({
                     key={option.id}
                     className={cn(
                       'group relative flex-1 min-w-[130px] rounded-xl border-2 transition-all duration-200 overflow-hidden',
-                      isSelected
-                        ? 'border-primary bg-primary/5'
-                        : 'border-gray-100 bg-white hover:border-gray-200'
+                      isSelected ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white hover:border-gray-200'
                     )}
                   >
                     <button
@@ -276,40 +250,21 @@ export function EnhanceStep({
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <div className={cn('w-3 h-3 rounded-full bg-gradient-to-r', option.color)} />
-                        <span className={cn(
-                          'font-medium text-sm transition-colors',
-                          isSelected ? 'text-primary' : 'text-text'
-                        )}>
+                        <span className={cn('font-medium text-sm transition-colors', isSelected ? 'text-primary' : 'text-text')}>
                           {option.name}
                         </span>
                       </div>
                       <div className="text-xs text-muted">{option.frequency}</div>
                       <div className="text-xs text-muted">{option.benefit}</div>
                     </button>
-
-                    {/* Preview button */}
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePreview(`binaural-${option.id}`, option.previewUrl);
-                      }}
-                      className={cn(
-                        'absolute top-2 right-2 p-1.5 rounded-full transition-all duration-200',
-                        isPlaying
-                          ? 'bg-primary/15 text-primary'
-                          : 'text-muted/40 hover:text-muted hover:bg-gray-100'
-                      )}
+                      onClick={(e) => { e.stopPropagation(); handlePreview(`binaural-${option.id}`, option.previewUrl); }}
+                      className={cn('absolute top-2 right-2 p-1.5 rounded-full transition-all duration-200', isPlaying ? 'bg-primary/15 text-primary' : 'text-muted/40 hover:text-muted hover:bg-gray-100')}
                       aria-label={`Preview ${option.name}`}
                     >
-                      {isPlaying ? (
-                        <Pause className="w-3 h-3" />
-                      ) : (
-                        <Play className="w-3 h-3" />
-                      )}
+                      {isPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
                     </button>
-
-                    {/* Playing indicator */}
                     {isPlaying && (
                       <div className="absolute bottom-0 left-0 right-0 h-0.5">
                         <div className={cn('h-full bg-gradient-to-r animate-shimmer', option.color)} />
@@ -323,7 +278,7 @@ export function EnhanceStep({
         )}
       </section>
 
-      {/* ── Background Music ── */}
+      {/* Background Music */}
       <section className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center shadow-sm">
@@ -331,74 +286,69 @@ export function EnhanceStep({
           </div>
           <div>
             <h3 className="font-semibold text-text">Background Music</h3>
-            <p className="text-sm text-muted">Ambient soundscapes</p>
+            <p className="text-sm text-muted">Ambient soundscapes &middot; $0.99 each</p>
           </div>
         </div>
 
-        <div className="space-y-2">
-          {MUSIC_OPTIONS.map((option) => {
-            const isSelected = music?.id === option.id || (!music && option.id === 'none');
-            const isPlaying = playingId === `music-${option.id}`;
+        {/* No Music option */}
+        <div
+          className={cn(
+            'flex items-center p-3 rounded-xl border-2 transition-all duration-200 cursor-pointer',
+            !music ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white hover:border-gray-200'
+          )}
+          onClick={() => onMusicChange(undefined)}
+        >
+          <div className={cn(
+            'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors mr-3',
+            !music ? 'border-primary bg-primary' : 'border-gray-300'
+          )}>
+            {!music && <Check className="w-3 h-3 text-white" />}
+          </div>
+          <div>
+            <div className={cn('font-medium text-sm', !music ? 'text-primary' : 'text-text')}>
+              No Background Music
+            </div>
+            <div className="text-xs text-muted">Voice only</div>
+          </div>
+        </div>
 
-            return (
-              <div
-                key={option.id}
-                className={cn(
-                  'flex items-center justify-between p-3 rounded-xl border-2 transition-all duration-200',
-                  isSelected
-                    ? 'border-primary bg-primary/5'
-                    : 'border-gray-100 bg-white hover:border-gray-200'
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() =>
-                    onMusicChange(
-                      option.id === 'none'
-                        ? undefined
-                        : { id: option.id, name: option.name, price: option.price }
-                    )
-                  }
-                  className="flex items-center gap-3 flex-1 text-left"
-                >
-                  <div className={cn(
-                    'w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors',
-                    isSelected ? 'border-primary bg-primary' : 'border-gray-300'
-                  )}>
-                    {isSelected && <Check className="w-3 h-3 text-white" />}
-                  </div>
-                  <div>
-                    <div className={cn('font-medium text-sm', isSelected ? 'text-primary' : 'text-text')}>
-                      {option.name}
-                    </div>
-                    <div className="text-xs text-muted">{option.description}</div>
-                  </div>
-                </button>
+        {musicLoading ? (
+          <div className="flex items-center justify-center py-6 text-muted">
+            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+            Loading music catalog...
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {Array.from(musicGrouped.entries()).map(([category, categoryTracks]) => (
+              <div key={category} className="space-y-2">
+                <h4 className="text-xs font-semibold text-muted uppercase tracking-wider px-1">
+                  {category}
+                </h4>
+                <div className="space-y-2">
+                  {categoryTracks.map((track) => {
+                    const isSelected = music?.id === track.slug;
+                    const isPlaying = playingId === `music-${track.slug}`;
+                    const gradientColor = CATEGORY_COLORS[category] || 'from-gray-400 to-gray-500';
 
-                <div className="flex items-center gap-2">
-                  {option.price > 0 && (
-                    <span className="text-sm text-muted">+${option.price.toFixed(2)}</span>
-                  )}
-                  {option.previewUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handlePreview(`music-${option.id}`, option.previewUrl!)}
-                      className={cn(
-                        'p-2 rounded-full transition-all duration-200',
-                        isPlaying
-                          ? 'bg-primary text-white shadow-sm'
-                          : 'bg-gray-100 text-muted hover:bg-gray-200 hover:text-text'
-                      )}
-                      aria-label={`Preview ${option.name}`}
-                    >
-                      {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                    </button>
-                  )}
+                    return (
+                      <MusicTrackCard
+                        key={track.id}
+                        track={track}
+                        isSelected={isSelected}
+                        isPlaying={isPlaying}
+                        gradientColor={gradientColor}
+                        onSelect={() =>
+                          onMusicChange({ id: track.slug, name: track.title, price: track.price_cents / 100 })
+                        }
+                        onPreview={() => handlePreview(`music-${track.slug}`, track.previewUrl)}
+                      />
+                    );
+                  })}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Pricing Note */}
@@ -408,6 +358,97 @@ export function EnhanceStep({
           for your first creation. Regular pricing applies to future tracks.
         </p>
       </div>
+    </div>
+  );
+}
+
+function MusicTrackCard({
+  track,
+  isSelected,
+  isPlaying,
+  gradientColor,
+  onSelect,
+  onPreview,
+}: {
+  track: BackgroundTrack;
+  isSelected: boolean;
+  isPlaying: boolean;
+  gradientColor: string;
+  onSelect: () => void;
+  onPreview: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        'relative rounded-xl border-2 transition-all duration-200 overflow-hidden',
+        isSelected ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white hover:border-gray-200'
+      )}
+    >
+      {/* Category accent bar */}
+      <div className={cn('h-1 w-full bg-gradient-to-r', gradientColor)} />
+
+      <div className="p-3 flex items-start gap-3">
+        {/* Selection radio */}
+        <button
+          type="button"
+          onClick={onSelect}
+          className="mt-0.5 flex-shrink-0"
+        >
+          <div className={cn(
+            'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+            isSelected ? 'border-primary bg-primary' : 'border-gray-300'
+          )}>
+            {isSelected && <Check className="w-3 h-3 text-white" />}
+          </div>
+        </button>
+
+        {/* Track info */}
+        <button
+          type="button"
+          onClick={onSelect}
+          className="flex-1 text-left min-w-0"
+        >
+          <div className={cn('font-medium text-sm', isSelected ? 'text-primary' : 'text-text')}>
+            {track.title}
+          </div>
+          <div className="text-xs text-muted mt-0.5 line-clamp-2">
+            {track.description}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-[11px] text-muted">
+            {track.key && <span>{track.key}</span>}
+            {track.attributes?.slice(0, 3).map((attr) => (
+              <span key={attr} className="px-1.5 py-0.5 rounded-md bg-gray-50 text-muted">
+                {attr}
+              </span>
+            ))}
+          </div>
+        </button>
+
+        {/* Price + Preview */}
+        <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+          <span className="text-xs text-muted">+${(track.price_cents / 100).toFixed(2)}</span>
+          <button
+            type="button"
+            onClick={onPreview}
+            className={cn(
+              'p-2 rounded-full transition-all duration-200',
+              isPlaying
+                ? 'bg-primary text-white shadow-sm'
+                : 'bg-gray-100 text-muted hover:bg-gray-200 hover:text-text'
+            )}
+            aria-label={`Preview ${track.title}`}
+          >
+            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Playing indicator */}
+      {isPlaying && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5">
+          <div className={cn('h-full bg-gradient-to-r animate-shimmer', gradientColor)} />
+        </div>
+      )}
     </div>
   );
 }

@@ -266,7 +266,7 @@ export class ElevenLabsVoiceCloning {
     // Basic format validation - check for common audio file signatures
     const isValidFormat = this.detectAudioFormat(audioBuffer);
     if (!isValidFormat) {
-      return Err(new Error("Invalid audio format. Supported formats: MP3, WAV"));
+      return Err(new Error("Invalid audio format. Supported formats: MP3, WAV, WebM, OGG"));
     }
 
     // Check minimum quality
@@ -338,6 +338,22 @@ export class ElevenLabsVoiceCloning {
     if (
       buffer[0] === 0x52 && buffer[1] === 0x49 &&
       buffer[2] === 0x46 && buffer[3] === 0x46
+    ) {
+      return true;
+    }
+
+    // Check for WebM/Matroska (EBML header)
+    if (
+      buffer[0] === 0x1a && buffer[1] === 0x45 &&
+      buffer[2] === 0xdf && buffer[3] === 0xa3
+    ) {
+      return true;
+    }
+
+    // Check for OGG (OggS header)
+    if (
+      buffer[0] === 0x4f && buffer[1] === 0x67 &&
+      buffer[2] === 0x67 && buffer[3] === 0x53
     ) {
       return true;
     }
