@@ -48,9 +48,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Use hardcoded pricing values for now (can be moved to DB later)
-    const introPrice = 99; // $0.99 in cents
-    const standardPrice = 299; // $2.99 in cents
+    // Fetch pricing from DB with fallbacks
+    const { data: pricingRows } = await supabase
+      .from('pricing_configurations')
+      .select('key, value')
+      .in('key', ['base_intro_web_cents', 'base_standard_web_cents'])
+      .eq('is_active', true);
+
+    const pricingMap = new Map(
+      (pricingRows || []).map((r: { key: string; value: unknown }) => [r.key, Number(r.value)])
+    );
+    const introPrice = pricingMap.get('base_intro_web_cents') ?? 99;
+    const standardPrice = pricingMap.get('base_standard_web_cents') ?? 299;
 
     const basePrice = standardPrice;
     const discountedPrice = isEligibleForDiscount ? introPrice : standardPrice;
@@ -117,9 +126,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use hardcoded pricing values for now (can be moved to DB later)
-    const introPrice = 99; // $0.99 in cents
-    const standardPrice = 299; // $2.99 in cents
+    // Fetch pricing from DB with fallbacks
+    const { data: pricingRows } = await supabase
+      .from('pricing_configurations')
+      .select('key, value')
+      .in('key', ['base_intro_web_cents', 'base_standard_web_cents'])
+      .eq('is_active', true);
+
+    const pricingMap = new Map(
+      (pricingRows || []).map((r: { key: string; value: unknown }) => [r.key, Number(r.value)])
+    );
+    const introPrice = pricingMap.get('base_intro_web_cents') ?? 99;
+    const standardPrice = pricingMap.get('base_standard_web_cents') ?? 299;
 
     const correctPrice = isEligible ? introPrice : standardPrice;
     const priceChanged = currentPrice !== correctPrice;

@@ -1,53 +1,48 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { MetricsCard } from '@/components/MetricsCard'
-// import { RevenueChart } from '@/components/charts/RevenueChart'
-// import { UserGrowthChart } from '@/components/charts/UserGrowthChart'
 import {
-  DollarSign,
   Users,
   FileText,
-  TrendingUp,
-  Activity,
   Download,
   RefreshCw,
+  Mic2,
+  Music,
+  Waves,
+  Headphones,
+  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts'
 
 interface AnalyticsData {
-  revenue: {
-    mrr: number
-    arr: number
-    churnRate: number
-    totalRevenue: number
-    revenueByPeriod: Array<{ date: string; amount: number }>
-    growth: number
+  voices: {
+    popular: Array<{ voice_name: string; provider: string; tier: string; usage_count: number }>
+  }
+  backgroundTracks: {
+    popular: Array<{ track_name: string; category: string; usage_count: number }>
+  }
+  features: {
+    solfeggio: { total: number; withFeature: number; percentage: number }
+    binaural: { total: number; withFeature: number; percentage: number }
+    backgroundMusic: { total: number; withFeature: number; percentage: number }
+  }
+  tracks: {
+    total: number
+    overTime: Array<{ date: string; count: number }>
   }
   users: {
-    totalUsers: number
-    newUsers: number
-    activeUsers: number
-    userGrowth: Array<{ date: string; count: number }>
-    retentionRate: number
-  }
-  content: {
-    totalTracks: number
-    newTracks: number
-    totalPlays: number
-    totalDownloads: number
-    contentVelocity: Array<{ date: string; count: number }>
-  }
-  platform: {
-    errorRate: number
-    systemHealth: {
-      database: string
-      storage: string
-      audioProcessor: string
-      apiLatency: string
-    }
-    avgResponseTime: string
-    uptime: string
+    total: number
+    overTime: Array<{ date: string; count: number }>
   }
 }
 
@@ -57,13 +52,9 @@ export default function AnalyticsPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [period, setPeriod] = useState('30d')
 
-  useEffect(() => {
-    fetchAnalytics()
-  }, [period])
-
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
     try {
-      const response = await fetch(`/api/analytics?metric=overview&period=${period}`)
+      const response = await fetch(`/api/analytics?period=${period}`)
       if (!response.ok) throw new Error('Failed to fetch analytics')
       const analyticsData = await response.json()
       setData(analyticsData)
@@ -74,7 +65,12 @@ export default function AnalyticsPage() {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [period])
+
+  useEffect(() => {
+    setLoading(true)
+    fetchAnalytics()
+  }, [fetchAnalytics])
 
   const handleRefresh = () => {
     setRefreshing(true)
@@ -103,21 +99,8 @@ export default function AnalyticsPage() {
     }
   }
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value)
-  }
-
   const formatNumber = (value: number) => {
     return new Intl.NumberFormat('en-US').format(value)
-  }
-
-  const formatPercentage = (value: number) => {
-    return `${value.toFixed(1)}%`
   }
 
   return (
@@ -129,7 +112,7 @@ export default function AnalyticsPage() {
             Analytics Dashboard
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Platform metrics and business intelligence
+            Track usage, voice popularity, and feature adoption
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -161,169 +144,285 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
-      {/* Revenue Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricsCard
-          title="Monthly Recurring Revenue"
-          value={data ? formatCurrency(data.revenue.mrr) : '-'}
-          change={data?.revenue.growth}
-          icon={<DollarSign className="h-5 w-5" />}
-          loading={loading}
-        />
-        <MetricsCard
-          title="Annual Recurring Revenue"
-          value={data ? formatCurrency(data.revenue.arr) : '-'}
-          subtitle="Based on current MRR"
-          icon={<TrendingUp className="h-5 w-5" />}
-          loading={loading}
-        />
-        <MetricsCard
-          title="Churn Rate"
-          value={data ? formatPercentage(data.revenue.churnRate) : '-'}
-          subtitle="Last 30 days"
-          change={data?.revenue.churnRate ? -data.revenue.churnRate : undefined}
-          icon={<Activity className="h-5 w-5" />}
-          loading={loading}
-        />
-        <MetricsCard
-          title="Total Revenue"
-          value={data ? formatCurrency(data.revenue.totalRevenue) : '-'}
-          subtitle={`In selected period`}
-          icon={<DollarSign className="h-5 w-5" />}
-          loading={loading}
-        />
-      </div>
-
-      {/* Charts - Temporarily disabled due to dependency issues */}
-      {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {data && (
-          <>
-            <RevenueChart data={data.revenue.revenueByPeriod} type="area" />
-            <UserGrowthChart data={data.users.userGrowth} />
-          </>
-        )}
-      </div> */}
-
-      {/* User Metrics */}
+      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricsCard
           title="Total Users"
-          value={data ? formatNumber(data.users.totalUsers) : '-'}
+          value={data ? formatNumber(data.users.total) : '-'}
           icon={<Users className="h-5 w-5" />}
           loading={loading}
         />
-        <MetricsCard
-          title="New Users"
-          value={data ? formatNumber(data.users.newUsers) : '-'}
-          subtitle={`In selected period`}
-          icon={<Users className="h-5 w-5" />}
-          loading={loading}
-        />
-        <MetricsCard
-          title="Active Users"
-          value={data ? formatNumber(data.users.activeUsers) : '-'}
-          subtitle="Last 30 days"
-          icon={<Activity className="h-5 w-5" />}
-          loading={loading}
-        />
-        <MetricsCard
-          title="Retention Rate"
-          value={data ? formatPercentage(data.users.retentionRate) : '-'}
-          subtitle="30-day retention"
-          icon={<TrendingUp className="h-5 w-5" />}
-          loading={loading}
-        />
-      </div>
-
-      {/* Content Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricsCard
           title="Total Tracks"
-          value={data ? formatNumber(data.content.totalTracks) : '-'}
+          value={data ? formatNumber(data.tracks.total) : '-'}
           icon={<FileText className="h-5 w-5" />}
           loading={loading}
         />
         <MetricsCard
-          title="New Tracks"
-          value={data ? formatNumber(data.content.newTracks) : '-'}
-          subtitle={`In selected period`}
-          icon={<FileText className="h-5 w-5" />}
+          title="Solfeggio Adoption"
+          value={data ? `${data.features.solfeggio.percentage}%` : '-'}
+          subtitle={data ? `${data.features.solfeggio.withFeature} of ${data.features.solfeggio.total} tracks` : undefined}
+          icon={<Waves className="h-5 w-5" />}
           loading={loading}
         />
         <MetricsCard
-          title="Total Plays"
-          value={data ? formatNumber(data.content.totalPlays) : '-'}
-          subtitle={`In selected period`}
-          icon={<Activity className="h-5 w-5" />}
-          loading={loading}
-        />
-        <MetricsCard
-          title="Total Downloads"
-          value={data ? formatNumber(data.content.totalDownloads) : '-'}
-          subtitle={`In selected period`}
-          icon={<Download className="h-5 w-5" />}
+          title="Binaural Adoption"
+          value={data ? `${data.features.binaural.percentage}%` : '-'}
+          subtitle={data ? `${data.features.binaural.withFeature} of ${data.features.binaural.total} tracks` : undefined}
+          icon={<Headphones className="h-5 w-5" />}
           loading={loading}
         />
       </div>
 
-      {/* Platform Health */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          Platform Health
-        </h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Database</p>
-            <p className="font-medium text-green-600">
-              {data?.platform.systemHealth.database || '-'}
-            </p>
+      {/* Popularity Tables */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Popular Voices */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Mic2 className="h-5 w-5 text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Popular Voices
+            </h3>
           </div>
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Storage</p>
-            <p className="font-medium text-green-600">
-              {data?.platform.systemHealth.storage || '-'}
-            </p>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : data?.voices.popular.length === 0 ? (
+            <p className="text-gray-500 text-sm py-8 text-center">No voice usage data yet</p>
+          ) : (
+            <div className="space-y-3">
+              {data?.voices.popular.map((voice, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-gray-400 w-6">{i + 1}.</span>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {voice.voice_name}
+                      </span>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-gray-500 capitalize">{voice.provider}</span>
+                        <TierBadge tier={voice.tier} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 bg-gray-100 dark:bg-gray-700 rounded-full h-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full"
+                        style={{
+                          width: `${data.voices.popular.length > 0
+                            ? (voice.usage_count / data.voices.popular[0].usage_count) * 100
+                            : 0}%`
+                        }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300 w-10 text-right">
+                      {voice.usage_count}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Popular Background Tracks */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Music className="h-5 w-5 text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Popular Background Tracks
+            </h3>
           </div>
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Audio Processor</p>
-            <p className={`font-medium ${
-              data?.platform.systemHealth.audioProcessor === 'busy'
-                ? 'text-yellow-600'
-                : 'text-green-600'
-            }`}>
-              {data?.platform.systemHealth.audioProcessor || '-'}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">API Latency</p>
-            <p className="font-medium text-gray-900 dark:text-white">
-              {data?.platform.systemHealth.apiLatency || '-'}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Error Rate</p>
-            <p className={`font-medium ${
-              (data?.platform.errorRate || 0) > 5
-                ? 'text-red-600'
-                : 'text-green-600'
-            }`}>
-              {data ? formatPercentage(data.platform.errorRate) : '-'}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Avg Response Time</p>
-            <p className="font-medium text-gray-900 dark:text-white">
-              {data?.platform.avgResponseTime || '-'}
-            </p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Uptime</p>
-            <p className="font-medium text-green-600">
-              {data?.platform.uptime || '-'}
-            </p>
-          </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : data?.backgroundTracks.popular.length === 0 ? (
+            <p className="text-gray-500 text-sm py-8 text-center">No background track usage data yet</p>
+          ) : (
+            <div className="space-y-3">
+              {data?.backgroundTracks.popular.map((track, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-gray-400 w-6">{i + 1}.</span>
+                    <div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {track.track_name}
+                      </span>
+                      <span className="text-xs text-gray-500 ml-2">{track.category}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 bg-gray-100 dark:bg-gray-700 rounded-full h-2">
+                      <div
+                        className="bg-emerald-500 h-2 rounded-full"
+                        style={{
+                          width: `${data.backgroundTracks.popular.length > 0
+                            ? (track.usage_count / data.backgroundTracks.popular[0].usage_count) * 100
+                            : 0}%`
+                        }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-300 w-10 text-right">
+                      {track.usage_count}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Tracks Over Time */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Tracks Created Over Time
+          </h3>
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : !data?.tracks.overTime.length ? (
+            <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+              No data for this period
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={data.tracks.overTime}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(val) => {
+                    const d = new Date(val)
+                    return `${d.getMonth() + 1}/${d.getDate()}`
+                  }}
+                  fontSize={12}
+                  tick={{ fill: '#6b7280' }}
+                />
+                <YAxis fontSize={12} tick={{ fill: '#6b7280' }} allowDecimals={false} />
+                <Tooltip
+                  labelFormatter={(val) => new Date(val).toLocaleDateString()}
+                  contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                />
+                <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} name="Tracks" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Users Over Time */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            New Users Over Time
+          </h3>
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : !data?.users.overTime.length ? (
+            <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+              No data for this period
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={data.users.overTime}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(val) => {
+                    const d = new Date(val)
+                    return `${d.getMonth() + 1}/${d.getDate()}`
+                  }}
+                  fontSize={12}
+                  tick={{ fill: '#6b7280' }}
+                />
+                <YAxis fontSize={12} tick={{ fill: '#6b7280' }} allowDecimals={false} />
+                <Tooltip
+                  labelFormatter={(val) => new Date(val).toLocaleDateString()}
+                  contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                />
+                <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} name="Users" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Feature Adoption Summary */}
+      {data && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Feature Adoption
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <AdoptionBar
+              label="Solfeggio Frequencies"
+              percentage={data.features.solfeggio.percentage}
+              count={data.features.solfeggio.withFeature}
+              total={data.features.solfeggio.total}
+              color="bg-purple-500"
+            />
+            <AdoptionBar
+              label="Binaural Beats"
+              percentage={data.features.binaural.percentage}
+              count={data.features.binaural.withFeature}
+              total={data.features.binaural.total}
+              color="bg-blue-500"
+            />
+            <AdoptionBar
+              label="Background Music"
+              percentage={data.features.backgroundMusic.percentage}
+              count={data.features.backgroundMusic.withFeature}
+              total={data.features.backgroundMusic.total}
+              color="bg-emerald-500"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TierBadge({ tier }: { tier: string }) {
+  const colors: Record<string, string> = {
+    included: 'bg-green-100 text-green-700',
+    premium: 'bg-purple-100 text-purple-700',
+    custom: 'bg-amber-100 text-amber-700',
+  }
+  return (
+    <span className={`px-1.5 py-0.5 text-[10px] rounded-full ${colors[tier] || 'bg-gray-100 text-gray-600'}`}>
+      {tier}
+    </span>
+  )
+}
+
+function AdoptionBar({ label, percentage, count, total, color }: {
+  label: string
+  percentage: number
+  count: number
+  total: number
+  color: string
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
+        <span className="text-sm font-bold text-gray-900 dark:text-white">{percentage}%</span>
+      </div>
+      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-3">
+        <div
+          className={`${color} h-3 rounded-full transition-all duration-500`}
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
+      </div>
+      <p className="text-xs text-gray-500 mt-1">
+        {count} of {total} tracks
+      </p>
     </div>
   )
 }

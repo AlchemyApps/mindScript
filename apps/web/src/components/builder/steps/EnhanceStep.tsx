@@ -77,6 +77,19 @@ export function EnhanceStep({
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { tracks: musicTracks, grouped: musicGrouped, loading: musicLoading } = useBackgroundMusic();
+  const [addonPrices, setAddonPrices] = useState({ solfeggio: 0.99, binaural: 0.99 });
+
+  useEffect(() => {
+    fetch('/api/pricing/addons')
+      .then(res => res.json())
+      .then(data => {
+        setAddonPrices({
+          solfeggio: (data.solfeggio_cents ?? 100) / 100,
+          binaural: (data.binaural_cents ?? 100) / 100,
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   const handlePreview = useCallback((id: string, url: string) => {
     if (playingId === id) {
@@ -118,7 +131,7 @@ export function EnhanceStep({
     if (solfeggio?.enabled) {
       onSolfeggioChange({ ...solfeggio, enabled: false });
     } else {
-      onSolfeggioChange({ enabled: true, frequency: 528, price: 0.99 });
+      onSolfeggioChange({ enabled: true, frequency: 528, price: addonPrices.solfeggio });
     }
   };
 
@@ -126,7 +139,7 @@ export function EnhanceStep({
     if (binaural?.enabled) {
       onBinauralChange({ ...binaural, enabled: false });
     } else {
-      onBinauralChange({ enabled: true, band: 'alpha', price: 0.99 });
+      onBinauralChange({ enabled: true, band: 'alpha', price: addonPrices.binaural });
     }
   };
 
@@ -150,7 +163,7 @@ export function EnhanceStep({
             </div>
             <div>
               <h3 className="font-semibold text-text">Solfeggio Frequencies</h3>
-              <p className="text-sm text-muted">Ancient healing tones &middot; +$0.99</p>
+              <p className="text-sm text-muted">Ancient healing tones &middot; +${addonPrices.solfeggio.toFixed(2)}</p>
             </div>
           </div>
           <ToggleSwitch
@@ -215,7 +228,7 @@ export function EnhanceStep({
             </div>
             <div>
               <h3 className="font-semibold text-text">Binaural Beats</h3>
-              <p className="text-sm text-muted">Brainwave entrainment &middot; +$0.99</p>
+              <p className="text-sm text-muted">Brainwave entrainment &middot; +${addonPrices.binaural.toFixed(2)}</p>
             </div>
           </div>
           <ToggleSwitch

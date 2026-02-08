@@ -71,7 +71,12 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute = pathname === '/login'
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname)
   const isAuthApiRoute = pathname.startsWith('/api/auth')
-  const requiresAuth = !isPublicRoute && !isAuthApiRoute
+
+  // Skip all auth checks for public routes — avoids redirect loops
+  // when stale cookies from other localhost apps are present
+  if (isPublicRoute || isAuthApiRoute) {
+    return response
+  }
 
   const { data: { user } } = await supabase.auth.getUser()
   const isAuthenticated = !!user
@@ -83,18 +88,14 @@ export async function middleware(request: NextRequest) {
     return redirectResponse
   }
 
-  // Handle unauthenticated access to protected routes
-  if (!isAuthenticated && requiresAuth) {
+  // At this point, all public routes have already returned above,
+  // so every remaining route requires authentication
+  if (!isAuthenticated) {
     const redirectUrl = new URL('/login', request.url)
     redirectUrl.searchParams.set('redirectTo', pathname)
     const redirectResponse = NextResponse.redirect(redirectUrl)
     redirectResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
     return redirectResponse
-  }
-
-  // If not authenticated and route doesn't require auth, allow request to proceed
-  if (!isAuthenticated) {
-    return response
   }
 
   // Check admin role
