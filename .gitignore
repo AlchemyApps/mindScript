@@ -90,6 +90,9 @@ android/
 tmp/
 temp/
 
+# Local media assets (uploaded to Supabase, not needed in repo)
+apps/Background Music/
+
 # Logs
 logs
 *.log
