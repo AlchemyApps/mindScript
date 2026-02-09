@@ -1,58 +1,45 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
 
-const config = getDefaultConfig(__dirname);
+const projectRoot = __dirname;
+const monorepoRoot = path.resolve(projectRoot, '../..');
 
-// Performance optimizations
-config.transformer = {
-  ...config.transformer,
-  minifierPath: 'metro-minify-terser',
-  minifierConfig: {
-    ecma: 8,
-    keep_fnames: false,
-    keep_classnames: false,
-    module: true,
-    mangle: {
-      keep_fnames: false,
-    },
-    compress: {
-      drop_console: true,
-      drop_debugger: true,
-      pure_funcs: ['console.log', 'console.info', 'console.debug'],
-      passes: 2,
-    },
-  },
-  // Enable Hermes bytecode generation
-  hermesParser: true,
-};
+const config = getDefaultConfig(projectRoot);
 
-// Optimize resolver
-config.resolver = {
-  ...config.resolver,
-  // Add performance-optimized extensions
-  sourceExts: [...config.resolver.sourceExts, 'cjs'],
-};
+// Watch shared packages in monorepo
+config.watchFolders = [monorepoRoot];
 
-// Cache configuration for faster rebuilds
-config.cacheStores = [
-  {
-    store: require('metro-cache'),
-    options: {
-      max: 2000,
-      ttl: 86400, // 24 hours
-    },
-  },
+// Resolve node_modules from both app and monorepo root
+config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
+  path.resolve(monorepoRoot, 'node_modules'),
 ];
 
-// Optimize serializer for production builds
-config.serializer = {
-  ...config.serializer,
-  processModuleFilter: (module) => {
-    // Remove test files from production bundle
-    if (module.path.includes('__tests__') || module.path.includes('.test.')) {
-      return false;
-    }
-    return true;
-  },
+// Force single copies of react and react-native from mobile's node_modules.
+// This prevents shared packages (e.g. @mindscript/schemas) from pulling
+// the root React 18 instead of mobile's React 19.
+// Must handle both exact 'react' AND sub-paths like 'react/jsx-runtime'.
+const forcedPackages = ['react', 'react-native', 'react/jsx-runtime', 'react/jsx-dev-runtime'];
+const mobileNodeModules = path.resolve(projectRoot, 'node_modules');
+
+const originalResolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Check if the import is for react or react-native (exact or sub-path)
+  if (
+    moduleName === 'react' ||
+    moduleName === 'react-native' ||
+    moduleName.startsWith('react/') ||
+    moduleName.startsWith('react-native/')
+  ) {
+    // Resolve from mobile's node_modules
+    const resolved = require.resolve(moduleName, { paths: [mobileNodeModules] });
+    return { filePath: resolved, type: 'sourceFile' };
+  }
+
+  if (originalResolveRequest) {
+    return originalResolveRequest(context, moduleName, platform);
+  }
+  return context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;

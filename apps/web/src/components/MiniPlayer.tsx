@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { GlassPlayer } from '@/components/player/GlassPlayer';
 import { PIPPlayer } from '@/components/player/PIPPlayer';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
+import { useWebPlaybackAnalytics, emitTrackComplete } from '@/hooks/useWebPlaybackAnalytics';
 
 export function MiniPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -38,6 +39,9 @@ export function MiniPlayer() {
       clearCurrentTrack: state.clearCurrentTrack,
     }))
   );
+
+  // Wire playback analytics — tracks play/pause/skip/complete events
+  useWebPlaybackAnalytics();
 
   // Track auth state — hide player when logged out
   useEffect(() => {
@@ -116,7 +120,10 @@ export function MiniPlayer() {
         crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onEnded={playNext}
+        onEnded={() => {
+          emitTrackComplete();
+          playNext();
+        }}
       />
 
       {playerMode === 'pip' && (

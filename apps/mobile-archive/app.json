@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "MindScript",
+    "slug": "mindscript",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F8FC"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mindscript.app",
+      "jsEngine": "hermes",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio", "fetch", "remote-notification"],
+        "NSMicrophoneUsageDescription": "MindScript needs access to your microphone to record custom voice affirmations."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#F7F8FC"
+      },
+      "package": "com.mindscript.app",
+      "jsEngine": "hermes",
+      "permissions": ["RECORD_AUDIO", "VIBRATE"],
+      "enableProguardInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "mindscript",
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-track-player",
+        {
+          "enableBackgroundAudio": true
+        }
+      ]
+    ]
+  }
+}

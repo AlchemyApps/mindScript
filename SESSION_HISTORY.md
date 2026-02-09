@@ -1,3 +1,113 @@
+# Session: Mobile App Rebuild — Phase 1 Reader App (Expo 54)
+
+## Session Date: 2026-02-09
+
+## Branch
+`feature/native-mobile` (off `main`)
+
+## Status: COMPLETE
+
+---
+
+## Overview
+Rebuilt the mobile app from scratch on Expo SDK 54 as a lean "reader app" (login, library, player). Stripped all builder/recorder/signup/profile features from the old Expo 51 codebase. Added playback analytics to both mobile and web. Created database migration for `playback_events` table and storage policy for `audio-renders` bucket. App builds and runs on iOS simulator — login, library browsing, and track playback all functional.
+
+## Database Changes
+1. **`supabase/migrations/20260209_playback_events.sql`** — `playback_events` table with indexes, RLS, and RPC functions (`get_user_listening_stats`, `get_platform_listening_stats`, `increment_play_count`)
+2. **`supabase/migrations/20260209_audio_renders_storage_policy.sql`** — Storage SELECT policy on `audio-renders` bucket for authenticated users (enables mobile signed URL creation without service-role)
+
+## New Files (20)
+| File | Purpose |
+|------|---------|
+| `apps/mobile/lib/constants.ts` | Full design token system (colors, gradients, spacing, typography, shadows) |
+| `apps/mobile/lib/theme.ts` | Shared gradient configs |
+| `apps/mobile/lib/analytics.ts` | Playback event tracking (inserts into `playback_events`) |
+| `apps/mobile/stores/downloadStore.ts` | Per-track download state (idle/queued/downloading/downloaded/error) |
+| `apps/mobile/services/backgroundAudio.ts` | TrackPlayer setup with SpokenAudio category |
+| `apps/mobile/services/downloadService.ts` | Download manager (expo-file-system v19 API) |
+| `apps/mobile/services/trackService.ts` | Library fetching + signed URL generation |
+| `apps/mobile/hooks/useLibraryTracks.ts` | React Query for library data |
+| `apps/mobile/hooks/usePlaybackAnalytics.ts` | Playback event emission |
+| `apps/mobile/hooks/useNetworkStatus.ts` | NetInfo wrapper |
+| `apps/mobile/hooks/useDownloadTrack.ts` | Download trigger + progress |
+| `apps/mobile/components/PlayerControls.tsx` | Play/pause/skip/jump controls |
+| `apps/mobile/components/ProgressBar.tsx` | Seekable slider |
+| `apps/mobile/components/SleepTimerSheet.tsx` | Sleep timer bottom sheet |
+| `apps/mobile/components/QueueSheet.tsx` | Queue display |
+| `apps/mobile/eas.json` | EAS build profiles (dev/preview/production) |
+| `apps/web/src/lib/playback-analytics.ts` | Web analytics service |
+| `apps/web/src/hooks/useWebPlaybackAnalytics.ts` | Web playback analytics hook |
+| `supabase/migrations/20260209_playback_events.sql` | Playback events table + RPC |
+| `supabase/migrations/20260209_audio_renders_storage_policy.sql` | Storage policy |
+
+## Modified Files (17)
+| File | Change |
+|------|--------|
+| `apps/mobile/app.json` | iOS/Android config for Expo 54, CarPlay, background audio |
+| `apps/mobile/package.json` | Fresh dependencies for Expo SDK 54 |
+| `apps/mobile/metro.config.js` | Monorepo fix: `resolveRequest` override for react/react-native |
+| `apps/mobile/tsconfig.json` | Updated for Expo 54 |
+| `apps/mobile/index.js` | TrackPlayer PlaybackService registration |
+| `apps/mobile/app/_layout.tsx` | Root layout with QueryClientProvider, auth/audio init |
+| `apps/mobile/app/index.tsx` | Auth gate redirect |
+| `apps/mobile/app/(auth)/_layout.tsx` | Auth stack navigator |
+| `apps/mobile/app/(auth)/login.tsx` | Login with breathing orb, post-login navigation |
+| `apps/mobile/app/(tabs)/_layout.tsx` | 2-tab layout (Library + Now Playing) + NowPlayingBar |
+| `apps/mobile/app/(tabs)/library.tsx` | Track list, search, download filter, offline banner |
+| `apps/mobile/app/(tabs)/player.tsx` | Full player with gradient bg, controls, speed, sleep timer |
+| `apps/mobile/components/TrackCard.tsx` | Track list item with download indicator |
+| `apps/mobile/components/NowPlayingBar.tsx` | Mini-player (glass morphism) |
+| `apps/mobile/stores/authStore.ts` | Stripped to login-only |
+| `apps/mobile/stores/playerStore.ts` | Queue/playback/sleep timer state |
+| `apps/mobile/services/PlaybackService.ts` | Background playback event handlers |
+| `apps/mobile/services/cacheService.ts` | Rewritten for expo-file-system v19 class API |
+| `apps/mobile/services/carPlayService.ts` | CarPlay integration (iOS only) |
+| `apps/mobile/lib/supabase.ts` | Dropped url-polyfill, SecureStore adapter |
+| `apps/web/src/components/MiniPlayer.tsx` | Wired analytics hook + complete events |
+| `apps/admin/src/app/(authenticated)/analytics/page.tsx` | Added playback analytics tab |
+
+## Deleted Files (18)
+Old Expo 51 builder/recorder/signup/profile features removed:
+- `apps/mobile/App.tsx`, `app/(auth)/register.tsx`, `app/(tabs)/builder.tsx`, `app/(tabs)/profile.tsx`
+- `components/AudioPlayer.tsx`, `ErrorBoundary.tsx`, `LoadingStates.tsx`
+- `components/builder/*` (6 files), `docs/*` (2 files)
+- `hooks/useBuilder.ts`, `lib/audio-service.ts`
+- `services/backgroundAudioService.ts`, `draftService.ts`, `recordingService.ts`
+- `stores/__tests__/*`, `services/__tests__/*`
+
+## Bugs Fixed During Build/QA
+1. **expo-file-system v18 build failure** — Upgraded to v19, rewrote cacheService + downloadService for new class-based API
+2. **Duplicate React in monorepo** — Metro `resolveRequest` catches react/react-native + all sub-paths (jsx-runtime, jsx-dev-runtime)
+3. **Expo Go vs dev build** — Must use `npx expo run:ios`, not `npx expo start --ios` (native modules require dev build)
+4. **Login doesn't navigate after sign-in** — Added `useEffect` watching `session` to call `router.replace('/(tabs)/library')`
+5. **Zustand infinite loop** — `useDownloadStore((s) => s.getDownloadedTrackIds())` creates new array each render; fixed with `useMemo` on raw `downloads` map
+6. **`track_access.revoked_at` column doesn't exist** — Removed filter from trackService query
+7. **StorageApiError: Object not found** — Was hardcoding `audio-files` bucket; fixed to extract bucket name from `audio_url` (actual bucket is `audio-renders`)
+8. **Storage policy missing** — `audio-renders` bucket had no policies for authenticated users; added SELECT policy
+9. **NowPlayingBar overlapping library** — Increased FlatList bottom padding
+
+## Key Technical Decisions
+- **RN 0.81.5** (not 0.83.1) — Expo SDK 54 recommended version
+- **react 19.1.0** — Expo SDK 54 expected version
+- **expo-file-system v19** — New class-based API (File, Directory, Paths.cache)
+- **Metro resolveRequest** — Forces single React copy from mobile's node_modules
+- **Storage policy over edge function** — Added SELECT policy on `audio-renders` for authenticated users rather than creating an API route for signing (simpler, tracks table RLS gates URL discovery)
+
+## QA Fixes (Post-Testing)
+1. **Auth doesn't persist between app closes** — `isInitialized` was persisted via zustand partialize, so on restart it rehydrated as `true` and `initialize()` bailed out without restoring the Supabase session from SecureStore. Fixed by removing `isInitialized` from partialize config.
+2. **NowPlayingBar overlaps content and sheets** — Was `position: absolute` floating over everything. Moved into tab bar layout flow using a custom `tabBar` render prop that stacks NowPlayingBar above BottomTabBar. Removed absolute positioning from NowPlayingBar component. Reduced library FlatList paddingBottom to simple `Spacing.lg`.
+3. **No logout button** — Added sign-out icon in library header (top-right) with confirmation alert dialog.
+4. **No way to add tracks to queue** — Added queue icon button on TrackCard (lavender circle, list icon). Only appears when queue is non-empty. Tapping appends track to queue via `playerStore.addToQueue()`.
+
+## Known Issues / Next Steps
+- Library scrolling needs real-device verification (simulator mouse scroll unreliable)
+- Android build not yet tested (`npx expo run:android`)
+- CarPlay requires Apple entitlement — untested
+- Phase 6 (unit tests) and Phase 7 (build verification) still pending
+- Download functionality needs real-device testing
+
+---
+
 # Session: Friends & Family Program + App-Wide COGS Tracking
 
 ## Session Date: 2026-02-09

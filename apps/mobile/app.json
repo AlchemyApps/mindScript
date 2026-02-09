@@ -6,21 +6,20 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "mindscript",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#F7F8FC"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mindscript.app",
       "jsEngine": "hermes",
       "infoPlist": {
-        "UIBackgroundModes": ["audio", "fetch", "remote-notification"],
-        "NSMicrophoneUsageDescription": "MindScript needs access to your microphone to record custom voice affirmations."
+        "UIBackgroundModes": ["audio"],
+        "NSSupportsCarPlay": true
       }
     },
     "android": {
@@ -30,22 +29,13 @@
       },
       "package": "com.mindscript.app",
       "jsEngine": "hermes",
-      "permissions": ["RECORD_AUDIO", "VIBRATE"],
-      "enableProguardInReleaseBuilds": true,
-      "enableShrinkResourcesInReleaseBuilds": true
+      "permissions": ["FOREGROUND_SERVICE"]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "scheme": "mindscript",
     "plugins": [
-      "expo-router",
-      [
-        "react-native-track-player",
-        {
-          "enableBackgroundAudio": true
-        }
-      ]
-    ]
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

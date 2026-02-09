@@ -90,7 +90,7 @@ interface UserData {
   byStatus: Array<{ status: string; count: number }>
 }
 
-type TabId = 'overview' | 'revenue' | 'content' | 'users' | 'cogs'
+type TabId = 'overview' | 'revenue' | 'content' | 'users' | 'cogs' | 'playback'
 
 interface COGSData {
   total_revenue: number
@@ -121,6 +121,7 @@ export default function AnalyticsPage() {
     { id: 'content', label: 'Content' },
     { id: 'users', label: 'Users' },
     { id: 'cogs', label: 'COGS & Margins' },
+    { id: 'playback', label: 'Playback' },
   ]
 
   return (
@@ -174,6 +175,7 @@ export default function AnalyticsPage() {
       {activeTab === 'content' && <ContentTab period={period} />}
       {activeTab === 'users' && <UsersTab period={period} />}
       {activeTab === 'cogs' && <COGSTab period={period} />}
+      {activeTab === 'playback' && <PlaybackTab period={period} />}
     </div>
   )
 }
@@ -706,7 +708,7 @@ function ContentTab({ period }: { period: string }) {
 
   return (
     <div className="space-y-6">
-      <InfoBanner message="Plays, downloads, ratings, and rendering metrics will be available once playback tracking is integrated. Showing track creation data from the database." />
+      <InfoBanner message="Playback data is now tracked on the Playback tab. This tab shows track creation and feature adoption metrics." />
 
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1239,6 +1241,286 @@ function COGSTab({ period }: { period: string }) {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Playback Tab ──
+
+interface PlaybackData {
+  totalPlays: number
+  uniqueListeners: number
+  totalHours: number
+  mobilePlays: number
+  webPlays: number
+  avgDailyPlays: number
+  peakHour: number | null
+  overTime: Array<{ date: string; plays: number; minutes: number }>
+  byPlatform: Array<{ platform: string; plays: number }>
+  byEventType: Array<{ eventType: string; count: number }>
+}
+
+function PlaybackTab({ period }: { period: string }) {
+  const [data, setData] = useState<PlaybackData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/analytics/playback?period=${period}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch playback data')
+        return res.json()
+      })
+      .then(setData)
+      .catch((err) => {
+        console.error('Playback fetch error:', err)
+        toast.error('Failed to load playback data')
+      })
+      .finally(() => setLoading(false))
+  }, [period])
+
+  const formatNumber = (value: number) => {
+    return new Intl.NumberFormat('en-US').format(value)
+  }
+
+  const platformLabels: Record<string, string> = {
+    web: 'Web',
+    mobile_ios: 'iOS',
+    mobile_android: 'Android',
+    unknown: 'Unknown',
+  }
+
+  const eventLabels: Record<string, string> = {
+    play: 'Play',
+    pause: 'Pause',
+    resume: 'Resume',
+    complete: 'Complete',
+    skip: 'Skip',
+    seek: 'Seek',
+  }
+
+  const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6']
+
+  return (
+    <div className="space-y-6">
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricsCard
+          title="Total Plays"
+          value={data ? formatNumber(data.totalPlays) : '-'}
+          icon={<Headphones className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Unique Listeners"
+          value={data ? formatNumber(data.uniqueListeners) : '-'}
+          icon={<Users className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Total Hours"
+          value={data ? data.totalHours.toFixed(1) : '-'}
+          subtitle="Listening time"
+          icon={<Music className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Avg Daily Plays"
+          value={data ? data.avgDailyPlays.toFixed(1) : '-'}
+          subtitle={data?.peakHour != null ? `Peak hour: ${data.peakHour}:00` : undefined}
+          icon={<TrendingUp className="h-5 w-5" />}
+          loading={loading}
+        />
+      </div>
+
+      {/* Platform Split */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <MetricsCard
+          title="Web Plays"
+          value={data ? formatNumber(data.webPlays) : '-'}
+          icon={<FileText className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Mobile Plays"
+          value={data ? formatNumber(data.mobilePlays) : '-'}
+          icon={<Headphones className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Mobile Share"
+          value={data && data.totalPlays > 0 ? `${Math.round((data.mobilePlays / data.totalPlays) * 100)}%` : '-'}
+          subtitle="Of total plays"
+          icon={<TrendingUp className="h-5 w-5" />}
+          loading={loading}
+        />
+      </div>
+
+      {/* Plays Over Time */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Plays Over Time
+        </h3>
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : !data?.overTime.length ? (
+          <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+            No playback data for this period
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={data.overTime}>
+              <defs>
+                <linearGradient id="colorPlays" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8} />
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(val) => {
+                  const d = new Date(val)
+                  return `${d.getMonth() + 1}/${d.getDate()}`
+                }}
+                fontSize={12}
+                tick={{ fill: '#6b7280' }}
+              />
+              <YAxis fontSize={12} tick={{ fill: '#6b7280' }} allowDecimals={false} />
+              <Tooltip
+                labelFormatter={(val) => new Date(val).toLocaleDateString()}
+                contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+              />
+              <Area
+                type="monotone"
+                dataKey="plays"
+                stroke="#6366f1"
+                fillOpacity={1}
+                fill="url(#colorPlays)"
+                name="Plays"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Listening Minutes + Platform/Event Breakdown */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Listening Minutes Over Time */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Listening Minutes
+          </h3>
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : !data?.overTime.length ? (
+            <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+              No data
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={data.overTime}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={(val) => {
+                    const d = new Date(val)
+                    return `${d.getMonth() + 1}/${d.getDate()}`
+                  }}
+                  fontSize={12}
+                  tick={{ fill: '#6b7280' }}
+                />
+                <YAxis fontSize={12} tick={{ fill: '#6b7280' }} allowDecimals={false} />
+                <Tooltip
+                  labelFormatter={(val) => new Date(val).toLocaleDateString()}
+                  formatter={(value: number) => [`${value} min`, 'Minutes']}
+                  contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                />
+                <Bar dataKey="minutes" fill="#10b981" radius={[4, 4, 0, 0]} name="Minutes" />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Platform Breakdown */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Plays by Platform
+          </h3>
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : !data?.byPlatform.length ? (
+            <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+              No platform data
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie
+                  data={data.byPlatform}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="plays"
+                  label={({ platform, percent }: any) =>
+                    `${platformLabels[platform] || platform} ${((percent as number) * 100).toFixed(0)}%`
+                  }
+                >
+                  {data.byPlatform.map((_entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Event Type Breakdown */}
+      {data && data.byEventType.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Event Distribution
+          </h3>
+          <div className="space-y-3">
+            {data.byEventType.map((item, i) => (
+              <div key={item.eventType} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {eventLabels[item.eventType] || item.eventType}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-32 bg-gray-100 dark:bg-gray-700 rounded-full h-2">
+                    <div
+                      className="h-2 rounded-full"
+                      style={{
+                        backgroundColor: COLORS[i % COLORS.length],
+                        width: `${data.byEventType.length > 0
+                          ? (item.count / data.byEventType[0].count) * 100
+                          : 0}%`,
+                      }}
+                    />
+                  </div>
+                  <span className="text-sm text-gray-600 dark:text-gray-400 w-12 text-right">
+                    {formatNumber(item.count)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

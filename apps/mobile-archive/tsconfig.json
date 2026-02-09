@@ -1,0 +1,10 @@
+{
+  "extends": "../../packages/config/typescript.json",
+  "compilerOptions": {
+    "jsx": "react-native",
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
+  "exclude": ["node_modules", ".expo"]
+}

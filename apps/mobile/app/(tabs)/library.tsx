@@ -1,257 +1,381 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   FlatList,
-  TouchableOpacity,
+  TextInput,
   StyleSheet,
   RefreshControl,
-  SafeAreaView,
-  Image,
+  TouchableOpacity,
+  Platform,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
-import { supabase } from '../../lib/supabase';
-import { useQuery } from '@tanstack/react-query';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import Animated, { FadeIn } from 'react-native-reanimated';
+import { useLibraryTracks } from '../../hooks/useLibraryTracks';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { usePlayerStore, QueueItem } from '../../stores/playerStore';
+import { useAuthStore } from '../../stores/authStore';
+import { useDownloadStore } from '../../stores/downloadStore';
+import { trackService, LibraryTrack } from '../../services/trackService';
+import { downloadService } from '../../services/downloadService';
+import TrackCard from '../../components/TrackCard';
+import EmptyLibrary from '../../components/EmptyLibrary';
+import { Colors, Spacing, Radius, Shadows } from '../../lib/constants';
 
-interface Track {
-  id: string;
-  title: string;
-  description: string;
-  duration: number;
-  thumbnail_url?: string;
-  is_published: boolean;
-  created_at: string;
-}
+type FilterMode = 'all' | 'downloaded';
 
 export default function LibraryScreen() {
-  const router = useRouter();
-  const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<FilterMode>('all');
 
-  const { data: tracks, refetch } = useQuery({
-    queryKey: ['userTracks'],
-    queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('tracks')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data as Track[];
-    },
-  });
-
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  };
-
-  const renderTrackItem = ({ item }: { item: Track }) => (
-    <TouchableOpacity
-      style={styles.trackCard}
-      onPress={() => router.push(`/(tabs)/player?trackId=${item.id}`)}
-    >
-      <View style={styles.trackThumbnail}>
-        {item.thumbnail_url ? (
-          <Image source={{ uri: item.thumbnail_url }} style={styles.thumbnail} />
-        ) : (
-          <View style={styles.placeholderThumbnail}>
-            <Ionicons name="musical-notes" size={30} color="#9CA3AF" />
-          </View>
-        )}
-      </View>
-      <View style={styles.trackInfo}>
-        <Text style={styles.trackTitle} numberOfLines={1}>
-          {item.title}
-        </Text>
-        <Text style={styles.trackDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
-        <View style={styles.trackMeta}>
-          <Text style={styles.trackDuration}>{formatDuration(item.duration)}</Text>
-          {item.is_published && (
-            <View style={styles.publishedBadge}>
-              <Text style={styles.publishedText}>Published</Text>
-            </View>
-          )}
-        </View>
-      </View>
-    </TouchableOpacity>
+  const { data: tracks, isLoading, refetch, isRefetching } = useLibraryTracks();
+  const { isConnected } = useNetworkStatus();
+  const signOut = useAuthStore((s) => s.signOut);
+  const setQueue = usePlayerStore((s) => s.setQueue);
+  const addToQueue = usePlayerStore((s) => s.addToQueue);
+  const play = usePlayerStore((s) => s.play);
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const queue = usePlayerStore((s) => s.queue);
+  const downloads = useDownloadStore((s) => s.downloads);
+  const downloadedIds = useMemo(
+    () =>
+      Object.entries(downloads)
+        .filter(([, dl]) => dl.status === 'downloaded')
+        .map(([id]) => id),
+    [downloads],
   );
 
+  const filteredTracks = useMemo(() => {
+    let result = tracks ?? [];
+
+    if (filter === 'downloaded') {
+      result = result.filter((t) => downloadedIds.includes(t.id));
+    }
+
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.description?.toLowerCase().includes(q),
+      );
+    }
+
+    return result;
+  }, [tracks, filter, search, downloadedIds]);
+
+  const handlePlayTrack = useCallback(
+    async (track: LibraryTrack) => {
+      // Check for local download first
+      const localUri = downloadService.getLocalAudioUri(track.id);
+      let audioUrl = localUri;
+
+      if (!audioUrl) {
+        audioUrl = await trackService.getSignedAudioUrl(track.id);
+      }
+      if (!audioUrl) {
+        Alert.alert(
+          'Audio unavailable',
+          'This track\'s audio file is not available yet. It may still be rendering.',
+        );
+        return;
+      }
+
+      const queueItem: QueueItem = {
+        id: track.id,
+        url: audioUrl,
+        title: track.title,
+        artist: 'MindScript',
+        artwork: track.cover_image_url ?? undefined,
+        duration: track.duration_seconds ?? 0,
+        mindscriptId: track.id,
+        isDownloaded: !!localUri,
+        localPath: localUri ?? undefined,
+      };
+
+      await setQueue([queueItem]);
+      await play();
+      router.navigate('/(tabs)/player');
+    },
+    [setQueue, play],
+  );
+
+  const handleAddToQueue = useCallback(
+    async (track: LibraryTrack) => {
+      const localUri = downloadService.getLocalAudioUri(track.id);
+      let audioUrl = localUri;
+
+      if (!audioUrl) {
+        audioUrl = await trackService.getSignedAudioUrl(track.id);
+      }
+      if (!audioUrl) {
+        Alert.alert('Audio unavailable', 'This track cannot be added to the queue.');
+        return;
+      }
+
+      const queueItem: QueueItem = {
+        id: track.id,
+        url: audioUrl,
+        title: track.title,
+        artist: 'MindScript',
+        artwork: track.cover_image_url ?? undefined,
+        duration: track.duration_seconds ?? 0,
+        mindscriptId: track.id,
+        isDownloaded: !!localUri,
+        localPath: localUri ?? undefined,
+      };
+
+      await addToQueue(queueItem);
+      Alert.alert('Added to Queue', `"${track.title}" added to queue.`);
+    },
+    [addToQueue],
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: LibraryTrack; index: number }) => (
+      <Animated.View entering={FadeIn.duration(300).delay(index * 50)}>
+        <TrackCard
+          track={item}
+          onPress={() => handlePlayTrack(item)}
+          onAddToQueue={queue.length > 0 ? () => handleAddToQueue(item) : undefined}
+          isActive={currentTrack?.id === item.id}
+        />
+      </Animated.View>
+    ),
+    [handlePlayTrack, handleAddToQueue, currentTrack?.id, queue.length],
+  );
+
+  const downloadCount = downloadedIds.length;
+
+  const handleLogout = useCallback(() => {
+    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: () => signOut(),
+      },
+    ]);
+  }, [signOut]);
+
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>My Library</Text>
+        <Text style={styles.title}>Library</Text>
         <TouchableOpacity
-          style={styles.createButton}
-          onPress={() => router.push('/(tabs)/builder')}
+          onPress={handleLogout}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="add" size={24} color="#7C3AED" />
+          <Ionicons name="log-out-outline" size={24} color={Colors.muted} />
         </TouchableOpacity>
       </View>
 
-      {tracks && tracks.length > 0 ? (
-        <FlatList
-          data={tracks}
-          renderItem={renderTrackItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-          }
-        />
-      ) : (
-        <View style={styles.emptyState}>
-          <Ionicons name="library-outline" size={64} color="#D1D5DB" />
-          <Text style={styles.emptyTitle}>Your library is empty</Text>
-          <Text style={styles.emptyDescription}>
-            Create your first meditation track to get started
+      {/* Offline banner */}
+      {!isConnected && (
+        <View style={styles.offlineBanner}>
+          <Ionicons name="cloud-offline-outline" size={16} color={Colors.warning} />
+          <Text style={styles.offlineText}>
+            You&apos;re offline. Downloaded tracks are still available.
           </Text>
-          <TouchableOpacity
-            style={styles.emptyButton}
-            onPress={() => router.push('/(tabs)/builder')}
-          >
-            <Text style={styles.emptyButtonText}>Create Track</Text>
-          </TouchableOpacity>
         </View>
       )}
-    </SafeAreaView>
+
+      {/* Search bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={18} color={Colors.gray400} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search your tracks..."
+            placeholderTextColor={Colors.gray400}
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+          />
+          {search.length > 0 && (
+            <TouchableOpacity onPress={() => setSearch('')}>
+              <Ionicons name="close-circle" size={18} color={Colors.gray400} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Filter toggles */}
+      <View style={styles.filterRow}>
+        <TouchableOpacity
+          style={[styles.filterChip, filter === 'all' && styles.filterChipActive]}
+          onPress={() => setFilter('all')}
+          activeOpacity={0.7}
+        >
+          <Text
+            style={[
+              styles.filterChipText,
+              filter === 'all' && styles.filterChipTextActive,
+            ]}
+          >
+            All
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.filterChip,
+            filter === 'downloaded' && styles.filterChipActive,
+          ]}
+          onPress={() => setFilter('downloaded')}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name="arrow-down-circle"
+            size={14}
+            color={filter === 'downloaded' ? '#FFFFFF' : Colors.muted}
+            style={{ marginRight: 4 }}
+          />
+          <Text
+            style={[
+              styles.filterChipText,
+              filter === 'downloaded' && styles.filterChipTextActive,
+            ]}
+          >
+            Downloaded{downloadCount > 0 ? ` (${downloadCount})` : ''}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Track list */}
+      <FlatList
+        data={filteredTracks}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.listContent,
+          filteredTracks.length === 0 && styles.listEmpty,
+        ]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={refetch}
+            tintColor={Colors.primary}
+            colors={[Colors.primary]}
+          />
+        }
+        ListEmptyComponent={
+          isLoading ? null : (
+            <EmptyLibrary
+              isFiltered={filter === 'downloaded' || search.length > 0}
+            />
+          )
+        }
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FC',
+    backgroundColor: Colors.background,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: Colors.text,
+    letterSpacing: -0.5,
   },
-  createButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  listContainer: {
-    padding: 20,
-  },
-  trackCard: {
-    flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  trackThumbnail: {
-    marginRight: 12,
-  },
-  thumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-  },
-  placeholderThumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  trackInfo: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  trackTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#0F172A',
-    marginBottom: 4,
-  },
-  trackDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 8,
-  },
-  trackMeta: {
+
+  // Offline
+  offlineBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: Colors.warningLight,
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.sm,
     gap: 8,
   },
-  trackDuration: {
+  offlineText: {
     fontSize: 12,
-    color: '#9CA3AF',
-  },
-  publishedBadge: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  publishedText: {
-    fontSize: 11,
-    color: '#166534',
-    fontWeight: '600',
-  },
-  emptyState: {
+    color: Colors.gray700,
     flex: 1,
-    justifyContent: 'center',
+  },
+
+  // Search
+  searchContainer: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.sm,
+  },
+  searchBar: {
+    flexDirection: 'row',
     alignItems: 'center',
-    padding: 40,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Platform.OS === 'ios' ? 12 : 4,
+    gap: 8,
+    ...Shadows.sm,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#374151',
-    marginTop: 16,
-    marginBottom: 8,
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.text,
+    paddingVertical: 0,
   },
-  emptyDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
+
+  // Filters
+  filterRow: {
+    flexDirection: 'row',
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    gap: 8,
   },
-  emptyButton: {
-    backgroundColor: '#7C3AED',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
   },
-  emptyButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+  filterChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.muted,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+
+  // List
+  listContent: {
+    paddingHorizontal: Spacing.lg,
+    paddingBottom: Spacing.lg,
+  },
+  listEmpty: {
+    flex: 1,
+  },
+  separator: {
+    height: 10,
   },
 });
