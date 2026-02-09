@@ -1,3 +1,89 @@
+# Session: Friends & Family Program + App-Wide COGS Tracking
+
+## Session Date: 2026-02-09
+
+## Branch
+`feature/friends-and-family` (off `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Overview
+Implemented the Friends & Family invite program with two tiers (inner_circle = everything free, cost_pass = AI costs only), app-wide COGS tracking on every purchase, admin F&F management page, and COGS & Margins analytics tab. Also fixed pre-existing broken auth imports and added auth-aware audio player hiding.
+
+## Database Changes (via Supabase MCP)
+1. **Added `ff_tier` column to `profiles`** — nullable TEXT with CHECK constraint (`inner_circle` | `cost_pass`)
+2. **Added `cogs_cents` column to `purchases`** — INTEGER DEFAULT 0 for backward compatibility
+3. **Created `ff_invites` table** — code, email, tier, status (pending/redeemed/revoked), redeemed_by, redeemed_at
+4. **Created `get_cogs_analytics` RPC** — SECURITY DEFINER function returning revenue, COGS, margin, breakdown by type
+
+## New Files (14)
+| File | Purpose |
+|------|---------|
+| `supabase/migrations/20260208_ff_and_cogs.sql` | Migration: ff_invites, ff_tier, cogs_cents, RPC |
+| `apps/web/src/lib/pricing/cost-calculator.ts` | Pure COGS calculation (ElevenLabs/OpenAI/uploaded) |
+| `apps/web/src/lib/pricing/cost-calculator.test.ts` | 10 unit tests, all passing |
+| `apps/web/src/lib/pricing/ff-tier.ts` | getUserFFTier() helper |
+| `apps/web/src/app/api/admin/ff/invite/route.ts` | Admin: create/list invites (web app) |
+| `apps/web/src/app/api/admin/ff/invite/[id]/route.ts` | Admin: revoke/resend invites (web app) |
+| `apps/web/src/app/api/ff/redeem/route.ts` | User: redeem invite code |
+| `apps/web/src/app/invite/[code]/page.tsx` | Invite landing page (server component) |
+| `apps/web/src/app/invite/[code]/InviteRedeemClient.tsx` | Invite redemption client component |
+| `apps/admin/src/app/(authenticated)/friends-family/page.tsx` | Admin F&F management page |
+| `apps/admin/src/app/api/ff/invites/route.ts` | Admin API: GET list, POST create |
+| `apps/admin/src/app/api/ff/invites/[id]/route.ts` | Admin API: PATCH revoke/resend |
+| `apps/admin/src/app/api/analytics/cogs/route.ts` | Admin API: COGS analytics data |
+
+## Modified Files (15)
+| File | Change |
+|------|--------|
+| `apps/web/src/app/api/checkout/guest-conversion/route.ts` | COGS calc, F&F tier check, skipStripe for inner_circle |
+| `apps/web/src/app/api/checkout/track-edit/route.ts` | COGS calc, F&F bypass edit fee |
+| `apps/web/src/app/api/checkout/purchase-track/route.ts` | F&F free access for inner_circle |
+| `apps/web/src/app/api/checkout/session/route.ts` | Dynamic platform fee (0%/5%/15%) |
+| `apps/web/src/app/api/pricing/check-eligibility/route.ts` | Returns ffTier, $0 pricing for F&F |
+| `apps/web/src/app/api/webhooks/stripe/route.ts` | Records cogs_cents + ff_tier on purchases |
+| `apps/web/src/lib/track-builder.ts` | Added createFreeTrack() for F&F |
+| `apps/web/src/components/builder/StepBuilder.tsx` | F&F $0 total, handles skipStripe response |
+| `apps/web/src/components/builder/steps/CreateStep.tsx` | F&F pricing display, strikethrough add-ons |
+| `apps/web/src/components/MiniPlayer.tsx` | Auth-aware: hides for logged-out users |
+| `apps/web/src/components/navigation/Header.tsx` | Clears player on signOut |
+| `apps/web/src/app/auth/login/page.tsx` | Fixed broken import (lib/supabase/client → @mindscript/auth/client) |
+| `apps/web/src/app/auth/signup/page.tsx` | Fixed broken import (lib/supabase/client → @mindscript/auth/client) |
+| `apps/admin/src/components/admin-sidebar.tsx` | Added Friends & Family nav item |
+| `apps/admin/src/app/(authenticated)/analytics/page.tsx` | Added COGS & Margins tab |
+| `packages/email/src/types.ts` | Added FFInviteEmailProps type |
+
+## Bugs Found & Fixed During Testing
+1. **Admin API 404s** — Admin was serving old build; rebuilt to include new routes
+2. **Resend 403 domain error** — Email `from` was `mindscript.app`, domain is `mindscript.studio`
+3. **Invite URLs hardcoded to mindscript.app** — Made dynamic via `NEXT_PUBLIC_WEB_URL` env var
+4. **Signup page 404** — Invite linked to `/sign-up` but auth is at `/auth/signup`; also fixed `/sign-in` → `/auth/login`
+5. **Auth pages broken import** — Both login and signup imported from non-existent `lib/supabase/client`; switched to `@mindscript/auth/client`
+6. **Audio player persisting after logout** — Added auth state listener to MiniPlayer; clears track on signOut
+7. **F&F user seeing regular prices** — Invite never redeemed (broken signup link), manually set ff_tier; also fixed CreateStep to show $0 for all line items
+8. **Add-on prices not zeroed for F&F** — CreateStep component had its own calculateTotal that didn't know about ffTier
+
+## Key Design Decisions
+- **Stripe $0.50 minimum**: When F&F cost < $0.50, skip Stripe via `createFreeTrack()`
+- **COGS at checkout time**: Embedded in Stripe metadata, persisted by webhook
+- **Cookie-based invite for new users**: `ff_invite_code` cookie survives auth redirect
+- **Dynamic platform fee**: inner_circle=0%, cost_pass=5%, normal=15%
+
+## Environment Config
+- `apps/admin/.env.local` — Added `NEXT_PUBLIC_WEB_URL=http://localhost:3001`, `RESEND_API_KEY`
+- Domain: `mindscript.studio` (NOT mindscript.app)
+- Ports: web=3001, admin=3002
+
+## Next Session
+- Full E2E test: invite → signup → redeem → create track → verify $0 purchase recorded
+- Test cost_pass tier with COGS >= $0.50 (goes through Stripe at cost)
+- Admin COGS analytics tab with real data
+- Consider migrating Resend calls to EmailService pattern
+
+---
+
 # Session: Admin Dashboard Bug Fixes, Analytics Consolidation & RLS Hardening
 
 ## Session Date: 2026-02-08

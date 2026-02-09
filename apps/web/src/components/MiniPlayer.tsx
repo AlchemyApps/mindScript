@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '@/store/playerStore';
 import { useShallow } from 'zustand/react/shallow';
 import { GlassPlayer } from '@/components/player/GlassPlayer';
 import { PIPPlayer } from '@/components/player/PIPPlayer';
+import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 export function MiniPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   const {
     currentTrack,
@@ -20,6 +22,7 @@ export function MiniPlayer() {
     setCurrentTime,
     setDuration,
     playNext,
+    clearCurrentTrack,
   } = usePlayerStore(
     useShallow((state) => ({
       currentTrack: state.currentTrack,
@@ -32,8 +35,23 @@ export function MiniPlayer() {
       setCurrentTime: state.setCurrentTime,
       setDuration: state.setDuration,
       playNext: state.playNext,
+      clearCurrentTrack: state.clearCurrentTrack,
     }))
   );
+
+  // Track auth state — hide player when logged out
+  useEffect(() => {
+    const supabase = getSupabaseBrowserClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsAuthenticated(!!user);
+      if (!user) clearCurrentTrack();
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session?.user);
+      if (!session?.user) clearCurrentTrack();
+    });
+    return () => subscription.unsubscribe();
+  }, [clearCurrentTrack]);
 
   // Sync volume
   useEffect(() => {
@@ -85,7 +103,7 @@ export function MiniPlayer() {
     setCurrentTime(time);
   };
 
-  if (!currentTrack) {
+  if (!currentTrack || !isAuthenticated) {
     return null;
   }
 

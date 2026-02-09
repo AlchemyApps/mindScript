@@ -7,6 +7,7 @@ export type EmailTemplate =
   | 'moderation-action'
   | 'subscription-renewal'
   | 'subscription-cancelled'
+  | 'ff-invite'
 
 export interface EmailOptions {
   to: string | string[]
@@ -85,6 +86,13 @@ export interface ModerationActionProps {
   reason?: string
   appealUrl?: string
   moderatorNotes?: string
+}
+
+export interface FFInviteEmailProps {
+  inviterName: string
+  tier: 'inner_circle' | 'cost_pass'
+  inviteUrl: string
+  recipientEmail: string
 }
 
 export interface UnsubscribeData {

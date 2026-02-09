@@ -22,6 +22,7 @@ interface CreateStepProps {
     discountedPrice: number;
     savings: number;
     isEligibleForDiscount: boolean;
+    ffTier: string | null;
   };
   isProcessing: boolean;
   user: any;
@@ -45,8 +46,12 @@ export function CreateStep({
   onCheckout,
   className,
 }: CreateStepProps) {
+  const isFF = pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass';
+
   const calculateTotal = () => {
+    if (pricingInfo.ffTier === 'inner_circle') return 0;
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
+    if (pricingInfo.ffTier === 'cost_pass') return total;
     if (music && music.id !== 'none') {
       total += music.price;
     }
@@ -149,7 +154,14 @@ export function CreateStep({
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted">Base track</span>
             <span className="text-text">
-              {pricingInfo.isEligibleForDiscount ? (
+              {isFF ? (
+                <>
+                  <span className="line-through text-muted mr-2">
+                    ${pricingInfo.basePrice.toFixed(2)}
+                  </span>
+                  <span className="text-accent font-medium">$0.00</span>
+                </>
+              ) : pricingInfo.isEligibleForDiscount ? (
                 <>
                   <span className="line-through text-muted mr-2">
                     ${pricingInfo.basePrice.toFixed(2)}
@@ -167,21 +179,42 @@ export function CreateStep({
           {music && music.id !== 'none' && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Background music</span>
-              <span className="text-text">+${music.price.toFixed(2)}</span>
+              <span className="text-text">
+                {isFF ? (
+                  <>
+                    <span className="line-through text-muted mr-2">+${music.price.toFixed(2)}</span>
+                    <span className="text-accent font-medium">$0.00</span>
+                  </>
+                ) : `+$${music.price.toFixed(2)}`}
+              </span>
             </div>
           )}
 
           {solfeggio?.enabled && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Solfeggio frequency</span>
-              <span className="text-text">+${solfeggio.price.toFixed(2)}</span>
+              <span className="text-text">
+                {isFF ? (
+                  <>
+                    <span className="line-through text-muted mr-2">+${solfeggio.price.toFixed(2)}</span>
+                    <span className="text-accent font-medium">$0.00</span>
+                  </>
+                ) : `+$${solfeggio.price.toFixed(2)}`}
+              </span>
             </div>
           )}
 
           {binaural?.enabled && (
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Binaural beats</span>
-              <span className="text-text">+${binaural.price.toFixed(2)}</span>
+              <span className="text-text">
+                {isFF ? (
+                  <>
+                    <span className="line-through text-muted mr-2">+${binaural.price.toFixed(2)}</span>
+                    <span className="text-accent font-medium">$0.00</span>
+                  </>
+                ) : `+$${binaural.price.toFixed(2)}`}
+              </span>
             </div>
           )}
 
@@ -190,12 +223,17 @@ export function CreateStep({
             <span className="text-2xl font-bold text-primary">${total.toFixed(2)}</span>
           </div>
 
-          {pricingInfo.isEligibleForDiscount && pricingInfo.savings > 0 && (
+          {isFF ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-accent">
+              <Check className="w-4 h-4" />
+              <span>Friends & Family — {pricingInfo.ffTier === 'inner_circle' ? 'everything is on us' : 'at-cost pricing'}!</span>
+            </div>
+          ) : pricingInfo.isEligibleForDiscount && pricingInfo.savings > 0 ? (
             <div className="flex items-center justify-center gap-2 text-sm text-accent">
               <Check className="w-4 h-4" />
               <span>You're saving ${pricingInfo.savings.toFixed(2)} with first-track pricing!</span>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -246,7 +284,7 @@ export function CreateStep({
           ) : (
             'You\'ll sign in or create an account at checkout. '
           )}
-          Secure payment via Stripe.
+          {isFF && total === 0 ? 'No payment required.' : 'Secure payment via Stripe.'}
         </p>
       </div>
 

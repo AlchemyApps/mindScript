@@ -11,6 +11,7 @@ import {
   TrendingUp,
   Shield,
   DollarSign,
+  Heart,
 } from 'lucide-react'
 
 const navigation = [
@@ -19,6 +20,7 @@ const navigation = [
   { name: 'Catalog', href: '/catalog', icon: Music },
   { name: 'Sellers', href: '/sellers', icon: ShoppingCart },
   { name: 'Pricing', href: '/pricing', icon: DollarSign },
+  { name: 'Friends & Family', href: '/friends-family', icon: Heart },
   { name: 'Moderation', href: '/moderation', icon: Shield },
   { name: 'Activity Log', href: '/activity', icon: Activity },
   { name: 'Queue Monitor', href: '/monitoring/queue', icon: Activity },

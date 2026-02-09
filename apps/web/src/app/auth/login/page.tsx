@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { AuthForm, OAuthButtons, type AuthFormField } from '@mindscript/ui';
-import { createClient } from '../../../lib/supabase/client';
+import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 const loginFields: AuthFormField[] = [
   {
@@ -59,7 +59,7 @@ export default function LoginPage() {
       console.log('Server auth successful, establishing session...');
 
       // Now try to establish the session client-side
-      const supabase = createClient();
+      const supabase = getSupabaseBrowserClient();
       const { data: sessionData } = await supabase.auth.getSession();
 
       if (!sessionData?.session) {
@@ -108,7 +108,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const supabase = createClient();
+      const supabase = getSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {

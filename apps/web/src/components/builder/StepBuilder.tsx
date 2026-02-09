@@ -92,6 +92,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     discountedPrice: 0.99,
     savings: 2.00,
     isEligibleForDiscount: true,
+    ffTier: null as string | null,
   });
 
   // Initialize Supabase client
@@ -138,6 +139,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
           discountedPrice: data.pricing.discountedPrice / 100,
           savings: data.pricing.savings / 100,
           isEligibleForDiscount: data.isEligibleForDiscount,
+          ffTier: data.ffTier || null,
         });
       }
     } catch (error) {
@@ -261,8 +263,15 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
         throw new Error('Failed to create checkout session');
       }
 
-      const { url } = await response.json();
-      window.location.href = url;
+      const data = await response.json();
+
+      // F&F users may skip Stripe entirely
+      if (data.skipStripe && data.redirectTo) {
+        window.location.href = data.redirectTo;
+        return;
+      }
+
+      window.location.href = data.url;
     } catch (error) {
       console.error('Checkout error:', error);
       alert('Failed to start checkout. Please try again.');
@@ -286,7 +295,14 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
   };
 
   const calculateTotal = () => {
+    // F&F inner_circle gets everything free
+    if (pricingInfo.ffTier === 'inner_circle') return 0;
+
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
+
+    // F&F cost_pass only pays AI COGS (calculated server-side at checkout), no add-on fees
+    if (pricingInfo.ffTier === 'cost_pass') return total;
+
     if (state.music && state.music.id !== 'none') {
       total += state.music.price;
     }

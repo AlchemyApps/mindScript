@@ -3,6 +3,9 @@ import Stripe from "stripe";
 import { z } from "zod";
 import { createClient } from '@supabase/supabase-js';
 import { calculateVoiceFee, type VoiceTier } from '@mindscript/schemas';
+import { calculateAICost } from '../../../../lib/pricing/cost-calculator';
+import { getUserFFTier } from '../../../../lib/pricing/ff-tier';
+import { createFreeTrack } from '../../../../lib/track-builder';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -298,6 +301,7 @@ export async function POST(request: NextRequest) {
       total_amount: (priceAmount + voiceFeeCents).toString(),
       voice_tier: voiceTier,
       voice_fee_cents: voiceFeeCents.toString(),
+      cogs_cents: calculateAICost({ scriptLength, voiceProvider: builderState.voice.provider }).totalCents.toString(),
     };
 
     // Add pending track ID if we have one
@@ -331,6 +335,46 @@ export async function POST(request: NextRequest) {
           metadata[`script_chunk_${index}`] = chunk;
         });
         metadata.script_chunks_count = scriptChunks.length.toString();
+      }
+    }
+
+    // ── Friends & Family: skip Stripe if applicable ──
+    if (!userId.includes('@')) {
+      const ffTier = await getUserFFTier(userId);
+      if (ffTier) {
+        const cogsCents = calculateAICost({ scriptLength, voiceProvider: builderState.voice.provider }).totalCents;
+        const shouldSkipStripe = ffTier === 'inner_circle' || cogsCents < 50; // Stripe min $0.50
+
+        if (shouldSkipStripe) {
+          const { purchaseId, trackId } = await createFreeTrack({
+            userId,
+            trackConfig,
+            cogsCents,
+            ffTier,
+          });
+          console.log(`[F&F] Free track created for ${ffTier} user:`, { purchaseId, trackId });
+
+          // Clean up pending track if we stored one
+          if (pendingTrackId) {
+            await supabaseAdmin.from('pending_tracks').delete().eq('id', pendingTrackId);
+          }
+
+          return NextResponse.json({
+            skipStripe: true,
+            redirectTo: `${successUrl.replace('{CHECKOUT_SESSION_ID}', `ff_${purchaseId}`)}`,
+            purchaseId,
+            trackId,
+          });
+        }
+
+        // cost_pass with COGS >= $0.50: override price to COGS value, zero out voice fee
+        priceAmount = cogsCents;
+        // Voice fee is retail markup — F&F doesn't pay it
+        // Update lineItems to reflect cost-pass pricing
+        lineItems[0].price_data!.unit_amount = cogsCents;
+        if (lineItems.length > 1) {
+          lineItems.splice(1); // Remove voice fee line item
+        }
       }
     }
 

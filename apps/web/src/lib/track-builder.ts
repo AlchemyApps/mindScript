@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { FFTier } from './pricing/ff-tier';
 
 // Create Supabase admin client for track building
 const supabaseAdmin = createClient(
@@ -193,4 +194,55 @@ export async function startTrackBuild({
     console.error('[BUILD] Error starting track build:', error);
     throw error;
   }
+}
+
+/**
+ * Create a free track for Friends & Family users (bypassing Stripe).
+ * Records a $0 purchase with COGS data and kicks off the render.
+ */
+export async function createFreeTrack({
+  userId,
+  trackConfig,
+  cogsCents,
+  ffTier,
+}: {
+  userId: string;
+  trackConfig: any;
+  cogsCents: number;
+  ffTier: FFTier;
+}): Promise<{ purchaseId: string; trackId: string }> {
+  // Insert a $0 purchase record for analytics
+  const { data: purchase, error: purchaseError } = await supabaseAdmin
+    .from('purchases')
+    .insert({
+      user_id: userId,
+      checkout_session_id: `ff_${Date.now()}_${userId.slice(0, 8)}`,
+      stripe_payment_intent_id: null,
+      amount: 0,
+      cogs_cents: cogsCents,
+      currency: 'usd',
+      status: 'completed',
+      metadata: {
+        type: 'track_creation',
+        ff_tier: ffTier,
+        is_first_purchase: 'false',
+      },
+      created_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (purchaseError || !purchase) {
+    console.error('[FREE-TRACK] Failed to record purchase:', purchaseError);
+    throw new Error('Failed to record free track purchase');
+  }
+
+  // Reuse the standard build pipeline
+  const trackId = await startTrackBuild({
+    userId,
+    purchaseId: purchase.id,
+    trackConfig,
+  });
+
+  return { purchaseId: purchase.id, trackId };
 }

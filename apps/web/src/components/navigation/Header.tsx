@@ -10,6 +10,7 @@ import { cn } from '../../lib/utils';
 import { CartButton } from '../Cart/CartButton';
 import { CartDrawer } from '../Cart/CartDrawer';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
+import { usePlayerStore } from '@/store/playerStore';
 
 interface HeaderProps {
   variant?: 'transparent' | 'solid';
@@ -70,6 +71,7 @@ export function Header({ variant = 'transparent', className }: HeaderProps) {
     try {
       const supabase = getSupabaseBrowserClient();
       await supabase.auth.signOut();
+      usePlayerStore.getState().clearCurrentTrack();
       setUser(null);
       setIsDropdownOpen(false);
     } catch (error) {

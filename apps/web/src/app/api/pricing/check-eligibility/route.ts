@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "../../../../lib/supabase/server";
 import { z } from "zod";
+import { calculateAICost } from "../../../../lib/pricing/cost-calculator";
+import type { FFTier } from "../../../../lib/pricing/ff-tier";
 
 // Response schema
 const EligibilityResponseSchema = z.object({
@@ -23,12 +25,13 @@ export async function GET(request: NextRequest) {
 
     let isEligibleForDiscount = true;
     let userStatus: "anonymous" | "new_user" | "existing_eligible" | "existing_ineligible" = "anonymous";
+    let ffTier: FFTier = null;
 
     if (user) {
       // Check if user exists in profiles and if they've used their discount
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("first_track_discount_used, created_at")
+        .select("first_track_discount_used, created_at, ff_tier")
         .eq("id", user.id)
         .single();
 
@@ -37,6 +40,8 @@ export async function GET(request: NextRequest) {
         userStatus = "new_user";
         isEligibleForDiscount = true;
       } else {
+        ffTier = (profile.ff_tier as FFTier) ?? null;
+
         // User exists, check if they've used their discount
         if (profile.first_track_discount_used) {
           userStatus = "existing_ineligible";
@@ -62,11 +67,22 @@ export async function GET(request: NextRequest) {
     const standardPrice = pricingMap.get('base_standard_web_cents') ?? 299;
 
     const basePrice = standardPrice;
-    const discountedPrice = isEligibleForDiscount ? introPrice : standardPrice;
-    const savings = basePrice - discountedPrice;
+    let discountedPrice = isEligibleForDiscount ? introPrice : standardPrice;
+    let savings = basePrice - discountedPrice;
 
-    const response = EligibilityResponseSchema.parse({
-      isEligibleForDiscount,
+    // F&F tier overrides
+    if (ffTier === 'inner_circle') {
+      discountedPrice = 0;
+      savings = basePrice;
+    } else if (ffTier === 'cost_pass') {
+      // Cost pass users see "at cost" — actual COGS depends on script, so show 0 base
+      // The real cost is calculated at checkout time based on script length
+      discountedPrice = 0; // Will be overridden at checkout
+      savings = basePrice;
+    }
+
+    const response = {
+      isEligibleForDiscount: isEligibleForDiscount || ffTier !== null,
       pricing: {
         basePrice,
         discountedPrice,
@@ -74,7 +90,8 @@ export async function GET(request: NextRequest) {
         currency: "USD",
       },
       userStatus,
-    });
+      ffTier,
+    };
 
     return NextResponse.json(response);
 

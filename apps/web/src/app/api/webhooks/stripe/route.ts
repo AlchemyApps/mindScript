@@ -287,17 +287,21 @@ async function recordPurchase({
   currency?: string | null;
   metadata: StripeMetadata;
 }) {
+  const cogsCents = parseInt(metadata.cogs_cents || '0', 10) || 0;
+
   const record = {
     user_id: userId,
     checkout_session_id: sessionId,
     stripe_payment_intent_id: paymentIntentId || null,
     amount,
+    cogs_cents: cogsCents,
     currency: currency || 'usd',
     status: 'completed',
     metadata: {
       type: metadata.type || null,
       is_first_purchase: metadata.is_first_purchase,
       pending_track_id: metadata.pending_track_id || metadata.track_id || null,
+      ff_tier: metadata.ff_tier || null,
     },
     created_at: new Date().toISOString()
   };

@@ -90,7 +90,24 @@ interface UserData {
   byStatus: Array<{ status: string; count: number }>
 }
 
-type TabId = 'overview' | 'revenue' | 'content' | 'users'
+type TabId = 'overview' | 'revenue' | 'content' | 'users' | 'cogs'
+
+interface COGSData {
+  total_revenue: number
+  total_cogs: number
+  gross_margin: number
+  margin_pct: number
+  purchase_count: number
+  by_type: Array<{ type: string; count: number; revenue: number; cogs: number; margin_pct: number }>
+  over_time: Array<{ date: string; revenue: number; cogs: number }>
+  ff_impact: {
+    ff_user_count: number
+    inner_circle_count: number
+    cost_pass_count: number
+    ff_purchases: number
+    ff_subsidized_cents: number
+  }
+}
 
 // ── Main Page ──
 
@@ -103,6 +120,7 @@ export default function AnalyticsPage() {
     { id: 'revenue', label: 'Revenue' },
     { id: 'content', label: 'Content' },
     { id: 'users', label: 'Users' },
+    { id: 'cogs', label: 'COGS & Margins' },
   ]
 
   return (
@@ -155,6 +173,7 @@ export default function AnalyticsPage() {
       {activeTab === 'revenue' && <RevenueTab period={period} />}
       {activeTab === 'content' && <ContentTab period={period} />}
       {activeTab === 'users' && <UsersTab period={period} />}
+      {activeTab === 'cogs' && <COGSTab period={period} />}
     </div>
   )
 }
@@ -973,6 +992,249 @@ function UsersTab({ period }: { period: string }) {
               {(!data?.byStatus || data.byStatus.length === 0) && (
                 <p className="text-sm text-gray-500 text-center py-8">No status data</p>
               )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── COGS & Margins Tab ──
+
+function COGSTab({ period }: { period: string }) {
+  const [data, setData] = useState<COGSData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    setLoading(true)
+    fetch(`/api/analytics/cogs?period=${period}`)
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to fetch COGS data')
+        return res.json()
+      })
+      .then(setData)
+      .catch((err) => {
+        console.error('COGS fetch error:', err)
+        toast.error('Failed to load COGS data')
+      })
+      .finally(() => setLoading(false))
+  }, [period])
+
+  const formatCurrency = (cents: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+    }).format(cents / 100)
+  }
+
+  const typeLabels: Record<string, string> = {
+    track_purchase: 'Track Purchases',
+    track_creation: 'Track Creation',
+    voice_clone: 'Voice Cloning',
+    track_edit: 'Track Edits',
+    unknown: 'Other',
+  }
+
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+
+  return (
+    <div className="space-y-6">
+      <InfoBanner message="COGS tracking started with this deployment. Historical purchases show $0 COGS." />
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricsCard
+          title="Revenue (Period)"
+          value={data ? formatCurrency(data.total_revenue) : '-'}
+          icon={<DollarSign className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Total COGS"
+          value={data ? formatCurrency(data.total_cogs) : '-'}
+          subtitle="AI generation costs"
+          icon={<CreditCard className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Gross Margin"
+          value={data ? formatCurrency(data.gross_margin) : '-'}
+          subtitle={data ? `${data.margin_pct}%` : undefined}
+          icon={<TrendingUp className="h-5 w-5" />}
+          loading={loading}
+        />
+        <MetricsCard
+          title="Purchases"
+          value={data ? String(data.purchase_count) : '-'}
+          subtitle="In period"
+          icon={<Users className="h-5 w-5" />}
+          loading={loading}
+        />
+      </div>
+
+      {/* Revenue vs COGS Over Time */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          Revenue vs COGS Over Time
+        </h3>
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
+        ) : !data?.over_time.length ? (
+          <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+            No data for this period
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={data.over_time}>
+              <defs>
+                <linearGradient id="colorCOGSRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="colorCOGS" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(val) => {
+                  const d = new Date(val)
+                  return `${d.getMonth() + 1}/${d.getDate()}`
+                }}
+                fontSize={12}
+                tick={{ fill: '#6b7280' }}
+              />
+              <YAxis
+                fontSize={12}
+                tick={{ fill: '#6b7280' }}
+                tickFormatter={(val) => `$${(val / 100).toFixed(0)}`}
+              />
+              <Tooltip
+                labelFormatter={(val) => new Date(val).toLocaleDateString()}
+                formatter={(value: number, name: string) => [
+                  formatCurrency(value),
+                  name === 'revenue' ? 'Revenue' : 'COGS'
+                ]}
+                contentStyle={{ borderRadius: '8px', border: '1px solid #e5e7eb' }}
+              />
+              <Area
+                type="monotone"
+                dataKey="revenue"
+                stroke="#3b82f6"
+                fillOpacity={1}
+                fill="url(#colorCOGSRevenue)"
+              />
+              <Area
+                type="monotone"
+                dataKey="cogs"
+                stroke="#ef4444"
+                fillOpacity={1}
+                fill="url(#colorCOGS)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Margin by Type + F&F Impact */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Margin by Purchase Type */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Margin by Purchase Type
+          </h3>
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : !data?.by_type.length ? (
+            <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+              No purchase data
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {data.by_type.map((item, i) => (
+                <div key={item.type} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        {typeLabels[item.type] || item.type}
+                      </span>
+                    </div>
+                    <span className="text-sm font-bold text-gray-900 dark:text-white">
+                      {item.margin_pct}% margin
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-gray-500">
+                    <span>{item.count} purchases</span>
+                    <span>Rev: {formatCurrency(item.revenue)} / COGS: {formatCurrency(item.cogs)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* F&F Impact */}
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Friends & Family Impact
+          </h3>
+          {loading ? (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+          ) : !data?.ff_impact ? (
+            <div className="flex items-center justify-center h-64 text-gray-500 text-sm">
+              No F&F data
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                  <p className="text-xs text-purple-600 dark:text-purple-400">Inner Circle</p>
+                  <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
+                    {data.ff_impact.inner_circle_count}
+                  </p>
+                </div>
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400">Cost Pass</p>
+                  <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                    {data.ff_impact.cost_pass_count}
+                  </p>
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">F&F Purchases (Period)</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">
+                    {data.ff_impact.ff_purchases}
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Subsidized COGS (Period)</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">
+                    {formatCurrency(data.ff_impact.ff_subsidized_cents)}
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">Total F&F Users</span>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white">
+                    {data.ff_impact.ff_user_count}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
         </div>

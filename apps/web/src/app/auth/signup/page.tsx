@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AuthForm, OAuthButtons, EmailVerificationBanner, type AuthFormField } from '@mindscript/ui';
-import { createClient } from '../../../lib/supabase/client';
+import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 const signupFields: AuthFormField[] = [
   {
@@ -54,7 +54,7 @@ export default function SignupPage() {
     setUserEmail(data.email);
 
     try {
-      const supabase = createClient();
+      const supabase = getSupabaseBrowserClient();
       const { data: authData, error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
@@ -78,7 +78,7 @@ export default function SignupPage() {
   const handleGoogleSignup = async () => {
     setLoading(true);
     try {
-      const supabase = createClient();
+      const supabase = getSupabaseBrowserClient();
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
