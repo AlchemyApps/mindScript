@@ -18,6 +18,7 @@ interface VoicePickerProps {
   isAuthenticated: boolean;
   scriptLength?: number;
   onOpenVoiceClone?: () => void;
+  isFF?: boolean;
   className?: string;
 }
 
@@ -57,6 +58,7 @@ export function VoicePicker({
   isAuthenticated,
   scriptLength = 0,
   onOpenVoiceClone,
+  isFF,
   className,
 }: VoicePickerProps) {
   const [voices, setVoices] = useState<VoicesResponse | null>(null);
@@ -194,6 +196,7 @@ export function VoicePicker({
         <VoiceCloneCTA
           variant="hero"
           hasClonedVoice={hasClonedVoice}
+          isFF={isFF}
           onClick={onOpenVoiceClone}
         />
       )}

@@ -59,6 +59,7 @@ export default function MarketplacePage() {
   const [user, setUser] = useState<any>(null);
   const [hasClonedVoice, setHasClonedVoice] = useState(false);
   const [showCloneShelf, setShowCloneShelf] = useState(false);
+  const [isFF, setIsFF] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [cursor, setCursor] = useState<string | undefined>();
 
@@ -86,6 +87,11 @@ export default function MarketplacePage() {
           } catch {
             // Non-critical
           }
+          // Check F&F tier
+          fetch("/api/pricing/check-eligibility")
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.ffTier) setIsFF(d.ffTier === 'inner_circle' || d.ffTier === 'cost_pass'); })
+            .catch(() => {});
         }
       } catch {
         // Not authenticated
@@ -313,6 +319,7 @@ export default function MarketplacePage() {
           <VoiceCloneCTA
             variant="inline"
             hasClonedVoice={hasClonedVoice}
+            isFF={isFF}
             onClick={() => setShowCloneShelf(true)}
             className="mb-6"
           />

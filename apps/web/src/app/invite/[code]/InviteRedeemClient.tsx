@@ -6,9 +6,10 @@ import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 interface Props {
   code: string;
   tier: string;
+  email: string;
 }
 
-export function InviteRedeemClient({ code, tier }: Props) {
+export function InviteRedeemClient({ code, tier, email }: Props) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [redeeming, setRedeeming] = useState(false);
@@ -76,7 +77,7 @@ export function InviteRedeemClient({ code, tier }: Props) {
   const handleSignUpAndRedeem = () => {
     // Store the invite code in a cookie so we can auto-redeem after signup
     document.cookie = `ff_invite_code=${code}; path=/; max-age=3600; SameSite=Lax`;
-    window.location.href = `/auth/signup?redirect=/invite/${code}`;
+    window.location.href = `/auth/signup?redirectTo=/invite/${code}&email=${encodeURIComponent(email)}`;
   };
 
   if (loading) {
@@ -100,7 +101,7 @@ export function InviteRedeemClient({ code, tier }: Props) {
           Your {tier === 'inner_circle' ? 'Inner Circle' : 'Cost Pass'} access is now active.
         </p>
         <a
-          href="/create"
+          href="/builder"
           className="inline-block px-8 py-3 bg-[#6C63FF] text-white rounded-lg font-semibold hover:bg-[#5b54e6] transition-colors"
         >
           Start Creating
@@ -149,7 +150,7 @@ export function InviteRedeemClient({ code, tier }: Props) {
         Sign Up to Activate
       </button>
       <a
-        href={`/auth/login?redirect=/invite/${code}`}
+        href={`/auth/login?redirectTo=/invite/${code}&email=${encodeURIComponent(email)}`}
         className="block w-full px-6 py-3 border border-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-colors text-center"
       >
         Already have an account? Sign In

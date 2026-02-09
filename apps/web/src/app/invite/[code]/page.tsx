@@ -94,7 +94,7 @@ export default async function InvitePage({ params }: Props) {
           <p className="text-gray-600 text-sm">{tierDescription}</p>
         </div>
 
-        <InviteRedeemClient code={code} tier={invite.tier} />
+        <InviteRedeemClient code={code} tier={invite.tier} email={invite.email} />
       </div>
     </div>
   );

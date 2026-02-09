@@ -1,57 +1,59 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AuthForm, OAuthButtons, EmailVerificationBanner, type AuthFormField } from '@mindscript/ui';
+import { AuthForm, OAuthButtons, type AuthFormField } from '@mindscript/ui';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
-
-const signupFields: AuthFormField[] = [
-  {
-    name: 'email',
-    label: 'Email',
-    type: 'email',
-    placeholder: 'you@example.com',
-    required: true,
-    autoComplete: 'email',
-  },
-  {
-    name: 'displayName',
-    label: 'Display Name',
-    type: 'text',
-    placeholder: 'John Doe',
-    required: false,
-    autoComplete: 'name',
-  },
-  {
-    name: 'password',
-    label: 'Password',
-    type: 'password',
-    placeholder: '••••••••',
-    required: true,
-    autoComplete: 'new-password',
-  },
-  {
-    name: 'confirmPassword',
-    label: 'Confirm Password',
-    type: 'password',
-    placeholder: '••••••••',
-    required: true,
-    autoComplete: 'new-password',
-  },
-];
 
 export default function SignupPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
-  const [verificationSent, setVerificationSent] = useState(false);
-  const [userEmail, setUserEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+
+  const prefilledEmail = searchParams.get('email') || '';
+  const redirectTo = searchParams.get('redirectTo') || '';
+
+  const signupFields: AuthFormField[] = [
+    {
+      name: 'email',
+      label: 'Email',
+      type: 'email',
+      placeholder: 'you@example.com',
+      required: true,
+      autoComplete: 'email',
+      ...(prefilledEmail ? { defaultValue: prefilledEmail, disabled: true } : {}),
+    },
+    {
+      name: 'displayName',
+      label: 'Display Name',
+      type: 'text',
+      placeholder: 'John Doe',
+      required: false,
+      autoComplete: 'name',
+    },
+    {
+      name: 'password',
+      label: 'Password',
+      type: 'password',
+      placeholder: '••••••••',
+      required: true,
+      autoComplete: 'new-password',
+    },
+    {
+      name: 'confirmPassword',
+      label: 'Confirm Password',
+      type: 'password',
+      placeholder: '••••••••',
+      required: true,
+      autoComplete: 'new-password',
+    },
+  ];
 
   const handleSignup = async (data: Record<string, string>) => {
     setLoading(true);
     setError(null);
-    setUserEmail(data.email);
 
     try {
       const supabase = getSupabaseBrowserClient();
@@ -67,7 +69,22 @@ export default function SignupPage() {
 
       if (error) throw error;
 
-      setVerificationSent(true);
+      // If session exists (email confirmation disabled), redirect immediately
+      if (authData?.session) {
+        if (redirectTo) {
+          router.push(redirectTo);
+        } else {
+          router.push('/dashboard');
+        }
+        return;
+      }
+
+      // Fallback: redirect to dashboard (shouldn't reach here with confirmation disabled)
+      if (redirectTo) {
+        router.push(redirectTo);
+      } else {
+        router.push('/dashboard');
+      }
     } catch (error: any) {
       setError(error.message || 'An error occurred during signup');
     } finally {
@@ -82,7 +99,7 @@ export default function SignupPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: `${window.location.origin}/auth/callback${redirectTo ? `?redirectTo=${encodeURIComponent(redirectTo)}` : ''}`,
         },
       });
       if (error) throw error;
@@ -92,51 +109,6 @@ export default function SignupPage() {
       setLoading(false);
     }
   };
-
-  const handleResendVerification = async () => {
-    const supabase = createClient();
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email: userEmail,
-    });
-    if (error) throw error;
-  };
-
-  if (verificationSent) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4 py-12">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            <div className="text-center mb-6">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
-                <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold text-gray-900">Check your email</h2>
-              <p className="mt-2 text-sm text-gray-600">
-                We've sent you a verification link
-              </p>
-            </div>
-
-            <EmailVerificationBanner
-              email={userEmail}
-              onResend={handleResendVerification}
-            />
-
-            <div className="mt-6 text-center">
-              <Link 
-                href="/auth/login"
-                className="text-indigo-600 hover:text-indigo-500 text-sm"
-              >
-                Back to login
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4 py-12">

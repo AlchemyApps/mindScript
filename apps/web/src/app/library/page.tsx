@@ -84,6 +84,7 @@ export default function LibraryPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showCloneShelf, setShowCloneShelf] = useState(false);
   const [hasClonedVoice, setHasClonedVoice] = useState(false);
+  const [isFF, setIsFF] = useState(false);
 
   const [filters, setFilters] = useState<Filters>({
     search: searchParams.get("search") || "",
@@ -180,6 +181,11 @@ export default function LibraryPage() {
           } catch {
             // Non-critical
           }
+          // Check F&F tier
+          fetch("/api/pricing/check-eligibility")
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.ffTier) setIsFF(d.ffTier === 'inner_circle' || d.ffTier === 'cost_pass'); })
+            .catch(() => {});
         }
       } catch (error) {
         console.error("Error fetching user:", error);
@@ -598,6 +604,7 @@ export default function LibraryPage() {
           <VoiceCloneCTA
             variant="inline"
             hasClonedVoice={hasClonedVoice}
+            isFF={isFF}
             onClick={() => setShowCloneShelf(true)}
           />
         </div>

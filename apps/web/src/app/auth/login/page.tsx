@@ -6,25 +6,6 @@ import Link from 'next/link';
 import { AuthForm, OAuthButtons, type AuthFormField } from '@mindscript/ui';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
-const loginFields: AuthFormField[] = [
-  {
-    name: 'email',
-    label: 'Email',
-    type: 'email',
-    placeholder: 'you@example.com',
-    required: true,
-    autoComplete: 'email',
-  },
-  {
-    name: 'password',
-    label: 'Password',
-    type: 'password',
-    placeholder: '••••••••',
-    required: true,
-    autoComplete: 'current-password',
-  },
-];
-
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -32,6 +13,27 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   const redirectTo = searchParams.get('redirectTo') || '/dashboard';
+  const prefilledEmail = searchParams.get('email') || '';
+
+  const loginFields: AuthFormField[] = [
+    {
+      name: 'email',
+      label: 'Email',
+      type: 'email',
+      placeholder: 'you@example.com',
+      required: true,
+      autoComplete: 'email',
+      ...(prefilledEmail ? { defaultValue: prefilledEmail, disabled: true } : {}),
+    },
+    {
+      name: 'password',
+      label: 'Password',
+      type: 'password',
+      placeholder: '••••••••',
+      required: true,
+      autoComplete: 'current-password',
+    },
+  ];
 
   const handleLogin = async (data: Record<string, string>) => {
     console.log('Login attempt started', data.email);

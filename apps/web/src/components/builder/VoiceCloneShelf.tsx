@@ -35,8 +35,22 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
   const [voiceName, setVoiceName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isFF, setIsFF] = useState(false);
 
   const { minimizeToPip, setPlayerMode, currentTrack } = usePlayerStore();
+
+  // Check F&F status
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/pricing/check-eligibility')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.ffTier === 'inner_circle' || data?.ffTier === 'cost_pass') {
+          setIsFF(true);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
 
   // When shelf opens, minimize player to PIP
   useEffect(() => {
@@ -118,8 +132,13 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
         throw new Error(data.error || 'Failed to initiate voice cloning');
       }
 
-      const { url } = await response.json();
-      window.location.href = url;
+      const data = await response.json();
+      if (data.skipStripe) {
+        // F&F user — clone started without payment
+        window.location.href = data.url;
+      } else {
+        window.location.href = data.url;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setSubmitting(false);
@@ -181,7 +200,7 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
               <div className="space-y-3">
                 <FeatureItem
                   icon={<Sparkles className="w-4 h-4 text-primary" />}
-                  title="One-time fee of $29"
+                  title={isFF ? 'Free for Friends & Family' : 'One-time fee of $29'}
                   description="Create your voice once, use it on unlimited tracks"
                 />
                 <FeatureItem
@@ -197,8 +216,19 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
               </div>
 
               <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 text-center">
-                <span className="text-2xl font-bold text-primary">$29</span>
-                <span className="text-sm text-muted ml-2">one-time fee</span>
+                {isFF ? (
+                  <>
+                    <span className="text-2xl font-bold text-accent">FREE</span>
+                    <span className="text-sm text-muted ml-2">
+                      <span className="line-through">$29</span> — Friends & Family
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-2xl font-bold text-primary">$29</span>
+                    <span className="text-sm text-muted ml-2">one-time fee</span>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -256,7 +286,7 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
                   Review & Name
                 </h3>
                 <p className="text-sm text-muted">
-                  Give your voice a name and review before payment
+                  {isFF ? 'Give your voice a name and review before creating' : 'Give your voice a name and review before payment'}
                 </p>
               </div>
 
@@ -288,7 +318,14 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
                   </div>
                   <div className="flex justify-between pt-2 border-t border-gray-200">
                     <span className="font-semibold text-text">Total</span>
-                    <span className="font-bold text-primary text-lg">$29.00</span>
+                    {isFF ? (
+                      <span className="font-bold text-accent text-lg">
+                        <span className="line-through text-muted text-sm mr-2">$29.00</span>
+                        $0.00
+                      </span>
+                    ) : (
+                      <span className="font-bold text-primary text-lg">$29.00</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -330,12 +367,21 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
                 {submitting ? (
                   <span className="flex items-center justify-center gap-2">
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Redirecting to checkout...
+                    {isFF ? 'Creating your voice...' : 'Redirecting to checkout...'}
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
-                    <CreditCard className="w-4 h-4" />
-                    Pay $29 & Create Voice
+                    {isFF ? (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        Create Voice — Free
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="w-4 h-4" />
+                        Pay $29 & Create Voice
+                      </>
+                    )}
                   </span>
                 )}
               </button>
