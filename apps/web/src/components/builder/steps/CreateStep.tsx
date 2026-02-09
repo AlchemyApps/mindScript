@@ -2,6 +2,7 @@
 
 import { Check, Sparkles, Music, Waves, Clock, Mic2 } from 'lucide-react';
 import { Button } from '@mindscript/ui';
+import { calculateVoiceFee } from '@mindscript/schemas';
 import { cn } from '../../../lib/utils';
 import type { IntentionCategory } from './IntentionStep';
 import type { VoiceProvider } from './VoiceStep';
@@ -11,7 +12,7 @@ interface CreateStepProps {
   title: string;
   script: string;
   intention: IntentionCategory | null;
-  voice: { provider: VoiceProvider; voice_id: string; name: string };
+  voice: { provider: VoiceProvider; voice_id: string; name: string; tier?: string };
   duration: number;
   loopEnabled: boolean;
   solfeggio: { enabled: boolean; frequency: number; price: number } | undefined;
@@ -48,6 +49,11 @@ export function CreateStep({
 }: CreateStepProps) {
   const isFF = pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass';
 
+  const voiceFeeCents = voice.tier && voice.tier !== 'included'
+    ? calculateVoiceFee(script.length, voice.tier as any)
+    : 0;
+  const voiceFeeDollars = voiceFeeCents / 100;
+
   const calculateTotal = () => {
     if (pricingInfo.ffTier === 'inner_circle') return 0;
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
@@ -60,6 +66,9 @@ export function CreateStep({
     }
     if (binaural?.enabled) {
       total += binaural.price;
+    }
+    if (voiceFeeCents > 0) {
+      total += voiceFeeDollars;
     }
     return total;
   };
@@ -214,6 +223,22 @@ export function CreateStep({
                     <span className="text-accent font-medium">$0.00</span>
                   </>
                 ) : `+$${binaural.price.toFixed(2)}`}
+              </span>
+            </div>
+          )}
+
+          {voiceFeeCents > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted">
+                {voice.tier === 'custom' ? 'Custom voice' : 'Premium voice'}
+              </span>
+              <span className="text-text">
+                {isFF ? (
+                  <>
+                    <span className="line-through text-muted mr-2">+${voiceFeeDollars.toFixed(2)}</span>
+                    <span className="text-accent font-medium">$0.00</span>
+                  </>
+                ) : `+$${voiceFeeDollars.toFixed(2)}`}
               </span>
             </div>
           )}

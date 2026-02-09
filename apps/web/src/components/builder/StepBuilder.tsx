@@ -10,7 +10,6 @@ import { ScriptStep } from './steps/ScriptStep';
 import { VoiceStep, type VoiceProvider, type VoiceSelection } from './steps/VoiceStep';
 import { EnhanceStep, type BinauralBand } from './steps/EnhanceStep';
 import { CreateStep } from './steps/CreateStep';
-import { calculateVoiceFee } from '@mindscript/schemas';
 import { AuthModal } from '../auth-modal';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 import { GlassCard } from '../ui/GlassCard';
@@ -312,11 +311,6 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     if (state.binaural?.enabled) {
       total += state.binaural.price;
     }
-    // Add voice fee for premium/custom voices
-    if (state.voice.tier && state.voice.tier !== 'included') {
-      const voiceFeeCents = calculateVoiceFee(state.script.length, state.voice.tier);
-      total += voiceFeeCents / 100; // Convert cents to dollars
-    }
     return total;
   };
 
@@ -348,6 +342,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             loopPause={state.loop.pause_seconds}
             scriptLength={state.script.length}
             isAuthenticated={!!user}
+            isFF={pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass'}
             onVoiceChange={(voice) => setState((prev) => ({ ...prev, voice }))}
             onDurationChange={(duration) => setState((prev) => ({ ...prev, duration }))}
             onLoopChange={(enabled, pause) =>
@@ -420,6 +415,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
                     <VoiceCloneCTA
                       variant="sidebar"
                       hasClonedVoice={hasClonedVoice}
+                      isFF={pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass'}
                       onClick={() => setShowCloneShelf(true)}
                     />
                   </div>
