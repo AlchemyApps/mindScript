@@ -86,12 +86,12 @@ export function TrackEditor({
   const [voiceSpeed, setVoiceSpeed] = useState(config.voiceConfig?.settings?.speed ?? 1.0);
 
   // Volume state
-  const [voiceDb, setVoiceDb] = useState(VOLUME_DEFAULTS.voice);
-  const [musicDb, setMusicDb] = useState(config.musicConfig?.volume_db ?? VOLUME_DEFAULTS.music);
-  const [solfeggioDb, setSolfeggioDb] = useState(
+  const [voiceDb, setVoiceDb] = useState<number>(VOLUME_DEFAULTS.voice);
+  const [musicDb, setMusicDb] = useState<number>(config.musicConfig?.volume_db ?? VOLUME_DEFAULTS.music);
+  const [solfeggioDb, setSolfeggioDb] = useState<number>(
     config.frequencyConfig?.solfeggio?.volume_db ?? VOLUME_DEFAULTS.solfeggio
   );
-  const [binauralDb, setBinauralDb] = useState(
+  const [binauralDb, setBinauralDb] = useState<number>(
     config.frequencyConfig?.binaural?.volume_db ?? VOLUME_DEFAULTS.binaural
   );
 

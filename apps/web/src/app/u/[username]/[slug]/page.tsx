@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createStaticClient } from '@supabase/supabase-js';
 import Image from 'next/image';
 import Link from 'next/link';
 import { TrackPurchaseButton } from '@/components/track/purchase-button';
@@ -30,7 +31,10 @@ const formatDuration = (durationSeconds?: number | null) => {
 
 // Generate static params for SSG
 export async function generateStaticParams() {
-  const supabase = await createClient();
+  const supabase = createStaticClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   // Fetch top published tracks with their sellers
   const { data: tracks } = await supabase
@@ -46,11 +50,14 @@ export async function generateStaticParams() {
     .limit(100); // Pre-generate top 100 tracks
 
   return tracks
-    ?.filter((track) => track.slug)
-    .map((track) => ({
-      username: track.profiles.username,
-      slug: track.slug,
-    })) || [];
+    ?.filter((track: any) => track.slug)
+    .map((track: any) => {
+      const profile = Array.isArray(track.profiles) ? track.profiles[0] : track.profiles;
+      return {
+        username: profile?.username,
+        slug: track.slug,
+      };
+    }) || [];
 }
 
 // ISR configuration - revalidate every hour
@@ -148,7 +155,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
         },
       ],
       siteName: 'MindScript',
-      'music:duration': track.duration_seconds,
+    },
+    other: {
+      'music:duration': String(track.duration_seconds || ''),
       'music:album': 'MindScript Library',
       'music:musician': `https://mindscript.app/u/${params.username}`,
     },
@@ -464,7 +473,7 @@ export default async function TrackDetailPage({ params }: PageProps) {
                       Categories
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                      {track.tags.map((tag, index) => (
+                      {track.tags.map((tag: string, index: number) => (
                         <span
                           key={index}
                           className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm"

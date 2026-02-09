@@ -1,17 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { 
-  ValidateTrackSchema, 
-  PublishMetadataSchema, 
-  PricingConfigSchema,
-  AudioJobSchema,
-  TrackStatusSchema 
+import {
+  ValidateTrackSchema,
+  PublishMetadataSchema,
+  PublishPricingConfigSchema,
+  TrackStatusSchema
 } from '@mindscript/schemas';
 import { z } from 'zod';
 
 const PublishRequestSchema = z.object({
   metadata: PublishMetadataSchema,
-  pricing: PricingConfigSchema,
+  pricing: PublishPricingConfigSchema,
   trackConfig: ValidateTrackSchema,
 });
 
@@ -57,8 +56,8 @@ export async function POST(request: NextRequest) {
         music_config: trackConfig.music_config || null,
         frequency_config: trackConfig.frequency_config || null,
         output_config: {
-          format: trackConfig.output_config?.format || 'mp3',
-          quality: trackConfig.output_config?.quality || 'standard',
+          format: 'mp3',
+          quality: 'standard',
           is_public: metadata.visibility === 'public',
         },
         status: 'draft', // Will be updated to 'published' after render
@@ -104,21 +103,20 @@ export async function POST(request: NextRequest) {
       script: trackConfig.script,
       voice: trackConfig.voice_config,
       background_music: trackConfig.music_config ? {
-        track_id: trackConfig.music_config.track_id,
-        volume: trackConfig.music_config.volume || -20,
+        url: trackConfig.music_config.url,
+        volume: trackConfig.music_config.volume_db ?? -20,
       } : undefined,
       solfeggio: trackConfig.frequency_config?.solfeggio ? {
         frequency: trackConfig.frequency_config.solfeggio.frequency,
-        volume: trackConfig.frequency_config.solfeggio.volume || -30,
+        volume: trackConfig.frequency_config.solfeggio.volume_db ?? -30,
       } : undefined,
       binaural: trackConfig.frequency_config?.binaural ? {
-        base_frequency: trackConfig.frequency_config.binaural.base_frequency,
-        beat_frequency: trackConfig.frequency_config.binaural.beat_frequency,
-        volume: trackConfig.frequency_config.binaural.volume || -30,
+        band: trackConfig.frequency_config.binaural.band,
+        volume: trackConfig.frequency_config.binaural.volume_db ?? -30,
       } : undefined,
       output: {
-        format: trackConfig.output_config?.format || 'mp3',
-        quality: trackConfig.output_config?.quality || 'medium',
+        format: 'mp3',
+        quality: 'medium',
         normalize: true,
         target_lufs: -16,
       },

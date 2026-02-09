@@ -252,7 +252,7 @@ export function Header({ variant = 'transparent', className }: HeaderProps) {
       </header>
 
       {/* Cart Drawer */}
-      <CartDrawer open={isCartOpen} onClose={() => setIsCartOpen(false)} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} />
 
       {/* Dropdown backdrop */}
       {isDropdownOpen && (

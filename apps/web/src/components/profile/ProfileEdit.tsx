@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { profileUpdateSchema, type ProfileUpdate } from '@mindscript/schemas';
+import { profileUpdateSchema, type ProfileUpdateData } from '@mindscript/schemas';
 import { Button, Input, Textarea, Label } from '@mindscript/ui';
 import { AvatarUpload } from './AvatarUpload';
 import { useAuth } from '@mindscript/auth/hooks';
@@ -26,13 +26,13 @@ export function ProfileEdit() {
     watch,
     setValue,
     setError
-  } = useForm<ProfileUpdate>({
+  } = useForm<ProfileUpdateData>({
     resolver: zodResolver(profileUpdateSchema),
     defaultValues: {
-      username: profile?.profile?.username || '',
-      display_name: profile?.profile?.displayName || '',
-      bio: profile?.profile?.bio || '',
-      avatar_url: profile?.profile?.avatarUrl || ''
+      username: (profile?.profile as any)?.username || '',
+      display_name: (profile?.profile as any)?.displayName || '',
+      bio: (profile?.profile as any)?.bio || '',
+      avatar_url: (profile?.profile as any)?.avatarUrl || ''
     }
   });
 
@@ -44,7 +44,7 @@ export function ProfileEdit() {
       clearTimeout(usernameDebounce);
     }
 
-    if (!watchedUsername || watchedUsername === profile?.profile?.username) {
+    if (!watchedUsername || watchedUsername === (profile?.profile as any)?.username) {
       setUsernameAvailable(null);
       return;
     }
@@ -79,10 +79,10 @@ export function ProfileEdit() {
     setUsernameDebounce(timeout);
 
     return () => clearTimeout(timeout);
-  }, [watchedUsername, profile?.profile?.username, setError]);
+  }, [watchedUsername, (profile?.profile as any)?.username, setError]);
 
-  const onSubmit = async (data: ProfileUpdate) => {
-    if (usernameAvailable === false && data.username !== profile?.profile?.username) {
+  const onSubmit = async (data: ProfileUpdateData) => {
+    if (usernameAvailable === false && data.username !== (profile?.profile as any)?.username) {
       setError('username', { message: 'Username is not available' });
       return;
     }
@@ -127,7 +127,7 @@ export function ProfileEdit() {
           <div>
             <Label>Profile Picture</Label>
             <AvatarUpload
-              currentAvatarUrl={profile?.profile?.avatarUrl}
+              currentAvatarUrl={(profile?.profile as any)?.avatarUrl}
               onAvatarChange={handleAvatarChange}
             />
           </div>

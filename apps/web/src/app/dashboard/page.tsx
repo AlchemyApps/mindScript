@@ -65,7 +65,7 @@ export default function DashboardPage() {
     );
   }
 
-  const displayName = profile?.displayName || user?.email?.split('@')[0] || 'User';
+  const displayName = profile?.profile?.displayName || user?.email?.split('@')[0] || 'User';
   const initial = displayName.charAt(0).toUpperCase();
   const ffTierLabel = ffInfo.ffTier === 'inner_circle' ? 'Inner Circle' : ffInfo.ffTier === 'cost_pass' ? 'Cost Pass' : null;
 

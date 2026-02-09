@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from '@supabase/supabase-js';
 import Stripe from "stripe";
 import { startTrackBuild } from "../../../../../lib/track-builder";
+import { serverSupabase } from '@/lib/supabase/server';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-02-24.acacia",
 });
 
 // Create Supabase admin client
@@ -86,6 +87,12 @@ async function buildTrackConfig(metadata: Record<string, string | undefined>) {
  * Idempotent: checks if purchase already exists before processing
  */
 export async function POST(request: NextRequest) {
+  // Require authentication
+  const supabase = await serverSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   try {
     const { sessionId } = await request.json();
@@ -97,7 +104,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[LOCAL-TRIGGER] Processing session:', sessionId);
+    console.log('[LOCAL-TRIGGER] Processing session:', sessionId, 'for user:', user.id);
 
     // Retrieve the checkout session from Stripe
     const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -394,7 +401,7 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: 'Failed to process track creation',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: 'An internal error occurred'
       },
       { status: 500 }
     );

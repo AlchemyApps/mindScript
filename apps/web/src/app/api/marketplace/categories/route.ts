@@ -18,7 +18,7 @@ const CATEGORIES: MarketplaceCategory[] = [
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Get counts for each category
     const { data: tracks, error } = await supabase

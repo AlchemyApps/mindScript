@@ -6,7 +6,6 @@ import { Button } from "@mindscript/ui";
 import { Card, CardContent, CardHeader, CardTitle } from "@mindscript/ui";
 import { Badge } from "@mindscript/ui";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@mindscript/ui";
-import { Avatar, AvatarFallback, AvatarImage } from "@mindscript/ui";
 import { 
   PlayIcon, 
   ShoppingCartIcon, 
@@ -40,7 +39,9 @@ export function TrackDetailClient({
       title: track.title,
       price: track.price_cents,
       sellerId: track.user_id,
-      sellerName: track.seller.display_name,
+      artistName: track.seller.display_name || "Unknown",
+      artistId: track.user_id,
+      sellerConnectAccountId: "",
       imageUrl: track.cover_image_url,
     });
   };
@@ -228,12 +229,15 @@ export function TrackDetailClient({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <Avatar className="h-16 w-16">
-                    <AvatarImage src={track.seller.avatar_url} />
-                    <AvatarFallback>
-                      {track.seller.display_name?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="h-16 w-16 rounded-full overflow-hidden bg-gray-200 flex items-center justify-center flex-shrink-0">
+                    {track.seller.avatar_url ? (
+                      <img src={track.seller.avatar_url} alt={track.seller.display_name || ''} className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-xl font-semibold text-gray-500">
+                        {track.seller.display_name?.charAt(0).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
                   <div>
                     <h3 className="font-semibold">{track.seller.display_name}</h3>
                     {track.seller.badge && (

@@ -54,10 +54,10 @@ interface LibraryTrackCardProps {
   onEdit: () => void;
 }
 
-const STATUS_COLORS: Record<string, { variant: 'success' | 'warning' | 'destructive' | 'secondary' | 'default'; glow?: string }> = {
+const STATUS_COLORS: Record<string, { variant: 'success' | 'warning' | 'error' | 'secondary' | 'default'; glow?: string }> = {
   published: { variant: 'success', glow: 'shadow-[0_0_8px_rgba(16,185,129,0.4)]' },
   rendering: { variant: 'warning', glow: 'shadow-[0_0_8px_rgba(245,158,11,0.4)]' },
-  failed: { variant: 'destructive', glow: 'shadow-[0_0_8px_rgba(239,68,68,0.4)]' },
+  failed: { variant: 'error', glow: 'shadow-[0_0_8px_rgba(239,68,68,0.4)]' },
   draft: { variant: 'secondary' },
 };
 

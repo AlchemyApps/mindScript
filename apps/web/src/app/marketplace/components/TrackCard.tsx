@@ -47,8 +47,10 @@ export function TrackCard({ track, onClick, variant = "grid" }: TrackCardProps) 
       trackId: track.id,
       title: track.title,
       price: track.priceWebCents,
+      artistName: track.seller?.display_name || "Unknown",
+      artistId: track.sellerId,
       sellerId: track.sellerId,
-      sellerName: track.seller?.display_name || "Unknown",
+      sellerConnectAccountId: "",
       imageUrl: track.coverImageUrl,
     });
   };

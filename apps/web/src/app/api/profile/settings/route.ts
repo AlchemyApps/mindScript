@@ -67,7 +67,6 @@ export async function PUT(request: NextRequest) {
       .from('user_preferences')
       .upsert(updateData, {
         onConflict: 'user_id',
-        returning: 'representation'
       })
       .select()
       .single();

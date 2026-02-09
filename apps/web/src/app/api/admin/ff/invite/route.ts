@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
+import { serverSupabase } from '@/lib/supabase/server';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,8 +9,28 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+async function requireAdmin() {
+  const supabase = await serverSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role, role_flags')
+    .eq('id', user.id)
+    .single();
+
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin' || profile?.role_flags?.is_admin;
+  return isAdmin ? user : null;
+}
+
 /** POST: Create a new F&F invite */
 export async function POST(request: NextRequest) {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const { email, tier, invitedBy } = body;
@@ -46,7 +67,6 @@ export async function POST(request: NextRequest) {
       const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mindscript.studio';
       const inviteUrl = `${appUrl}/invite/${code}`;
 
-      // Use Resend directly for now (could integrate with EmailService later)
       if (process.env.RESEND_API_KEY) {
         await fetch('https://api.resend.com/emails', {
           method: 'POST',
@@ -81,7 +101,6 @@ export async function POST(request: NextRequest) {
       }
     } catch (emailError) {
       console.error('[FF-INVITE] Failed to send invite email:', emailError);
-      // Don't fail — invite is still created
     }
 
     return NextResponse.json({ invite });
@@ -93,6 +112,11 @@ export async function POST(request: NextRequest) {
 
 /** GET: List all invites */
 export async function GET() {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { data: invites, error } = await supabaseAdmin
       .from('ff_invites')

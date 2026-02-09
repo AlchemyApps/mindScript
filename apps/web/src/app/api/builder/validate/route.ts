@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { ValidateTrackSchema, PublishMetadataSchema, PricingConfigSchema } from '@mindscript/schemas';
+import { ValidateTrackSchema, PublishMetadataSchema, PublishPricingConfigSchema } from '@mindscript/schemas';
 import { z } from 'zod';
 
 const ValidatePublishRequestSchema = z.object({
   metadata: PublishMetadataSchema,
-  pricing: PricingConfigSchema,
+  pricing: PublishPricingConfigSchema,
   trackConfig: ValidateTrackSchema,
 });
 
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
-    const supabase = createClient();
+    const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         errors.push('Price must be between $0.99 and $49.99');
       }
       
-      if (pricing.promotional && pricing.promotionalPrice) {
+      if (pricing.promotional && pricing.promotionalPrice && pricing.price) {
         if (pricing.promotionalPrice >= pricing.price) {
           errors.push('Promotional price must be less than regular price');
         }

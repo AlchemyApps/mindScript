@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { checkTrackAccess, generateSignedUrl } from '@/lib/track-access';
-import { createUserRateLimit, RATE_LIMITS } from '../../../../lib/rate-limit';
+import { createUserRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function GET(
   request: NextRequest,

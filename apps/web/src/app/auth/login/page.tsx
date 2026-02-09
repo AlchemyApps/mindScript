@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -148,7 +147,6 @@ export default function LoginPage() {
             fields={loginFields}
             submitLabel="Sign in"
             onSubmit={handleLogin}
-            loading={loading}
             footer={
               <>
                 <div className="relative my-6">

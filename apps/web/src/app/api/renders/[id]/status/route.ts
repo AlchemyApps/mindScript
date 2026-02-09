@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-import { verifyRenderOwnership, getRenderJobStatus } from '../../../../lib/render-utils';
-import { createUserRateLimit, RATE_LIMITS } from '../../../../lib/rate-limit';
+import { verifyRenderOwnership, getRenderJobStatus } from '@/lib/render-utils';
+import { createUserRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function GET(
   request: NextRequest,

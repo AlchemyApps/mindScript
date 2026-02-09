@@ -4,7 +4,7 @@ import Stripe from "stripe";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-02-24.acacia",
 });
 
 export async function GET(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get Supabase client
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Get the purchase record
     const { data: purchase, error: purchaseError } = await supabase
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
       items,
       totalAmount: session.amount_total || 0,
       currency: session.currency?.toUpperCase() || "USD",
-      receiptUrl: (session.payment_intent as Stripe.PaymentIntent)?.charges?.data?.[0]?.receipt_url,
+      receiptUrl: ((session.payment_intent as Stripe.PaymentIntent)?.latest_charge as Stripe.Charge)?.receipt_url,
       // Add redirect info for guest conversions
       ...(isGuestConversion && {
         redirectTo: `/library?new=true${trackId ? `&trackId=${trackId}` : ''}`,

@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
 
     if (!previewResult.isOk) {
       return NextResponse.json(
-        { error: "Failed to generate preview: " + previewResult.error.message },
+        { error: "Failed to generate preview: " + (previewResult as any).error?.message },
         { status: 500 }
       );
     }

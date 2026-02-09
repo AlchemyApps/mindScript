@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { serverSupabase } from '@/lib/supabase/server';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -38,11 +39,14 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: trackId } = await params;
-  const userId = request.headers.get('x-user-id');
 
-  if (!userId) {
+  // Authenticate via cookie-based session
+  const supabase = await serverSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  const userId = user.id;
 
   try {
     const body = await request.json();

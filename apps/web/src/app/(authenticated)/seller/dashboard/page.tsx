@@ -150,7 +150,7 @@ export default function SellerDashboardPage() {
     }
   };
 
-  const sellerUsername = authProfile?.profile?.username || "";
+  const sellerUsername = (authProfile?.profile as any)?.username || authProfile?.profile?.displayName || "";
   const publicProfileUrl = sellerUsername ? `https://mindscript.app/u/${sellerUsername}` : null;
 
   const formatCurrency = (cents: number) => {

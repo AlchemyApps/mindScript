@@ -89,7 +89,7 @@ export async function GET() {
     if (health.status !== 'healthy') {
       Sentry.captureMessage(`Health check ${health.status}`, {
         level: health.status === 'down' ? 'error' : 'warning',
-        extra: health,
+        extra: { ...health },
       });
     }
 

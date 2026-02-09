@@ -84,7 +84,7 @@ export function MoodGrid({ categories, selectedCategory, onCategorySelect }: Moo
             const config = CATEGORY_CONFIG[categoryKey];
             if (!config) return null;
 
-            const categoryData = categories.find((c) => c.category === categoryKey);
+            const categoryData = categories.find((c) => c.name === categoryKey);
             const count = categoryData?.count || 0;
             const Icon = config.icon;
             const isSelected = selectedCategory === categoryKey;

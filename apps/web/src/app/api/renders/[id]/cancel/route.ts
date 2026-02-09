@@ -6,8 +6,8 @@ import {
   verifyRenderOwnership,
   getRenderJobStatus,
   cancelRenderJob,
-} from '../../../../lib/render-utils';
-import { createUserRateLimit, RATE_LIMITS } from '../../../../lib/rate-limit';
+} from '@/lib/render-utils';
+import { createUserRateLimit, RATE_LIMITS } from '@/lib/rate-limit';
 
 export async function POST(
   request: NextRequest,

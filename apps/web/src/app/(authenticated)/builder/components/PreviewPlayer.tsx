@@ -74,7 +74,7 @@ export function PreviewPlayer({
     wavesurfer.on('error', (error) => {
       setIsLoading(false);
       setHasError(true);
-      onError?.(new Error(error));
+      onError?.(error instanceof Error ? error : new Error(String(error)));
     });
 
     wavesurfer.load(audioUrl);

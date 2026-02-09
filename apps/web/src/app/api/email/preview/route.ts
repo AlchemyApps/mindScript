@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
-import { renderToStaticMarkup } from 'react-dom/server'
+import { render } from '@react-email/render'
+import { createClient } from '@/lib/supabase/server'
 
-// Import templates for preview
-import { WelcomeEmail } from '@mindscript/email/templates/welcome'
-import { PurchaseConfirmationEmail } from '@mindscript/email/templates/purchase-confirmation'
-import { RenderCompleteEmail } from '@mindscript/email/templates/render-complete'
-import { PasswordResetEmail } from '@mindscript/email/templates/password-reset'
-import { SellerPayoutEmail } from '@mindscript/email/templates/seller-payout'
-import { ModerationEmail } from '@mindscript/email/templates/moderation'
+// Import templates from main package entry point
+import {
+  WelcomeEmail,
+  PurchaseConfirmationEmail,
+  RenderCompleteEmail,
+  PasswordResetEmail,
+  SellerPayoutEmail,
+  ModerationEmail,
+} from '@mindscript/email'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createClient()
 
     // Check if user is admin (only admins can preview emails)
     const { data: { user } } = await supabase.auth.getUser()
@@ -93,37 +94,37 @@ export async function GET(request: NextRequest) {
     // Render template based on type
     switch (template) {
       case 'welcome':
-        html = renderToStaticMarkup(
+        html = await render(
           WelcomeEmail(previewData.welcome)
         )
         break
 
       case 'purchase-confirmation':
-        html = renderToStaticMarkup(
+        html = await render(
           PurchaseConfirmationEmail(previewData['purchase-confirmation'])
         )
         break
 
       case 'render-complete':
-        html = renderToStaticMarkup(
+        html = await render(
           RenderCompleteEmail(previewData['render-complete'])
         )
         break
 
       case 'password-reset':
-        html = renderToStaticMarkup(
+        html = await render(
           PasswordResetEmail(previewData['password-reset'])
         )
         break
 
       case 'seller-payout':
-        html = renderToStaticMarkup(
+        html = await render(
           SellerPayoutEmail(previewData['seller-payout'])
         )
         break
 
       case 'moderation':
-        html = renderToStaticMarkup(
+        html = await render(
           ModerationEmail(previewData.moderation)
         )
         break
@@ -153,7 +154,7 @@ export async function GET(request: NextRequest) {
 // List available templates
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = await createClient()
 
     // Check if user is admin
     const { data: { user } } = await supabase.auth.getUser()

@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Add ownership type and derive combined status
-      const ownedWithType = (ownedTracks || []).map(track => {
+      const ownedWithType = (ownedTracks || []).map((track: any) => {
         // Derive combined status from track status and render job status
         let combinedStatus = track.status; // 'draft', 'published', or 'archived'
 

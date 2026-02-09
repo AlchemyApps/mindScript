@@ -10,7 +10,7 @@ interface PageProps {
 
 // Generate metadata for SEO
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const supabase = createClient();
+  const supabase = await createClient();
   
   const { data: track } = await supabase
     .from("tracks")
@@ -87,7 +87,7 @@ function generateJsonLd(track: any) {
 }
 
 export default async function TrackDetailPage({ params }: PageProps) {
-  const supabase = createClient();
+  const supabase = await createClient();
   
   // Fetch track details
   const { data: track, error } = await supabase

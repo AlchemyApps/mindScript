@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { cn } from '../../../../lib/utils';
-import { VoiceProviderSchema, OpenAIVoiceSchema } from '@mindscript/schemas/audio';
+import { VoiceProviderSchema, OpenAIVoiceSchema } from '@mindscript/schemas';
 import type { z } from 'zod';
 
 interface Voice {

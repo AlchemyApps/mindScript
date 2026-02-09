@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log account deletion request with reason
-    await supabase
+    const { error: auditError } = await supabase
       .from('audit_logs')
       .insert({
         user_id: user.id,
@@ -78,10 +78,10 @@ export async function POST(request: NextRequest) {
           timestamp: new Date().toISOString(),
           ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
         }
-      })
-      .catch(error => {
-        console.error('Failed to log deletion request:', error);
       });
+    if (auditError) {
+      console.error('Failed to log deletion request:', auditError);
+    }
 
     // Anonymize user data instead of hard delete
     const anonymizedEmail = `deleted_${user.id}@mindscript.deleted`;
@@ -122,12 +122,12 @@ export async function POST(request: NextRequest) {
 
     if (profile?.avatar_url) {
       const filePath = profile.avatar_url.split('/').slice(-2).join('/');
-      await supabase.storage
+      const { error: storageError } = await supabase.storage
         .from('avatars')
-        .remove([filePath])
-        .catch(error => {
-          console.error('Failed to delete avatar:', error);
-        });
+        .remove([filePath]);
+      if (storageError) {
+        console.error('Failed to delete avatar:', storageError);
+      }
     }
 
     // Finally, delete the auth user

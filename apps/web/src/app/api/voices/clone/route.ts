@@ -272,12 +272,12 @@ export async function POST(request: NextRequest) {
         .from("cloned_voices")
         .update({
           status: "failed",
-          error_message: cloneResult.error.message,
+          error_message: (cloneResult as any).error?.message,
         })
         .eq("id", voiceRecord.id);
 
       return NextResponse.json(
-        { error: "Failed to clone voice: " + cloneResult.error.message },
+        { error: "Failed to clone voice: " + (cloneResult as any).error?.message },
         { status: 500 }
       );
     }
@@ -399,7 +399,7 @@ export async function DELETE(request: NextRequest) {
       const deleteResult = await elevenLabs.deleteVoice(voice.voice_id);
 
       if (!deleteResult.isOk) {
-        console.error("Failed to delete from ElevenLabs:", deleteResult.error);
+        console.error("Failed to delete from ElevenLabs:", (deleteResult as any).error);
         // Continue with soft delete even if ElevenLabs deletion fails
       }
     }

@@ -1,14 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
 
-const supabaseAdmin = createClient(
+const supabaseAdmin = createAdminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+async function requireAdmin() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role, role_flags')
+    .eq('id', user.id)
+    .single();
+
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin' || profile?.role_flags?.is_admin;
+  return isAdmin ? user : null;
+}
+
 /** GET: List all F&F invites */
 export async function GET() {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { data: invites, error } = await supabaseAdmin
       .from('ff_invites')
@@ -26,8 +47,13 @@ export async function GET() {
   }
 }
 
-/** POST: Create a new invite (proxies to web app API pattern) */
+/** POST: Create a new invite */
 export async function POST(request: NextRequest) {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const { email, tier } = body;

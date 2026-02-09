@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password, next = "/library" } = validation.data;
-    console.log('[API] Attempting login for:', email);
+    console.log('[API] Login attempt');
 
     // Create Supabase client
     const supabase = await serverSupabase();
@@ -48,15 +48,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[API] Login successful for:', email);
-    console.log('[API] User ID:', data.user.id);
+    console.log('[API] Login successful for user:', data.user.id);
 
-    // Prepare redirect URL
+    // Prepare redirect URL — reject absolute URLs to prevent open redirect
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
     const destinationPath = next || '/library';
-    const url = destinationPath.startsWith('http')
-      ? new URL(destinationPath)
-      : new URL(destinationPath, siteUrl);
+    let url: URL;
+    if (destinationPath.startsWith('http')) {
+      const parsed = new URL(destinationPath);
+      const siteOrigin = new URL(siteUrl);
+      // Only allow redirects to same origin
+      if (parsed.origin !== siteOrigin.origin) {
+        url = new URL('/library', siteUrl);
+      } else {
+        url = parsed;
+      }
+    } else {
+      url = new URL(destinationPath, siteUrl);
+    }
 
     console.log('[LOGIN] Returning redirect URL:', url.toString());
 

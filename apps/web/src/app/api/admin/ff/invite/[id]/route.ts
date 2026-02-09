@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { serverSupabase } from '@/lib/supabase/server';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,18 +8,37 @@ const supabaseAdmin = createClient(
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+async function requireAdmin() {
+  const supabase = await serverSupabase();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role, role_flags')
+    .eq('id', user.id)
+    .single();
+
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'super_admin' || profile?.role_flags?.is_admin;
+  return isAdmin ? user : null;
+}
+
 /** PATCH: Revoke or resend an invite */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const admin = await requireAdmin();
+  if (!admin) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+  }
+
   try {
     const { id } = await params;
     const body = await request.json();
     const { action } = body;
 
     if (action === 'revoke') {
-      // Mark invite as revoked
       const { data: invite, error: inviteError } = await supabaseAdmin
         .from('ff_invites')
         .update({ status: 'revoked' })
@@ -30,7 +50,6 @@ export async function PATCH(
         return NextResponse.json({ error: 'Failed to revoke invite' }, { status: 500 });
       }
 
-      // If the invite was already redeemed, also clear the user's ff_tier
       if (invite.redeemed_by) {
         await supabaseAdmin
           .from('profiles')
@@ -42,7 +61,6 @@ export async function PATCH(
     }
 
     if (action === 'resend') {
-      // Fetch invite details
       const { data: invite, error: fetchError } = await supabaseAdmin
         .from('ff_invites')
         .select('*')
@@ -56,7 +74,6 @@ export async function PATCH(
         );
       }
 
-      // Re-send email
       if (process.env.RESEND_API_KEY) {
         const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://mindscript.studio';
         const inviteUrl = `${appUrl}/invite/${invite.code}`;

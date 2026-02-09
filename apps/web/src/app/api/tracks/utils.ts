@@ -169,8 +169,8 @@ export function transformTrackForResponse(dbTrack: any) {
  * Generate cursor for pagination
  */
 export function generateCursor(track: Track): string {
-  // Using created_at as cursor
-  return track.created_at;
+  // Using createdAt as cursor
+  return track.createdAt;
 }
 
 /**

@@ -211,7 +211,7 @@ async function generatePlaylistImage(request: NextRequest, { id, title, subtitle
       description={subtitle}
       trackCount={trackCount}
       totalDuration={duration}
-      author={author}
+      author={author ?? undefined}
       coverImages={coverImages}
     />
   );

@@ -72,14 +72,15 @@ export async function POST(request: NextRequest) {
     // Build map of existing server items by track ID
     const serverItemMap = new Map<string, any>();
     (serverItems || []).forEach(item => {
-      if (item.tracks && !item.tracks.deleted_at) {
+      const track = item.tracks as any;
+      if (track && !track.deleted_at) {
         serverItemMap.set(item.track_id, item);
       }
     });
     
     // Process client items
     const validItems: CartItem[] = [];
-    const validationErrors: Array<{ trackId: string; reason: string }> = [];
+    const validationErrors: Array<{ trackId: string; reason: "unavailable" | "seller_inactive" | "price_changed" }> = [];
     let mergedCount = 0;
     let removedCount = 0;
     
@@ -113,10 +114,13 @@ export async function POST(request: NextRequest) {
         removedCount++;
         continue;
       }
-      
+
+      const sellerAgreement = track.seller_agreements as any;
+      const profile = track.profiles as any;
+
       // Check if seller is active
-      if (!track.seller_agreements?.stripe_connect_account_id || 
-          track.seller_agreements?.status !== "active") {
+      if (!sellerAgreement?.stripe_connect_account_id ||
+          sellerAgreement?.status !== "active") {
         validationErrors.push({
           trackId: clientItem.trackId,
           reason: "seller_inactive",
@@ -124,7 +128,7 @@ export async function POST(request: NextRequest) {
         removedCount++;
         continue;
       }
-      
+
       // Check if price has changed
       if (track.price_cents !== clientItem.price) {
         validationErrors.push({
@@ -133,16 +137,16 @@ export async function POST(request: NextRequest) {
         });
         // Still add the item but with updated price
       }
-      
+
       // Add to valid items with current data
       validItems.push({
         trackId: track.id,
         title: track.title,
-        artistName: track.profiles?.display_name || "Unknown Artist",
+        artistName: profile?.display_name || "Unknown Artist",
         artistId: track.user_id,
         price: track.price_cents,
         sellerId: track.user_id,
-        sellerConnectAccountId: track.seller_agreements.stripe_connect_account_id,
+        sellerConnectAccountId: sellerAgreement.stripe_connect_account_id,
         quantity: 1,
         addedAt: clientItem.addedAt,
       });

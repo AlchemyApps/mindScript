@@ -5,7 +5,7 @@ import { calculatePlatformFee, calculateSellerEarnings } from "@mindscript/schem
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-02-24.acacia",
 });
 
 // Stripe processing fee estimation (2.9% + 30¢)
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Check for duplicate event (idempotency)
   const { data: existingEvent } = await supabase
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    switch (event.type) {
+    switch (event.type as string) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         

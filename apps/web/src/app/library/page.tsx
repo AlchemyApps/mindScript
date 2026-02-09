@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -626,7 +625,7 @@ export default function LibraryPage() {
         {error && !isLoading && (
           <GlassCard className="border-error/20">
             <p className="text-error mb-2">Error: {error}</p>
-            <Button variant="outline" size="sm" onClick={fetchTracks}>
+            <Button variant="outline" size="sm" onClick={() => fetchTracks()}>
               Try again
             </Button>
           </GlassCard>

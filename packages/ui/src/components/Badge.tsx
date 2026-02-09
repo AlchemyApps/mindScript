@@ -2,7 +2,7 @@ import React from "react";
 import { cn } from "../utils/cn";
 
 export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
-  variant?: "default" | "primary" | "success" | "warning" | "error" | "info";
+  variant?: "default" | "primary" | "secondary" | "success" | "warning" | "error" | "info" | "outline";
   size?: "sm" | "md";
   children: React.ReactNode;
 }
@@ -15,12 +15,13 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
           "inline-flex items-center justify-center rounded-full font-medium",
           // Variants
           {
-            "bg-gray-100 text-gray-700": variant === "default",
+            "bg-gray-100 text-gray-700": variant === "default" || variant === "secondary",
             "bg-primary/10 text-primary": variant === "primary",
             "bg-success/10 text-success": variant === "success",
             "bg-warning/10 text-warning": variant === "warning",
             "bg-error/10 text-error": variant === "error",
             "bg-accent/10 text-accent": variant === "info",
+            "border border-gray-200 bg-transparent text-gray-700": variant === "outline",
           },
           // Sizes
           {

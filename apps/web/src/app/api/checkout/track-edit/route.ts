@@ -6,7 +6,7 @@ import { calculateEditCost } from '../../../../lib/pricing/cost-calculator';
 import { getUserFFTier } from '../../../../lib/pricing/ff-tier';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-11-20.acacia',
+  apiVersion: '2025-02-24.acacia',
 });
 
 const supabaseAdmin = createClient(

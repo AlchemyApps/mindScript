@@ -23,27 +23,9 @@ export function preloadComponents(
 }
 
 // Helper for route-based preloading
-export function preloadRouteComponents(routeName: string): void {
-  // Preload components based on route patterns
-  switch (routeName) {
-    case '/builder':
-      // Preload builder-related components
-      import('../components/builder/TrackBuilder').catch(() => {});
-      import('../components/builder/ScriptEditor').catch(() => {});
-      break;
-    case '/library':
-      // Preload library components
-      import('../components/library/TrackList').catch(() => {});
-      import('../components/library/AudioPlayer').catch(() => {});
-      break;
-    case '/marketplace':
-      // Preload marketplace components
-      import('../components/marketplace/SellerCard').catch(() => {});
-      import('../components/marketplace/TrackCard').catch(() => {});
-      break;
-    default:
-      break;
-  }
+// TODO: Wire up actual component paths when code-splitting is implemented
+export function preloadRouteComponents(_routeName: string): void {
+  // No-op: component paths need to be configured per route
 }
 
 // Intersection Observer for lazy loading on scroll
@@ -51,8 +33,8 @@ export function useLazyLoadOnScroll(
   ref: React.RefObject<HTMLElement>,
   onIntersect: () => void,
   options?: IntersectionObserverInit
-): void {
-  if (typeof window === 'undefined') return;
+): (() => void) | undefined {
+  if (typeof window === 'undefined') return undefined;
 
   const observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {

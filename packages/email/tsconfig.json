@@ -1,0 +1,12 @@
+{
+  "extends": "../../packages/config/typescript.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "incremental": false,
+    "noEmit": false,
+    "jsx": "react-jsx"
+  },
+  "include": ["src/**/*", "templates/**/*"],
+  "exclude": ["dist", "node_modules"]
+}
