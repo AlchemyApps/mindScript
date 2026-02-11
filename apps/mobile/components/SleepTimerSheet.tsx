@@ -1,6 +1,6 @@
 import { View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
+import Animated, { FadeIn, SlideInDown, Easing } from 'react-native-reanimated';
 import { usePlayerStore } from '../stores/playerStore';
 import { Colors, Spacing, Radius, Shadows } from '../lib/constants';
 
@@ -39,7 +39,7 @@ export default function SleepTimerSheet({ onClose }: SleepTimerSheetProps) {
     <Pressable style={styles.overlay} onPress={onClose}>
       <Animated.View entering={FadeIn.duration(200)} style={styles.backdrop} />
       <Animated.View
-        entering={SlideInDown.duration(300).springify().damping(18)}
+        entering={SlideInDown.duration(350).easing(Easing.out(Easing.cubic))}
         style={styles.sheet}
       >
         <Pressable>

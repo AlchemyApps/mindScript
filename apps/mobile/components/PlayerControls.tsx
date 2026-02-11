@@ -38,24 +38,13 @@ export default function PlayerControls() {
   };
 
   const handleJumpBack = async () => {
-    try {
-      const TrackPlayer = require('react-native-track-player').default;
-      const position = await TrackPlayer.getPosition();
-      await seekTo(Math.max(position - 10, 0));
-    } catch {
-      // Ignore
-    }
+    const { position } = usePlayerStore.getState();
+    await seekTo(Math.max(position - 10, 0));
   };
 
   const handleJumpForward = async () => {
-    try {
-      const TrackPlayer = require('react-native-track-player').default;
-      const position = await TrackPlayer.getPosition();
-      const duration = await TrackPlayer.getDuration();
-      await seekTo(Math.min(position + 10, duration));
-    } catch {
-      // Ignore
-    }
+    const { position, duration } = usePlayerStore.getState();
+    await seekTo(Math.min(position + 10, duration));
   };
 
   return (

@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { useProgress } from 'react-native-track-player';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import {
@@ -10,14 +9,15 @@ import {
 
 /**
  * Emits playback analytics events based on player state transitions.
- * Call this once in the root layout — it hooks into playerStore and
+ * Call this once in the tabs layout — it hooks into playerStore and
  * emits play/pause/complete/skip events to playback_events.
  */
 export function usePlaybackAnalytics() {
   const user = useAuthStore((s) => s.user);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const currentTrack = usePlayerStore((s) => s.currentTrack);
-  const { position, duration } = useProgress(1000);
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
 
   const prevTrackIdRef = useRef<string | null>(null);
   const prevIsPlayingRef = useRef(false);

@@ -1,4 +1,4 @@
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Image, ActivityIndicator, StyleSheet } from 'react-native';
 import { Redirect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -39,9 +39,11 @@ export default function IndexScreen() {
         style={styles.container}
       >
         <Animated.View style={[styles.logoContainer, pulseStyle]}>
-          <View style={styles.logoOrb}>
-            <View style={styles.logoInner} />
-          </View>
+          <Image
+            source={require('../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
         </Animated.View>
         <ActivityIndicator
           size="small"
@@ -69,19 +71,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoOrb: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: 'rgba(108, 99, 255, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoInner: {
-    width: 48,
-    height: 48,
+  logo: {
+    width: 120,
+    height: 120,
     borderRadius: 24,
-    backgroundColor: Colors.primary,
   },
   loader: {
     marginTop: 32,

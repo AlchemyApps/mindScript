@@ -89,7 +89,7 @@ export default function PlayerScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
-          { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 100 },
+          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 90 },
         ]}
         showsVerticalScrollIndicator={false}
       >
@@ -233,11 +233,11 @@ const styles = StyleSheet.create({
 
   // Artwork
   artworkContainer: {
-    width: 280,
-    height: 280,
+    width: 220,
+    height: 220,
     borderRadius: Radius.xl,
     overflow: 'hidden',
-    marginBottom: Spacing.xl,
+    marginBottom: Spacing.lg,
     ...Shadows.lg,
   },
   artwork: {
@@ -254,9 +254,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   artworkPlaceholderInner: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
     backgroundColor: 'rgba(108, 99, 255, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -265,7 +265,7 @@ const styles = StyleSheet.create({
   // Track info
   infoSection: {
     alignItems: 'center',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.md,
     paddingHorizontal: Spacing.md,
   },
   trackTitle: {
@@ -284,13 +284,13 @@ const styles = StyleSheet.create({
   // Progress
   progressSection: {
     width: '100%',
-    marginBottom: Spacing.lg,
+    marginBottom: Spacing.sm,
   },
 
   // Speed
   speedSection: {
     width: '100%',
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
     alignItems: 'center',
   },
   speedLabel: {
@@ -327,7 +327,7 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: 32,
-    marginTop: Spacing.xl,
+    marginTop: Spacing.md,
   },
   actionButton: {
     alignItems: 'center',

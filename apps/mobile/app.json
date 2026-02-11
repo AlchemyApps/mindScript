@@ -12,14 +12,19 @@
       "resizeMode": "contain",
       "backgroundColor": "#F7F8FC"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mindscript.app",
+      "buildNumber": "5",
       "jsEngine": "hermes",
       "infoPlist": {
-        "UIBackgroundModes": ["audio"],
-        "NSSupportsCarPlay": true
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -29,13 +34,23 @@
       },
       "package": "com.mindscript.app",
       "jsEngine": "hermes",
-      "permissions": ["FOREGROUND_SERVICE"]
+      "permissions": [
+        "FOREGROUND_SERVICE"
+      ]
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-font",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b21c223f-bb45-4704-9252-73ccf4a20034"
+      }
     }
   }
 }

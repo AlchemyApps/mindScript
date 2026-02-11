@@ -1,3 +1,108 @@
+# Session: TestFlight Deployment & Crash Debugging
+
+## Session Date: 2026-02-10
+
+## Branch
+`dev` (no feature branch created — changes are unstaged)
+
+## Status: INCOMPLETE
+
+---
+
+## Goal
+Get the MindScript mobile app (Expo 54) onto TestFlight for testing.
+
+## What Was Accomplished
+
+### 1. EAS Build & TestFlight Pipeline Setup
+- Logged into EAS CLI (`npx eas-cli login`)
+- Registered bundle ID `com.mindscript.app` in Apple Developer Portal (done automatically by EAS)
+- Created EAS project: `b21c223f-bb45-4704-9252-73ccf4a20034`
+- App Store Connect app created with ID: `6758994576`
+- Configured `eas.json` submit profile with `appleId` and `ascAppId`
+- Reused existing distribution certificate (serial: `353ACE51D1C39FF2A4F6F98D65B7EC48`)
+- Generated new provisioning profile for `com.mindscript.app`
+- Successfully built and submitted to TestFlight (builds 1-4)
+
+### 2. Fixed: `eas.json` Validation Errors
+- Empty strings in `submit.production` fields caused EAS CLI validation failure
+- Fixed by adding real values: `appleId: "chrisschrade22@gmail.com"`, `ascAppId: "6758994576"`
+
+### 3. Fixed: `react-native-track-player` Not an Expo Plugin
+- Added `react-native-track-player` to `app.json` plugins array (thinking it needed a config plugin)
+- This BROKE the build because `react-native-track-player` v4.1.2 does NOT have an Expo config plugin
+- Error: `Cannot find module '.../react-native-track-player/lib/src/trackPlayer'`
+- **Fix:** Removed it from plugins array. It autolinks without being listed there.
+
+### 4. Fixed: Disabled CarPlay (No Entitlement)
+- `react-native-carplay` was being imported and initialized on startup
+- CarPlay requires a specific Apple entitlement that isn't configured
+- Likely contributed to crash #1 (native TurboModule exception)
+- **Fix:** Commented out CarPlay import and initialization in `app/_layout.tsx`
+
+### 5. Fixed: Deferred TrackPlayer Initialization
+- `index.js` was calling `TrackPlayer.registerPlaybackService()` synchronously before app loaded
+- This native call was happening before the React Native bridge was ready
+- **Fix:** Removed eager registration from `index.js`, moved to deferred async init in `_layout.tsx` with try/catch
+
+### 6. Updated App Icon & Loading Screen
+- Replaced placeholder purple square assets with the brain+quill logo (`logo-original.png`)
+- Updated `icon.png`, `adaptive-icon.png`, added `logo.png` for in-app use
+- Updated `app/index.tsx` to show actual logo Image instead of purple View circles
+- Note: Logo source is 203x203 — needs 1024x1024 version for App Store submission
+
+### 7. Fixed: Duplicate UIBackgroundModes
+- `app.json` had `"audio"` listed twice in `UIBackgroundModes` — removed duplicate
+
+## Still Crashing — Needs Next Session
+
+### Crash #1 (Build 1) — `ObjCTurboModule::performVoidMethodInvocation`
+- Thread 8, native TurboModule void method call
+- Likely caused by CarPlay or TrackPlayer eager init
+- **Addressed** by fixes #4 and #5 above
+
+### Crash #2 (Build 2) — Hermes `stringPrototypeReplace` + Native Exception
+- Thread 10 crashed in Hermes during `String.prototype.replace()`
+- Thread 5 showed `convertNSExceptionToJSError` — a native module threw an NSException
+- Both happen ~148ms after launch — still during initialization
+- Despite deferring TrackPlayer, a native module is still crashing on startup
+
+### Crash #3 (Build 4) — Not yet analyzed
+- New crash report downloaded but not yet examined
+- Located at: `~/Downloads/testflight_feedback` (latest)
+
+## Files Modified (Unstaged)
+- `apps/mobile/app.json` — buildNumber=4, removed track-player from plugins, fixed UIBackgroundModes duplicate, added ITSAppUsesNonExemptEncryption
+- `apps/mobile/eas.json` — added submit.production profile with Apple credentials
+- `apps/mobile/index.js` — removed eager TrackPlayer.registerPlaybackService, now just imports expo-router/entry
+- `apps/mobile/app/_layout.tsx` — deferred TrackPlayer init with dynamic imports + try/catch, disabled CarPlay
+- `apps/mobile/app/index.tsx` — replaced purple circle placeholder with logo Image
+- `apps/mobile/assets/icon.png` — replaced with brain+quill logo
+- `apps/mobile/assets/adaptive-icon.png` — replaced with brain+quill logo
+- `apps/mobile/assets/logo.png` — added for in-app loading screen
+
+## Key Info for Next Session
+- **EAS Project ID:** `b21c223f-bb45-4704-9252-73ccf4a20034`
+- **App Store ID:** `6758994576`
+- **Bundle ID:** `com.mindscript.app`
+- **Apple Team:** TCD69QYQXS (Chris Schrade, Individual)
+- **Current build number:** 4 (bump to 5 for next build)
+- **Build command:** `cd apps/mobile && npx eas-cli build --platform ios --profile production --auto-submit`
+- The app crashes on launch on real device (iPhone 16 Pro Max, iOS 18.7.2)
+- Crashes are all during startup initialization (~100-400ms after launch)
+- Root cause appears to be a native module throwing an NSException during TurboModule invocation
+- Likely suspects: `react-native-track-player` native setup, `react-native-reanimated`, or workspace package resolution (`@mindscript/schemas`, `@mindscript/types`)
+- Consider: stripping app to bare minimum (no TrackPlayer, no Reanimated) to isolate the crash
+
+## Next Session TODO
+1. Analyze crash #3 report
+2. Consider building a minimal version without native audio deps to isolate the issue
+3. If TrackPlayer is the culprit, may need to remove it from dependencies entirely for initial TestFlight (not just defer init — the native module still loads)
+4. Get a non-crashing build on TestFlight
+5. Commit all changes once stable
+
+---
+
 # Session: Mobile App Rebuild — Phase 1 Reader App (Expo 54)
 
 ## Session Date: 2026-02-09

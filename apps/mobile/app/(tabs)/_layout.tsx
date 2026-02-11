@@ -5,6 +5,7 @@ import { BottomTabBar } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NowPlayingBar } from '../../components/NowPlayingBar';
+import { usePlaybackAnalytics } from '../../hooks/usePlaybackAnalytics';
 import { Colors } from '../../lib/constants';
 
 function CustomTabBar(props: BottomTabBarProps) {
@@ -18,6 +19,7 @@ function CustomTabBar(props: BottomTabBarProps) {
 
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
+  usePlaybackAnalytics();
 
   return (
     <View style={styles.container}>

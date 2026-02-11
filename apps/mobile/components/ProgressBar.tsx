@@ -1,9 +1,8 @@
 import { View, Text, StyleSheet } from 'react-native';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Slider = require('@react-native-community/slider').default;
-import { useProgress } from 'react-native-track-player';
 import { usePlayerStore } from '../stores/playerStore';
-import { Colors, Spacing } from '../lib/constants';
+import { Colors } from '../lib/constants';
 
 function formatTime(seconds: number): string {
   if (!seconds || isNaN(seconds)) return '0:00';
@@ -13,7 +12,8 @@ function formatTime(seconds: number): string {
 }
 
 export default function ProgressBar() {
-  const { position, duration } = useProgress(250);
+  const position = usePlayerStore((s) => s.position);
+  const duration = usePlayerStore((s) => s.duration);
   const seekTo = usePlayerStore((s) => s.seekTo);
 
   const remaining = Math.max(duration - position, 0);

@@ -30,11 +30,8 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "",
-        "ascAppId": ""
-      },
-      "android": {
-        "serviceAccountKeyPath": ""
+        "appleId": "chrisschrade22@gmail.com",
+        "ascAppId": "6758994576"
       }
     }
   }

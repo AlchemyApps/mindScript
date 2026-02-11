@@ -1,13 +1,10 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
 import { Slot } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useAuthStore } from '../stores/authStore';
-import { backgroundAudioService } from '../services/backgroundAudio';
-import { carPlayService } from '../services/carPlayService';
-import { usePlaybackAnalytics } from '../hooks/usePlaybackAnalytics';
+import { configureAudioMode } from '../services/backgroundAudio';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,14 +20,8 @@ function AppBootstrap() {
 
   useEffect(() => {
     initialize();
-    backgroundAudioService.initialize().catch(console.error);
-
-    if (Platform.OS === 'ios') {
-      carPlayService.initialize().catch(console.error);
-    }
+    configureAudioMode();
   }, [initialize]);
-
-  usePlaybackAnalytics();
 
   return <Slot />;
 }
