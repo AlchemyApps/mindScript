@@ -8,6 +8,7 @@ interface TrackCardProps {
   track: LibraryTrack;
   onPress: () => void;
   onAddToQueue?: () => void;
+  onLongPress?: () => void;
   isActive?: boolean;
 }
 
@@ -18,11 +19,12 @@ function formatDuration(seconds: number | null): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export default function TrackCard({ track, onPress, onAddToQueue, isActive }: TrackCardProps) {
+export default function TrackCard({ track, onPress, onAddToQueue, onLongPress, isActive }: TrackCardProps) {
   return (
     <TouchableOpacity
       style={[styles.card, isActive && styles.cardActive]}
       onPress={onPress}
+      onLongPress={onLongPress}
       activeOpacity={0.7}
     >
       {/* Thumbnail */}

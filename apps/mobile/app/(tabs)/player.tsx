@@ -37,6 +37,8 @@ export default function PlayerScreen() {
   const playbackRate = usePlayerStore((s) => s.playbackRate);
   const setPlaybackRate = usePlayerStore((s) => s.setPlaybackRate);
   const sleepTimerActive = usePlayerStore((s) => s.sleepTimerActive);
+  const repeatMode = usePlayerStore((s) => s.repeatMode);
+  const toggleRepeatMode = usePlayerStore((s) => s.toggleRepeatMode);
 
   // Breathing animation for placeholder artwork
   const breathe = useSharedValue(1);
@@ -180,6 +182,35 @@ export default function PlayerScreen() {
               ]}
             >
               Sleep Timer
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={toggleRepeatMode}
+            activeOpacity={0.7}
+          >
+            <View style={styles.repeatIconContainer}>
+              <Ionicons
+                name={repeatMode === 'off' ? 'repeat-outline' : 'repeat'}
+                size={22}
+                color={repeatMode === 'off' ? Colors.gray600 : Colors.accent}
+              />
+              {repeatMode === 'track' && (
+                <Text style={styles.repeatOneBadge}>1</Text>
+              )}
+            </View>
+            <Text
+              style={[
+                styles.actionLabel,
+                repeatMode !== 'off' && { color: Colors.accent },
+              ]}
+            >
+              {repeatMode === 'off'
+                ? 'Repeat'
+                : repeatMode === 'track'
+                  ? 'Repeat One'
+                  : 'Repeat All'}
             </Text>
           </TouchableOpacity>
 
@@ -337,5 +368,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.gray600,
     fontWeight: '500',
+  },
+  repeatIconContainer: {
+    position: 'relative',
+  },
+  repeatOneBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -8,
+    fontSize: 9,
+    fontWeight: '700',
+    color: Colors.accent,
   },
 });

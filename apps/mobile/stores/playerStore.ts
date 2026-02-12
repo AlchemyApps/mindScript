@@ -127,6 +127,7 @@ interface PlayerState {
   skipTo: (index: number) => void;
   seekTo: (position: number) => Promise<void>;
   setRepeatMode: (mode: RepeatMode) => void;
+  toggleRepeatMode: () => void;
   setPlaybackRate: (rate: number) => void;
   setVolume: (volume: number) => void;
   setSleepTimer: (minutes: number) => void;
@@ -338,6 +339,13 @@ export const usePlayerStore = create<PlayerState>()(
         if (player) {
           player.loop = mode === 'track';
         }
+      },
+
+      toggleRepeatMode: () => {
+        const current = get().repeatMode;
+        const next: RepeatMode =
+          current === 'off' ? 'track' : current === 'track' ? 'queue' : 'off';
+        get().setRepeatMode(next);
       },
 
       setPlaybackRate: (rate: number) => {
