@@ -71,7 +71,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const title = `${profile.display_name || profile.username} | MindScript Creator`;
   const description = profile.bio ||
-    `Discover ${trackCount} mindfulness tracks by ${profile.display_name || profile.username} on MindScript. AI-powered meditations, affirmations, and healing frequencies.`;
+    `Discover ${trackCount} mindfulness tracks by ${profile.display_name || profile.username} on MindScript. Personalized meditations, affirmations, and healing frequencies.`;
 
   return {
     title,

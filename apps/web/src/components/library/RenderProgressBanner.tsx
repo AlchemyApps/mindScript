@@ -9,6 +9,7 @@ type RenderStatus = 'creating' | 'rendering' | 'complete';
 
 interface RenderProgressBannerProps {
   status: RenderStatus;
+  progress?: number;
   onDismiss: () => void;
 }
 
@@ -42,9 +43,10 @@ const STATUS_CONFIG = {
   },
 };
 
-export function RenderProgressBanner({ status, onDismiss }: RenderProgressBannerProps) {
+export function RenderProgressBanner({ status, progress, onDismiss }: RenderProgressBannerProps) {
   const config = STATUS_CONFIG[status];
   const Icon = config.icon;
+  const displayProgress = progress != null ? progress : config.progressValue;
 
   return (
     <div className={cn('relative overflow-hidden rounded-2xl', `bg-gradient-to-r ${config.bgClass}`)}>
@@ -80,7 +82,7 @@ export function RenderProgressBanner({ status, onDismiss }: RenderProgressBanner
             {status !== 'complete' && (
               <div className="mt-4">
                 <GradientProgress
-                  value={config.progressValue}
+                  value={displayProgress}
                   max={100}
                   size="sm"
                   animated

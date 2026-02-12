@@ -149,7 +149,7 @@ export function generateSiteOrganizationSchema(baseUrl: string = 'https://mindsc
     name: 'MindScript',
     url: baseUrl,
     logo: `${baseUrl}/logo.png`,
-    description: 'AI-powered meditation and affirmation platform for mindfulness and personal growth',
+    description: 'Personalized meditation and affirmation platform for mindfulness and personal growth',
     sameAs: [
       'https://twitter.com/mindscript',
       'https://facebook.com/mindscript',
@@ -171,7 +171,7 @@ export function generateWebSiteSchema(baseUrl: string = 'https://mindscript.app'
     '@type': 'WebSite',
     name: 'MindScript',
     url: baseUrl,
-    description: 'Transform your mindset with AI-powered meditations and affirmations',
+    description: 'Transform your mindset with personalized meditations and affirmations',
     potentialAction: {
       '@type': 'SearchAction',
       target: {

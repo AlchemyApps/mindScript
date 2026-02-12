@@ -44,7 +44,7 @@ export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, classNam
             <span className="text-[13px] font-semibold text-text leading-tight">Your Voice, Your Tracks</span>
           </div>
           <p className="text-[11px] text-muted leading-snug">
-            Clone your voice once with AI, then every script is read aloud in your own voice.
+            Clone your voice once, then every script is read aloud in your own voice.
           </p>
           <ul className="space-y-0.5">
             {BENEFITS.map((b) => (
@@ -99,7 +99,7 @@ export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, classNam
                 </span>
               </div>
               <p className="text-sm text-muted leading-relaxed">
-                Your affirmations and scripts deserve <span className="font-medium text-text">your voice</span>. Record a short sample once, and every track you create will be narrated by your AI-cloned voice — no re-recording needed.
+                Your affirmations and scripts deserve <span className="font-medium text-text">your voice</span>. Record a short sample once, and every track you create will be narrated in your own voice — no re-recording needed.
               </p>
             </div>
             <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -150,7 +150,7 @@ export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, classNam
           <div>
             <span className="text-sm font-bold text-text block">Make It Personal</span>
             <span className="text-xs text-muted leading-relaxed block mt-0.5">
-              Clone your voice with AI — record once, then just type your text and hear it spoken as you. Setup once, use on every track.
+              Clone your voice — record once, then just type your text and hear it spoken as you. Setup once, use on every track.
             </span>
           </div>
           <div className="flex items-center justify-between">

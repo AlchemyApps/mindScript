@@ -1,3 +1,64 @@
+# Session: Production Cleanup & UX Fixes
+
+## Session Date: 2026-02-11
+
+## Branch
+`feature/prod-cleanup-ux-fixes` (merged to `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Goal
+Address UX issues surfaced during real-world testing of the deployed web app: broken assets, AI branding leaks, builder flow gaps, render status confusion, stale audio playback, and missing features.
+
+## What Was Accomplished
+
+### Phase 1: Quick Visual & Auth Fixes
+- **Fixed broken logo** in Header + Footer (`logo.png` -> `logo-original.png`)
+- **Removed AI provider branding** across 18+ files (AI Voices -> Studio Voices, OpenAI -> Standard, ElevenLabs -> Premium, AI-powered -> personalized/studio-quality)
+- **Removed third-party OAuth** buttons from login/signup pages (email/password only)
+- **Added scroll-to-top** on builder step transitions
+
+### Phase 2: Builder Logic Fixes
+- **Create button routing**: logged-in -> `/builder`, logged-out on landing -> scroll to top with hint banner
+- **Required explicit voice selection** before proceeding (added `voiceExplicitlySelected` gate)
+- **Clear builder state after checkout** (removed localStorage persistence entirely after QA revealed stale state bugs)
+
+### Phase 3: Render Status & Player Fixes
+- **Fixed banner flashing**: completion detection now checks both `status === "published"` AND no active render job
+- **Real progress in banner**: `RenderProgressBanner` accepts `progress` prop from polling
+- **Force refresh on render complete**: fetches fresh signed URLs, syncs player store
+- **Player reloads on URL change**: added `currentTrack?.url` to MiniPlayer dependency array
+
+### Phase 4: Marketplace
+- **Replaced marketplace with Coming Soon page** using glass morphism design system
+
+### Phase 5: Track Activity Log
+- **New API route**: `GET /api/tracks/[id]/activity` returns config, render history, payment history
+- **New TrackActivityDrawer**: slide-out drawer with config summary, render timeline, payment records
+- **Library integration**: history button on track cards, drawer state management
+
+### QA Iteration Fixes
+- **Hero layout**: made left column `lg:sticky lg:top-32` so hero text stays in view as builder card expands
+- **Library back button**: changed `router.push` to `router.replace` for auth redirects
+- **Removed localStorage persistence entirely** from both StepBuilder and GuestBuilder — builder always starts fresh (resolved persistent stale script, voice selection, and music selection bugs)
+
+## Files Changed (28 modified, 2 new)
+- Header, Footer, HeroSection, page.tsx (landing), layout.tsx, builder layouts
+- Login, signup, checkout success, dashboard, marketplace, library, u/[username]
+- StepBuilder, guest-builder, CreateStep, PublishPreview
+- VoiceCloneCTA, VoiceCloneShelf, VoiceCloneModal
+- MiniPlayer, RenderProgressBanner, LibraryTrackCard
+- MetaTags, schemaGenerator, og route
+- **New**: `api/tracks/[id]/activity/route.ts`, `TrackActivityDrawer.tsx`
+
+## Next Session
+- Further QA testing on deployed version
+- App Store submission prep (delete account, privacy policy, terms, screenshots)
+
+---
+
 # Session: TestFlight Deployment & Crash Debugging
 
 ## Session Date: 2026-02-10

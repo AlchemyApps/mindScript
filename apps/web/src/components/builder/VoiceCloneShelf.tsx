@@ -189,10 +189,10 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
                   <Mic className="w-8 h-8 text-primary" />
                 </div>
                 <h3 className="text-lg font-bold font-heading text-text">
-                  Clone Your Voice with AI
+                  Clone Your Voice
                 </h3>
                 <p className="text-sm text-muted leading-relaxed">
-                  Record a short sample of your voice and our AI will create a custom voice
+                  Record a short sample of your voice and we'll create a custom voice
                   clone that you can use on any track you create.
                 </p>
               </div>

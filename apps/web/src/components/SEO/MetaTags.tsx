@@ -192,7 +192,7 @@ export function generateSellerMetadata(params: {
   const title = `${params.name} | MindScript Creator`;
   const description =
     params.bio ||
-    `Explore ${params.trackCount || ''} meditation tracks by ${params.name} on MindScript. Transform your mindset with AI-powered affirmations and meditations.`;
+    `Explore ${params.trackCount || ''} meditation tracks by ${params.name} on MindScript. Transform your mindset with personalized affirmations and meditations.`;
 
   return generateMetadata({
     title,

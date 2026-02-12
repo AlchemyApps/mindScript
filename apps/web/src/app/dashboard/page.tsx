@@ -72,7 +72,7 @@ export default function DashboardPage() {
   const actionCards = [
     {
       title: 'Create Track',
-      description: 'Build a new AI-powered audio track',
+      description: 'Build a new personalized audio track',
       icon: <Sparkles className="w-6 h-6" />,
       gradient: 'from-primary to-primary-light',
       glowColor: 'primary' as const,
@@ -91,7 +91,7 @@ export default function DashboardPage() {
     },
     {
       title: 'Custom Voice',
-      description: ffTierLabel ? 'Clone your voice for free' : 'Clone your voice with AI',
+      description: ffTierLabel ? 'Clone your voice for free' : 'Clone your voice',
       icon: <Mic2 className="w-6 h-6" />,
       gradient: 'from-purple-500 to-pink-500',
       glowColor: 'meditation' as const,

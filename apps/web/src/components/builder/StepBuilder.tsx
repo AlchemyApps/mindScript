@@ -30,6 +30,7 @@ interface BuilderState {
   title: string;
   script: string;
   voice: VoiceSelection;
+  voiceExplicitlySelected: boolean;
   duration: number;
   loop: {
     enabled: boolean;
@@ -61,6 +62,7 @@ const DEFAULT_STATE: BuilderState = {
     voice_id: 'alloy',
     name: 'Alloy',
   },
+  voiceExplicitlySelected: false,
   duration: 5,
   loop: {
     enabled: true,
@@ -146,29 +148,13 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     }
   };
 
-  // Load saved state and check auth
+  // Initialize and check auth (no localStorage persistence — builder always starts fresh)
   useEffect(() => {
+    // Clean up any stale data from previous versions
+    localStorage.removeItem('stepBuilderState');
     setIsHydrated(true);
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('stepBuilderState');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          setState((prev) => ({ ...prev, ...parsed }));
-        } catch (e) {
-          console.error('Failed to parse saved state:', e);
-        }
-      }
-    }
     checkAuthStatus();
   }, [checkAuthStatus]);
-
-  // Save state on change
-  useEffect(() => {
-    if (isHydrated && typeof window !== 'undefined') {
-      localStorage.setItem('stepBuilderState', JSON.stringify(state));
-    }
-  }, [state, isHydrated]);
 
   const canProceed = () => {
     switch (currentStep) {
@@ -177,7 +163,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
       case 1:
         return state.title.trim().length >= 3 && state.script.length >= 10;
       case 2:
-        return true;
+        return state.voiceExplicitlySelected;
       case 3:
         return true;
       case 4:
@@ -187,15 +173,28 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     }
   };
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleNext = () => {
     if (currentStep < STEPS.length - 1 && canProceed()) {
       setCurrentStep(currentStep + 1);
+      scrollToTop();
     }
   };
 
   const handlePrev = () => {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
+      scrollToTop();
+    }
+  };
+
+  const handleStepClick = (step: number) => {
+    if (step < currentStep) {
+      setCurrentStep(step);
+      scrollToTop();
     }
   };
 
@@ -206,7 +205,10 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
       script: suggestion || prev.script,
     }));
     // Auto-advance after selection
-    setTimeout(() => setCurrentStep(1), 300);
+    setTimeout(() => {
+      setCurrentStep(1);
+      scrollToTop();
+    }, 300);
   };
 
   const handleCheckout = async () => {
@@ -263,6 +265,9 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
       }
 
       const data = await response.json();
+
+      // Clear builder state before redirect
+      localStorage.removeItem('stepBuilderState');
 
       // F&F users may skip Stripe entirely
       if (data.skipStripe && data.redirectTo) {
@@ -343,7 +348,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             scriptLength={state.script.length}
             isAuthenticated={!!user}
             isFF={pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass'}
-            onVoiceChange={(voice) => setState((prev) => ({ ...prev, voice }))}
+            onVoiceChange={(voice) => setState((prev) => ({ ...prev, voice, voiceExplicitlySelected: true }))}
             onDurationChange={(duration) => setState((prev) => ({ ...prev, duration }))}
             onLoopChange={(enabled, pause) =>
               setState((prev) => ({
@@ -406,7 +411,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
                   steps={STEPS}
                   currentStep={currentStep}
                   orientation="vertical"
-                  onStepClick={(step) => step < currentStep && setCurrentStep(step)}
+                  onStepClick={handleStepClick}
                 />
 
                 {/* Sidebar Voice Clone CTA */}
@@ -432,7 +437,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
                     steps={STEPS}
                     currentStep={currentStep}
                     orientation="horizontal"
-                    onStepClick={(step) => step < currentStep && setCurrentStep(step)}
+                    onStepClick={handleStepClick}
                   />
                 </GlassCard>
               </div>
@@ -512,7 +517,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
           steps={STEPS}
           currentStep={currentStep}
           orientation="horizontal"
-          onStepClick={(step) => step < currentStep && setCurrentStep(step)}
+          onStepClick={handleStepClick}
         />
       </div>
 

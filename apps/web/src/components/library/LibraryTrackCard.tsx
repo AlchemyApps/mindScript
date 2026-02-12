@@ -9,6 +9,7 @@ import {
   MusicIcon,
   ClockIcon,
   TagIcon,
+  HistoryIcon,
 } from 'lucide-react';
 import { formatDuration } from '@mindscript/schemas';
 import { cn } from '../../lib/utils';
@@ -52,6 +53,7 @@ interface LibraryTrackCardProps {
   onPlay: () => void;
   onDownload: () => void;
   onEdit: () => void;
+  onActivity?: () => void;
 }
 
 const STATUS_COLORS: Record<string, { variant: 'success' | 'warning' | 'error' | 'secondary' | 'default'; glow?: string }> = {
@@ -90,6 +92,7 @@ export function LibraryTrackCard({
   onPlay,
   onDownload,
   onEdit,
+  onActivity,
 }: LibraryTrackCardProps) {
   const audioUrl = track.audio_signed_url || track.audio_url;
   const canPlay = !!audioUrl;
@@ -196,6 +199,11 @@ export function LibraryTrackCard({
                 <EditIcon className="h-5 w-5" />
               </Button>
             )}
+            {track.ownership === 'owned' && onActivity && (
+              <Button size="sm" variant="ghost" onClick={onActivity} className="h-10 w-10 p-0 rounded-lg border border-white/10 hover:border-white/20">
+                <HistoryIcon className="h-5 w-5" />
+              </Button>
+            )}
           </div>
         </div>
       </GlassCard>
@@ -293,6 +301,11 @@ export function LibraryTrackCard({
             <Button size="sm" variant="outline" onClick={onEdit} className="flex-1 glass text-xs">
               <EditIcon className="h-3 w-3 mr-1" />
               Edit
+            </Button>
+          )}
+          {track.ownership === 'owned' && onActivity && (
+            <Button size="sm" variant="outline" onClick={onActivity} className="glass text-xs px-2">
+              <HistoryIcon className="h-3 w-3" />
             </Button>
           )}
         </div>

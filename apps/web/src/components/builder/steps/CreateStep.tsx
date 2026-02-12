@@ -80,7 +80,7 @@ export function CreateStep({
     {
       icon: <Mic2 className="w-4 h-4" />,
       label: 'Voice',
-      value: `${voice.name} (${voice.provider === 'openai' ? 'OpenAI' : 'ElevenLabs'})`,
+      value: `${voice.name} (${voice.provider === 'openai' ? 'Standard' : 'Premium'})`,
     },
     {
       icon: <Clock className="w-4 h-4" />,

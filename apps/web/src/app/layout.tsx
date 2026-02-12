@@ -16,19 +16,19 @@ const sora = Sora({
 
 export const metadata: Metadata = {
   title: "MindScript - Program your inner voice",
-  description: "Create personalized affirmation loops with AI voice and binaural sound.",
+  description: "Create personalized affirmation loops with studio-quality voice and binaural sound.",
   keywords: ["affirmations", "meditation", "binaural beats", "solfeggio frequencies", "mindfulness"],
   authors: [{ name: "MindScript" }],
   openGraph: {
     title: "MindScript - Program your inner voice",
-    description: "Create personalized affirmation loops with AI voice and binaural sound.",
+    description: "Create personalized affirmation loops with studio-quality voice and binaural sound.",
     type: "website",
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
     title: "MindScript - Program your inner voice",
-    description: "Create personalized affirmation loops with AI voice and binaural sound.",
+    description: "Create personalized affirmation loops with studio-quality voice and binaural sound.",
   },
 };
 

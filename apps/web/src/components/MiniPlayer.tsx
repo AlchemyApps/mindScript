@@ -74,7 +74,7 @@ export function MiniPlayer() {
     if (isPlaying) {
       audio.play().catch((err) => console.error('[MiniPlayer] Playback failed:', err));
     }
-  }, [currentTrack?.id]);
+  }, [currentTrack?.id, currentTrack?.url]);
 
   // Play/pause sync
   useEffect(() => {

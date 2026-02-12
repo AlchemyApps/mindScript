@@ -191,51 +191,13 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     }
   }, [supabaseClient, checkPricingEligibility]);
 
-  // Load from localStorage and check auth status after mount (NOT pricing)
+  // Initialize and check auth (no localStorage persistence — builder always starts fresh)
   useEffect(() => {
+    // Clean up any stale data from previous versions
+    localStorage.removeItem('guestBuilderState');
     setIsHydrated(true);
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('guestBuilderState');
-      if (saved) {
-        try {
-          const parsedState = JSON.parse(saved);
-          setState({
-            ...DEFAULT_BUILDER_STATE,
-            ...parsedState,
-            voice: {
-              ...DEFAULT_BUILDER_STATE.voice,
-              ...(parsedState.voice || {}),
-            },
-            loop: {
-              ...DEFAULT_BUILDER_STATE.loop,
-              ...(parsedState.loop || {}),
-            },
-            music: parsedState.music ?? (parsedState.backgroundMusic || parsedState.music ? {
-              ...(parsedState.backgroundMusic || parsedState.music),
-            } : undefined),
-            solfeggio: parsedState.solfeggio
-              ? { ...DEFAULT_BUILDER_STATE.solfeggio!, ...parsedState.solfeggio }
-              : DEFAULT_BUILDER_STATE.solfeggio,
-            binaural: parsedState.binaural
-              ? { ...DEFAULT_BUILDER_STATE.binaural!, ...parsedState.binaural }
-              : DEFAULT_BUILDER_STATE.binaural,
-          });
-        } catch (e) {
-          console.error('Failed to parse saved state:', e);
-        }
-      }
-    }
-
-    // Only check authentication status on mount
     checkAuthStatus();
   }, [checkAuthStatus]);
-
-  // Save state to localStorage whenever it changes (after hydration)
-  useEffect(() => {
-    if (isHydrated && typeof window !== 'undefined') {
-      localStorage.setItem('guestBuilderState', JSON.stringify(state));
-    }
-  }, [state, isHydrated]);
 
   const calculateTotal = () => {
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
@@ -333,6 +295,9 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
       }
 
       const { url } = await response.json();
+
+      // Clear builder state before redirect
+      localStorage.removeItem('guestBuilderState');
 
       // Redirect to Stripe Checkout
       window.location.href = url;
@@ -453,6 +418,9 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
 
       const { url } = await response.json();
       console.log('Redirecting to Stripe:', url);
+
+      // Clear builder state before redirect
+      localStorage.removeItem('guestBuilderState');
 
       // Redirect to Stripe Checkout
       window.location.href = url;
@@ -613,8 +581,8 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
                       : 'border-gray-200 hover:border-gray-300'
                   )}
                 >
-                  <div className="font-semibold">OpenAI</div>
-                  <div className="text-sm text-gray-500">Natural AI voices</div>
+                  <div className="font-semibold">Standard</div>
+                  <div className="text-sm text-gray-500">Natural voices</div>
                 </button>
                 <button
                   type="button"
@@ -634,8 +602,8 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
                       : 'border-gray-200 hover:border-gray-300'
                   )}
                 >
-                  <div className="font-semibold">ElevenLabs</div>
-                  <div className="text-sm text-gray-500">Premium voices</div>
+                  <div className="font-semibold">Premium</div>
+                  <div className="text-sm text-gray-500">Ultra-realistic voices</div>
                 </button>
               </div>
             </div>

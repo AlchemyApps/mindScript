@@ -38,11 +38,22 @@ export function Header({ variant = 'transparent', className }: HeaderProps) {
 
   // Helper to get the right href for nav links
   const getNavHref = (link: NavLink) => {
-    // On landing page, "Create" should scroll to builder section
     if (link.href === '/builder' && pathname === '/') {
-      return '#builder';
+      // Logged-in users go straight to /builder
+      if (user) return '/builder';
+      // Non-logged-in users stay on landing page
+      return '#';
     }
     return link.href;
+  };
+
+  // Handle Create button click for non-logged-in users on landing page
+  const handleNavClick = (link: NavLink, e: React.MouseEvent) => {
+    if (link.href === '/builder' && pathname === '/' && !user) {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      window.dispatchEvent(new CustomEvent('mindscript:showBuilderHint'));
+    }
   };
 
   useEffect(() => {
@@ -98,7 +109,7 @@ export function Header({ variant = 'transparent', className }: HeaderProps) {
             <Link href="/" className="flex items-center space-x-2 group">
               <div className="relative w-10 h-10 transition-transform duration-300 group-hover:scale-105">
                 <Image
-                  src="/images/logo.png"
+                  src="/images/logo-original.png"
                   alt="MindScript"
                   fill
                   className="object-contain"
@@ -119,6 +130,7 @@ export function Header({ variant = 'transparent', className }: HeaderProps) {
                 <Link
                   key={link.label}
                   href={getNavHref(link)}
+                  onClick={(e) => handleNavClick(link, e)}
                   className={cn(
                     'relative px-4 py-2 text-sm font-medium transition-colors rounded-lg',
                     showSolidHeader
@@ -221,7 +233,10 @@ export function Header({ variant = 'transparent', className }: HeaderProps) {
                     key={link.label}
                     href={getNavHref(link)}
                     className="px-4 py-3 text-muted hover:text-text hover:bg-gray-50 rounded-lg transition-colors"
-                    onClick={() => setIsMobileMenuOpen(false)}
+                    onClick={(e) => {
+                      handleNavClick(link, e);
+                      setIsMobileMenuOpen(false);
+                    }}
                   >
                     {link.label}
                   </Link>

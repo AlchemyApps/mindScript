@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AuthForm, OAuthButtons, type AuthFormField } from '@mindscript/ui';
+import { AuthForm, type AuthFormField } from '@mindscript/ui';
 import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 export default function SignupPage() {
@@ -91,24 +91,6 @@ export default function SignupPage() {
     }
   };
 
-  const handleGoogleSignup = async () => {
-    setLoading(true);
-    try {
-      const supabase = getSupabaseBrowserClient();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback${redirectTo ? `?redirectTo=${encodeURIComponent(redirectTo)}` : ''}`,
-        },
-      });
-      if (error) throw error;
-    } catch (error) {
-      console.error('OAuth error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
@@ -128,30 +110,16 @@ export default function SignupPage() {
 
           <AuthForm
             title="Sign up for MindScript"
-            subtitle="Start creating AI-powered audio affirmations"
+            subtitle="Start creating personalized audio affirmations"
             fields={signupFields}
             submitLabel="Create account"
             onSubmit={handleSignup}
             showPasswordStrength={true}
             footer={
               <>
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">Or continue with</span>
-                  </div>
-                </div>
-
-                <OAuthButtons
-                  onGoogleClick={handleGoogleSignup}
-                  loading={loading}
-                />
-
                 <div className="mt-6 text-center text-sm text-gray-600">
                   Already have an account?{' '}
-                  <Link 
+                  <Link
                     href="/auth/login"
                     className="text-indigo-600 hover:text-indigo-500 font-medium"
                   >
