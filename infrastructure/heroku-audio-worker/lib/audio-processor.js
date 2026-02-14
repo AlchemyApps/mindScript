@@ -30,13 +30,6 @@ const {
 } = require('./ffmpeg-utils');
 
 const { synthesize } = require('./tts-client');
-const {
-  updateJobProgress,
-  completeJob,
-  uploadRenderedAudio,
-  updateTrackAudio,
-  downloadBackgroundMusic,
-} = require('./supabase-client');
 
 /**
  * Create a temporary directory for job processing
@@ -63,18 +56,19 @@ function cleanupTempDir(tempDir) {
 /**
  * Process a single audio job
  * @param {object} job - Job data from audio_job_queue
- * @param {object} supabase - Supabase client (optional, for legacy support)
+ * @param {object} envClient - Environment-scoped Supabase client from createEnvironmentClient()
  */
-async function processAudioJob(job) {
+async function processAudioJob(job, envClient) {
   const jobId = job.job_id;
   const trackId = job.track_id;
   const payload = job.payload;
+  const env = envClient.envName;
 
-  console.log(`\n[Job ${jobId}] Starting processing for track ${trackId}`);
-  console.log(`[Job ${jobId}] Raw payload:`, JSON.stringify(payload, null, 2));
+  console.log(`\n[Job ${jobId}] [${env}] Starting processing for track ${trackId}`);
+  console.log(`[Job ${jobId}] [${env}] Raw payload:`, JSON.stringify(payload, null, 2));
 
   // Detailed config logging for debugging variable flow
-  console.log(`[Job ${jobId}] Parsed config:`, {
+  console.log(`[Job ${jobId}] [${env}] Parsed config:`, {
     hasScript: !!(payload.script && payload.script.length > 0),
     scriptLength: payload.script?.length || 0,
     voice: {
@@ -110,20 +104,20 @@ async function processAudioJob(job) {
 
   // Create temp directory for this job
   const tempDir = createTempDir(jobId);
-  console.log(`[Job ${jobId}] Temp directory: ${tempDir}`);
+  console.log(`[Job ${jobId}] [${env}] Temp directory: ${tempDir}`);
 
   // Calculate target duration (used by all layers)
   const durationSec = (payload.durationMin || payload.duration || 5) * 60;
   const startDelaySec = payload.startDelaySec || 0;
-  console.log(`[Job ${jobId}] Target duration: ${durationSec}s (${durationSec / 60} minutes), start delay: ${startDelaySec}s`);
+  console.log(`[Job ${jobId}] [${env}] Target duration: ${durationSec}s (${durationSec / 60} minutes), start delay: ${startDelaySec}s`);
 
   try {
     // Stage 1: Generate TTS voice (20%)
-    await updateJobProgress(jobId, 5, 'Generating voice...');
+    await envClient.updateJobProgress(jobId, 5, 'Generating voice...');
 
     let voicePath = null;
     if (payload.script && payload.voice) {
-      console.log(`[Job ${jobId}] Generating TTS...`);
+      console.log(`[Job ${jobId}] [${env}] Generating TTS...`);
       const voiceRawPath = path.join(tempDir, 'voice_raw.mp3');
 
       await synthesize(payload.script, {
@@ -134,10 +128,9 @@ async function processAudioJob(job) {
         voiceId: payload.voice.id, // For ElevenLabs
       }, voiceRawPath);
 
-      console.log(`[Job ${jobId}] TTS complete: ${voiceRawPath}`);
+      console.log(`[Job ${jobId}] [${env}] TTS complete: ${voiceRawPath}`);
 
       // Loop voice to fill target duration with pauses between repetitions
-      // PRD: "Repeat base script; pause 1–30s between repetitions"
       const pauseSec = payload.pauseSec ?? payload.loop?.pause_seconds ?? 5;
 
       // Reduce voice target duration by start delay so total output stays correct
@@ -152,46 +145,42 @@ async function processAudioJob(job) {
         tempDir,
       });
 
-      console.log(`[Job ${jobId}] Voice looped to ${voiceTargetSec}s with ${pauseSec}s pauses`);
+      console.log(`[Job ${jobId}] [${env}] Voice looped to ${voiceTargetSec}s with ${pauseSec}s pauses`);
 
-      // Prepend silence if start delay is set (music/freq play from 0:00, voice starts after delay)
+      // Prepend silence if start delay is set
       voicePath = path.join(tempDir, 'voice.mp3');
       if (startDelaySec > 0) {
         const { execSync } = require('child_process');
-        // Generate silence and concatenate with looped voice
         const silencePath = path.join(tempDir, 'silence.mp3');
         execSync(
           `ffmpeg -y -f lavfi -i anullsrc=r=44100:cl=stereo -t ${startDelaySec} -c:a libmp3lame -q:a 2 "${silencePath}"`,
           { stdio: 'pipe' }
         );
-        // Concatenate silence + voice
         const concatListPath = path.join(tempDir, 'voice_concat.txt');
         fs.writeFileSync(concatListPath, `file '${silencePath}'\nfile '${voiceLoopedPath}'\n`);
         execSync(
           `ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${voicePath}"`,
           { stdio: 'pipe' }
         );
-        console.log(`[Job ${jobId}] Prepended ${startDelaySec}s silence to voice track`);
+        console.log(`[Job ${jobId}] [${env}] Prepended ${startDelaySec}s silence to voice track`);
       } else {
-        // No delay — just rename
         fs.renameSync(voiceLoopedPath, voicePath);
       }
     }
-    await updateJobProgress(jobId, 20, 'Voice generated');
+    await envClient.updateJobProgress(jobId, 20, 'Voice generated');
 
     // Stage 2: Download and prepare background music (30%)
-    await updateJobProgress(jobId, 25, 'Preparing background music...');
+    await envClient.updateJobProgress(jobId, 25, 'Preparing background music...');
 
     let musicPath = null;
     if (payload.backgroundMusic?.url) {
-      console.log(`[Job ${jobId}] Downloading background music...`);
+      console.log(`[Job ${jobId}] [${env}] Downloading background music...`);
       const musicRawPath = path.join(tempDir, 'music_raw.mp3');
 
-      const downloaded = await downloadBackgroundMusic(payload.backgroundMusic.url, musicRawPath);
+      const downloaded = await envClient.downloadBackgroundMusic(payload.backgroundMusic.url, musicRawPath);
       if (!downloaded) {
-        console.warn(`[Job ${jobId}] Failed to download music, continuing without it`);
+        console.warn(`[Job ${jobId}] [${env}] Failed to download music, continuing without it`);
       } else {
-        // Prepare music: loop/trim to match target duration with fades
         musicPath = path.join(tempDir, 'music.mp3');
 
         await prepareBackgroundMusic({
@@ -202,17 +191,17 @@ async function processAudioJob(job) {
           fadeOutSec: 1.5,
         });
 
-        console.log(`[Job ${jobId}] Background music prepared for ${durationSec}s duration`);
+        console.log(`[Job ${jobId}] [${env}] Background music prepared for ${durationSec}s duration`);
       }
     }
-    await updateJobProgress(jobId, 30, 'Background music ready');
+    await envClient.updateJobProgress(jobId, 30, 'Background music ready');
 
     // Stage 3: Generate Solfeggio tone (40%)
-    await updateJobProgress(jobId, 35, 'Generating Solfeggio tone...');
+    await envClient.updateJobProgress(jobId, 35, 'Generating Solfeggio tone...');
 
     let solfeggioPath = null;
     if (payload.solfeggio?.enabled && payload.solfeggio?.hz) {
-      console.log(`[Job ${jobId}] Generating Solfeggio ${payload.solfeggio.hz}Hz...`);
+      console.log(`[Job ${jobId}] [${env}] Generating Solfeggio ${payload.solfeggio.hz}Hz...`);
       solfeggioPath = path.join(tempDir, 'solfeggio.mp3');
 
       await generateSolfeggio({
@@ -224,30 +213,28 @@ async function processAudioJob(job) {
         carrierGainDb: payload.carrierGainDb || DEFAULT_GAINS.CARRIER,
       });
     }
-    await updateJobProgress(jobId, 40, 'Solfeggio generated');
+    await envClient.updateJobProgress(jobId, 40, 'Solfeggio generated');
 
     // Stage 4: Generate binaural beat (50%)
-    await updateJobProgress(jobId, 45, 'Generating binaural beats...');
+    await envClient.updateJobProgress(jobId, 45, 'Generating binaural beats...');
 
     let binauralPath = null;
     if (payload.binaural?.enabled) {
-      // Convert band name to beat frequency if needed
       let carrierHz = payload.binaural.carrierHz || 200;
       let beatHz = payload.binaural.beatHz;
 
-      // If beatHz not provided but band name is, look up from BINAURAL_BANDS
       if (!beatHz && payload.binaural.band) {
         const bandInfo = BINAURAL_BANDS[payload.binaural.band];
         if (bandInfo) {
           beatHz = bandInfo.defaultHz;
-          console.log(`[Job ${jobId}] Converted band "${payload.binaural.band}" to beatHz=${beatHz}`);
+          console.log(`[Job ${jobId}] [${env}] Converted band "${payload.binaural.band}" to beatHz=${beatHz}`);
         } else {
-          console.warn(`[Job ${jobId}] Unknown binaural band "${payload.binaural.band}", using default 10Hz`);
+          console.warn(`[Job ${jobId}] [${env}] Unknown binaural band "${payload.binaural.band}", using default 10Hz`);
         }
       }
-      beatHz = beatHz || 10; // Final fallback
+      beatHz = beatHz || 10;
 
-      console.log(`[Job ${jobId}] Generating binaural beat: carrier=${carrierHz}Hz, beat=${beatHz}Hz`);
+      console.log(`[Job ${jobId}] [${env}] Generating binaural beat: carrier=${carrierHz}Hz, beat=${beatHz}Hz`);
       binauralPath = path.join(tempDir, 'binaural.mp3');
 
       await generateBinaural({
@@ -257,13 +244,13 @@ async function processAudioJob(job) {
         outputPath: binauralPath,
         gainDb: payload.gains?.binauralDb || DEFAULT_GAINS.BINAURAL,
         noiseCarrierType: payload.carrierType || 'pink',
-        noiseCarrierGainDb: (payload.carrierGainDb || DEFAULT_GAINS.CARRIER) - 2, // Slightly lower for binaural
+        noiseCarrierGainDb: (payload.carrierGainDb || DEFAULT_GAINS.CARRIER) - 2,
       });
     }
-    await updateJobProgress(jobId, 50, 'Binaural generated');
+    await envClient.updateJobProgress(jobId, 50, 'Binaural generated');
 
     // Stage 5: Mix all layers (70%)
-    await updateJobProgress(jobId, 55, 'Mixing audio layers...');
+    await envClient.updateJobProgress(jobId, 55, 'Mixing audio layers...');
 
     const layers = [];
 
@@ -284,14 +271,14 @@ async function processAudioJob(job) {
     if (solfeggioPath && fs.existsSync(solfeggioPath)) {
       layers.push({
         path: solfeggioPath,
-        gainDb: 0, // Already gain-adjusted in generation
+        gainDb: 0,
       });
     }
 
     if (binauralPath && fs.existsSync(binauralPath)) {
       layers.push({
         path: binauralPath,
-        gainDb: 0, // Already gain-adjusted in generation
+        gainDb: 0,
       });
     }
 
@@ -299,13 +286,13 @@ async function processAudioJob(job) {
       throw new Error('No audio layers to mix');
     }
 
-    console.log(`[Job ${jobId}] Mixing ${layers.length} layers...`);
+    console.log(`[Job ${jobId}] [${env}] Mixing ${layers.length} layers...`);
     const mixedPath = path.join(tempDir, 'mixed.mp3');
     await mixTracks(layers, mixedPath);
-    await updateJobProgress(jobId, 70, 'Layers mixed');
+    await envClient.updateJobProgress(jobId, 70, 'Layers mixed');
 
     // Stage 6: Apply fades (80%)
-    await updateJobProgress(jobId, 75, 'Applying fades...');
+    await envClient.updateJobProgress(jobId, 75, 'Applying fades...');
 
     const fadedPath = path.join(tempDir, 'faded.mp3');
     await applyFade(
@@ -314,10 +301,10 @@ async function processAudioJob(job) {
       payload.fade?.inMs || 1000,
       payload.fade?.outMs || 1500
     );
-    await updateJobProgress(jobId, 80, 'Fades applied');
+    await envClient.updateJobProgress(jobId, 80, 'Fades applied');
 
     // Stage 7: Normalize loudness (90%)
-    await updateJobProgress(jobId, 85, 'Normalizing loudness...');
+    await envClient.updateJobProgress(jobId, 85, 'Normalizing loudness...');
 
     const outputPath = path.join(tempDir, 'output.mp3');
     await normalizeLoudness(
@@ -325,30 +312,30 @@ async function processAudioJob(job) {
       outputPath,
       payload.safety?.targetLufs || -16
     );
-    await updateJobProgress(jobId, 90, 'Loudness normalized');
+    await envClient.updateJobProgress(jobId, 90, 'Loudness normalized');
 
     // Stage 8: Upload to storage (100%)
-    await updateJobProgress(jobId, 95, 'Uploading to storage...');
+    await envClient.updateJobProgress(jobId, 95, 'Uploading to storage...');
 
-    console.log(`[Job ${jobId}] Uploading to Supabase Storage...`);
-    const uploadResult = await uploadRenderedAudio(outputPath, trackId, 'mp3');
+    console.log(`[Job ${jobId}] [${env}] Uploading to Supabase Storage...`);
+    const uploadResult = await envClient.uploadRenderedAudio(outputPath, trackId, 'mp3');
 
     if (!uploadResult) {
       throw new Error('Failed to upload rendered audio to storage');
     }
 
-    console.log(`[Job ${jobId}] Upload complete: audio-renders/${uploadResult.path}`);
+    console.log(`[Job ${jobId}] [${env}] Upload complete: audio-renders/${uploadResult.path}`);
 
     // Get final duration
     const durationMs = await getDuration(outputPath);
-    console.log(`[Job ${jobId}] Final duration: ${Math.round(durationMs / 1000)}s`);
+    console.log(`[Job ${jobId}] [${env}] Final duration: ${Math.round(durationMs / 1000)}s`);
 
-    // Update track with storage path (not signed URL) so the web app can re-sign on demand
+    // Update track with storage path
     const storagePath = 'audio-renders/' + uploadResult.path;
-    await updateTrackAudio(trackId, storagePath, durationMs);
+    await envClient.updateTrackAudio(trackId, storagePath, durationMs);
 
     // Mark job as complete
-    await completeJob(jobId, {
+    await envClient.completeJob(jobId, {
       audioUrl: uploadResult.url,
       storagePath: uploadResult.path,
       durationMs,
@@ -356,7 +343,7 @@ async function processAudioJob(job) {
       format: 'mp3',
     });
 
-    console.log(`[Job ${jobId}] Processing complete!`);
+    console.log(`[Job ${jobId}] [${env}] Processing complete!`);
 
     // Cleanup
     cleanupTempDir(tempDir);
@@ -368,10 +355,10 @@ async function processAudioJob(job) {
     };
 
   } catch (error) {
-    console.error(`[Job ${jobId}] Processing failed:`, error.message);
+    console.error(`[Job ${jobId}] [${env}] Processing failed:`, error.message);
 
     // Mark job as failed
-    await completeJob(jobId, null, error.message);
+    await envClient.completeJob(jobId, null, error.message);
 
     // Cleanup
     cleanupTempDir(tempDir);
@@ -386,7 +373,6 @@ async function processAudioJob(job) {
 function validateJobPayload(payload) {
   const errors = [];
 
-  // At least one audio source required
   const hasVoice = payload.script && payload.script.length > 0;
   const hasMusic = payload.backgroundMusic?.url;
   const hasSolfeggio = payload.solfeggio?.enabled;
@@ -396,12 +382,10 @@ function validateJobPayload(payload) {
     errors.push('At least one audio source required (voice, music, solfeggio, or binaural)');
   }
 
-  // Validate duration
   if (payload.durationMin && (payload.durationMin < 1 || payload.durationMin > 30)) {
     errors.push('Duration must be between 1 and 30 minutes');
   }
 
-  // Validate Solfeggio frequency
   if (payload.solfeggio?.enabled && payload.solfeggio?.hz) {
     const validFreqs = [174, 285, 396, 417, 528, 639, 741, 852, 963];
     if (!validFreqs.includes(payload.solfeggio.hz)) {
@@ -409,7 +393,6 @@ function validateJobPayload(payload) {
     }
   }
 
-  // Validate binaural beat
   if (payload.binaural?.enabled) {
     if (payload.binaural.carrierHz && (payload.binaural.carrierHz < 100 || payload.binaural.carrierHz > 1000)) {
       errors.push('Binaural carrier frequency must be between 100-1000 Hz');
