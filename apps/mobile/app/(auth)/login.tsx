@@ -1,183 +1,332 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
+  Pressable,
+  Keyboard,
+  ActivityIndicator,
 } from 'react-native';
-import { Link, useRouter } from 'expo-router';
-import { supabase } from '../../lib/supabase';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  withSequence,
+  Easing,
+  FadeInDown,
+} from 'react-native-reanimated';
+import { useAuthStore } from '../../stores/authStore';
+import { Colors, Spacing, Radius, Shadows } from '../../lib/constants';
 
 export default function LoginScreen() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [emailFocused, setEmailFocused] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
-      return;
-    }
+  const { signIn, isLoading, error, clearError, session } = useAuthStore();
 
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
-      Alert.alert('Error', error.message);
-      setLoading(false);
-    } else {
+  // Navigate to library when session is set (after successful sign-in)
+  useEffect(() => {
+    if (session) {
       router.replace('/(tabs)/library');
+    }
+  }, [session]);
+
+  const breatheScale = useSharedValue(1);
+  const breatheOpacity = useSharedValue(0.6);
+
+  useEffect(() => {
+    breatheScale.value = withRepeat(
+      withSequence(
+        withTiming(1.08, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
+    );
+    breatheOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.9, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.6, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1,
+      false,
+    );
+  }, [breatheScale, breatheOpacity]);
+
+  const orbStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: breatheScale.value }],
+    opacity: breatheOpacity.value,
+  }));
+
+  const handleSignIn = async () => {
+    if (!email.trim() || !password.trim()) return;
+    clearError();
+    try {
+      await signIn(email.trim(), password);
+    } catch {
+      // Error handled by store
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <LinearGradient
+      colors={['#EDE9FE', '#E8E4FD', '#F7F8FC']}
+      start={{ x: 0.2, y: 0 }}
+      end={{ x: 0.8, y: 1 }}
+      style={styles.gradient}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue to MindScript</Text>
-        </View>
+      <Pressable style={styles.gradient} onPress={Keyboard.dismiss}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.container}
+        >
+          {/* Breathing orb background decoration */}
+          <Animated.View style={[styles.orbOuter, orbStyle]}>
+            <View style={styles.orbMiddle}>
+              <View style={styles.orbCore} />
+            </View>
+          </Animated.View>
 
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              placeholderTextColor="#9CA3AF"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              editable={!loading}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password"
-              placeholderTextColor="#9CA3AF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              editable={!loading}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
+          {/* Brand section */}
+          <Animated.View
+            entering={FadeInDown.duration(700).delay(100)}
+            style={styles.brandSection}
           >
-            <Text style={styles.buttonText}>
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Text>
-          </TouchableOpacity>
+            <View style={styles.logoMark}>
+              <View style={styles.logoDot} />
+            </View>
+            <Text style={styles.brandName}>MindScript</Text>
+            <Text style={styles.tagline}>Your inner voice, amplified</Text>
+          </Animated.View>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
-            <Link href="/(auth)/register" asChild>
-              <TouchableOpacity>
-                <Text style={styles.link}>Sign Up</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* Form section */}
+          <Animated.View
+            entering={FadeInDown.duration(700).delay(300)}
+            style={styles.formSection}
+          >
+            {error && (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Email</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  emailFocused && styles.inputFocused,
+                ]}
+                placeholder="you@example.com"
+                placeholderTextColor={Colors.gray400}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={email}
+                onChangeText={setEmail}
+                onFocus={() => setEmailFocused(true)}
+                onBlur={() => setEmailFocused(false)}
+                editable={!isLoading}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <TextInput
+                style={[
+                  styles.input,
+                  passwordFocused && styles.inputFocused,
+                ]}
+                placeholder="Enter your password"
+                placeholderTextColor={Colors.gray400}
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                onFocus={() => setPasswordFocused(true)}
+                onBlur={() => setPasswordFocused(false)}
+                editable={!isLoading}
+                onSubmitEditing={handleSignIn}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.signInButton,
+                (!email.trim() || !password.trim()) && styles.signInDisabled,
+              ]}
+              onPress={handleSignIn}
+              disabled={isLoading || !email.trim() || !password.trim()}
+              activeOpacity={0.8}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.signInText}>Sign In</Text>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+
+          <Animated.Text
+            entering={FadeInDown.duration(700).delay(500)}
+            style={styles.footerText}
+          >
+            Sign in with your mindscript.com account
+          </Animated.Text>
+        </KeyboardAvoidingView>
+      </Pressable>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradient: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FC',
-  },
-  scrollContainer: {
-    flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    paddingHorizontal: Spacing.lg + 8,
   },
-  header: {
+
+  // Breathing orb
+  orbOuter: {
+    position: 'absolute',
+    top: '12%',
+    alignSelf: 'center',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(108, 99, 255, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orbMiddle: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(108, 99, 255, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  orbCore: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(108, 99, 255, 0.14)',
+  },
+
+  // Brand
+  brandSection: {
+    alignItems: 'center',
     marginBottom: 40,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#0F172A',
-    marginBottom: 8,
+  logoMark: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+    ...Shadows.md,
+  },
+  logoDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  brandName: {
+    fontSize: 30,
+    fontWeight: '700',
+    color: Colors.text,
+    letterSpacing: -0.8,
+    marginBottom: 6,
+  },
+  tagline: {
+    fontSize: 15,
+    color: Colors.muted,
+    letterSpacing: 0.2,
+  },
+
+  // Form
+  formSection: {
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    ...Shadows.md,
+  },
+  errorBanner: {
+    backgroundColor: Colors.errorLight,
+    borderRadius: Radius.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  errorText: {
+    color: Colors.error,
+    fontSize: 13,
+    fontWeight: '500',
     textAlign: 'center',
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
+  inputGroup: {
+    marginBottom: Spacing.md,
   },
-  form: {
-    width: '100%',
-  },
-  inputContainer: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
+  inputLabel: {
+    fontSize: 13,
     fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
+    color: Colors.gray600,
+    marginBottom: 6,
+    marginLeft: 2,
   },
   input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.gray200,
+    borderRadius: Radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.md,
     fontSize: 16,
-    color: '#0F172A',
+    color: Colors.text,
   },
-  button: {
-    backgroundColor: '#7C3AED',
-    borderRadius: 8,
-    padding: 16,
+  inputFocused: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
+    backgroundColor: '#FEFEFF',
+  },
+  signInButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.md,
+    paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  footer: {
-    flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: Spacing.sm,
+    ...Shadows.sm,
   },
-  footerText: {
-    fontSize: 14,
-    color: '#6B7280',
+  signInDisabled: {
+    opacity: 0.5,
   },
-  link: {
-    fontSize: 14,
-    color: '#7C3AED',
+  signInText: {
+    color: '#FFFFFF',
+    fontSize: 17,
     fontWeight: '600',
+    letterSpacing: 0.1,
+  },
+
+  // Footer
+  footerText: {
+    textAlign: 'center',
+    marginTop: Spacing.lg,
+    fontSize: 13,
+    color: Colors.gray400,
   },
 });

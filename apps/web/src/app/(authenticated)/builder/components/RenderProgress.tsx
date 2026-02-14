@@ -197,7 +197,7 @@ export function RenderProgress() {
       </div>
 
       {/* Cancel Button */}
-      {renderProgress.stage !== 'completed' && renderProgress.stage !== 'uploading' && (
+      {renderProgress.stage && renderProgress.stage !== 'uploading' && (renderProgress.stage as string) !== 'completed' && (
         <div className="flex justify-center">
           <button
             onClick={handleCancel}

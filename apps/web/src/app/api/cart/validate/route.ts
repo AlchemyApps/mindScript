@@ -83,8 +83,8 @@ export async function POST(request: NextRequest) {
         continue;
       }
       
-      const sellerAgreement = track.seller_agreements;
-      
+      const sellerAgreement = track.seller_agreements as any;
+
       if (sellerAgreement.status !== "active") {
         errors.push({
           trackId: item.trackId,

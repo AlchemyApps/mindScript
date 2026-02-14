@@ -1,113 +1,155 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import TrackPlayer, {
-  Track,
-  State,
-  RepeatMode,
-  Event,
-  useProgress,
-  usePlaybackState,
-  PlaybackState,
-  Capability,
-  AddTrack,
-} from 'react-native-track-player';
+import { createAudioPlayer } from 'expo-audio';
+import type { AudioPlayer, AudioStatus } from 'expo-audio';
 
-interface QueueItem extends Track {
+export interface QueueItem {
   id: string;
+  url: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  artwork?: string;
+  duration?: number;
   mindscriptId?: string;
-  downloadProgress?: number;
   isDownloaded?: boolean;
   localPath?: string;
 }
 
+export type RepeatMode = 'off' | 'track' | 'queue';
+
+// ---------------------------------------------------------------------------
+// Module-level AudioPlayer (reused via replace())
+// ---------------------------------------------------------------------------
+let player: AudioPlayer | null = null;
+
+function getOrCreatePlayer(): AudioPlayer {
+  if (!player) {
+    player = createAudioPlayer(null, { updateInterval: 250 });
+
+    player.addListener('playbackStatusUpdate', (status: AudioStatus) => {
+      usePlayerStore.setState({
+        isPlaying: status.playing,
+        position: status.currentTime,
+        duration: status.duration,
+      });
+
+      if (status.didJustFinish && !status.loop) {
+        handleTrackFinished();
+      }
+    });
+  }
+  return player;
+}
+
+function cleanupPlayer(): void {
+  if (player) {
+    try {
+      player.remove();
+    } catch {
+      // ignore cleanup errors
+    }
+    player = null;
+  }
+}
+
+function loadTrack(track: QueueItem, shouldPlay: boolean): void {
+  const url = track.localPath || track.url;
+  if (!url) return;
+
+  const p = getOrCreatePlayer();
+  p.replace(url);
+
+  // Apply persisted settings
+  const { volume, playbackRate, repeatMode } = usePlayerStore.getState();
+  p.volume = volume;
+  p.setPlaybackRate(playbackRate);
+  p.loop = repeatMode === 'track';
+
+  if (shouldPlay) {
+    p.play();
+  }
+}
+
+function handleTrackFinished(): void {
+  const { queue, currentTrackIndex, repeatMode } = usePlayerStore.getState();
+
+  if (repeatMode === 'track') {
+    // Looping is handled natively via player.loop
+    return;
+  }
+
+  if (currentTrackIndex !== null && currentTrackIndex < queue.length - 1) {
+    usePlayerStore.getState().skipToNext();
+  } else if (repeatMode === 'queue' && queue.length > 0) {
+    usePlayerStore.getState().skipTo(0);
+  } else {
+    usePlayerStore.setState({ isPlaying: false });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
 interface PlayerState {
-  // Queue State
   queue: QueueItem[];
   currentTrackIndex: number | null;
   currentTrack: QueueItem | null;
 
-  // Playback State
   isPlaying: boolean;
-  playbackState: State;
+  position: number;
+  duration: number;
   repeatMode: RepeatMode;
-  shuffleMode: boolean;
   playbackRate: number;
   volume: number;
 
-  // Sleep Timer
   sleepTimerActive: boolean;
   sleepTimerEndTime: number | null;
-  sleepTimerDuration: number | null; // in minutes
+  sleepTimerDuration: number | null;
 
-  // UI State
   isPlayerExpanded: boolean;
   showQueue: boolean;
-
-  // Error State
   error: string | null;
 
-  // Actions - Queue Management
-  setQueue: (tracks: QueueItem[]) => Promise<void>;
-  addToQueue: (track: QueueItem, insertBeforeIndex?: number) => Promise<void>;
-  removeFromQueue: (index: number) => Promise<void>;
-  clearQueue: () => Promise<void>;
-  moveInQueue: (fromIndex: number, toIndex: number) => Promise<void>;
+  playbackSessionId: string | null;
 
-  // Actions - Playback Control
-  play: () => Promise<void>;
-  pause: () => Promise<void>;
-  skipToNext: () => Promise<void>;
-  skipToPrevious: () => Promise<void>;
-  skipTo: (index: number) => Promise<void>;
+  // Actions
+  setQueue: (tracks: QueueItem[]) => void;
+  addToQueue: (track: QueueItem, insertBeforeIndex?: number) => void;
+  removeFromQueue: (index: number) => void;
+  clearQueue: () => void;
+  moveInQueue: (fromIndex: number, toIndex: number) => void;
+  play: () => void;
+  pause: () => void;
+  skipToNext: () => void;
+  skipToPrevious: () => void;
+  skipTo: (index: number) => void;
   seekTo: (position: number) => Promise<void>;
-
-  // Actions - Playback Settings
-  setRepeatMode: (mode: RepeatMode) => Promise<void>;
-  toggleShuffle: () => Promise<void>;
-  setPlaybackRate: (rate: number) => Promise<void>;
-  setVolume: (volume: number) => Promise<void>;
-
-  // Actions - Sleep Timer
+  setRepeatMode: (mode: RepeatMode) => void;
+  toggleRepeatMode: () => void;
+  setPlaybackRate: (rate: number) => void;
+  setVolume: (volume: number) => void;
   setSleepTimer: (minutes: number) => void;
   cancelSleepTimer: () => void;
   checkSleepTimer: () => void;
-
-  // Actions - UI State
   expandPlayer: () => void;
   collapsePlayer: () => void;
   toggleQueueDisplay: () => void;
-
-  // Actions - Utilities
   clearError: () => void;
-  syncWithTrackPlayer: () => Promise<void>;
   initialize: () => Promise<void>;
-}
-
-// Helper to convert internal queue items to TrackPlayer tracks
-function toTrackPlayerTrack(item: QueueItem): AddTrack {
-  return {
-    id: item.id,
-    url: item.localPath || item.url || '',
-    title: item.title || 'Unknown',
-    artist: item.artist || 'Unknown Artist',
-    album: item.album,
-    artwork: item.artwork,
-    duration: item.duration,
-  };
 }
 
 export const usePlayerStore = create<PlayerState>()(
   persist(
     (set, get) => ({
-      // Initial State
       queue: [],
       currentTrackIndex: null,
       currentTrack: null,
       isPlaying: false,
-      playbackState: State.None,
-      repeatMode: RepeatMode.Off,
-      shuffleMode: false,
+      position: 0,
+      duration: 0,
+      repeatMode: 'off' as RepeatMode,
       playbackRate: 1.0,
       volume: 1.0,
       sleepTimerActive: false,
@@ -116,304 +158,210 @@ export const usePlayerStore = create<PlayerState>()(
       isPlayerExpanded: false,
       showQueue: false,
       error: null,
+      playbackSessionId: null,
 
-      // Initialize Track Player
       initialize: async () => {
-        try {
-          // Setup player
-          await TrackPlayer.setupPlayer({
-            maxCacheSize: 50 * 1024 * 1024, // 50 MB cache
-          });
-
-          // Add capabilities
-          await TrackPlayer.updateOptions({
-            capabilities: [
-              Capability.Play,
-              Capability.Pause,
-              Capability.SkipToNext,
-              Capability.SkipToPrevious,
-              Capability.Stop,
-              Capability.SeekTo,
-            ],
-            compactCapabilities: [
-              Capability.Play,
-              Capability.Pause,
-              Capability.SkipToNext,
-              Capability.SkipToPrevious,
-            ],
-            progressUpdateEventInterval: 1,
-          });
-
-          // Set up event listeners
-          TrackPlayer.addEventListener(Event.PlaybackState, (event) => {
-            set({ playbackState: event.state });
-          });
-
-          TrackPlayer.addEventListener(Event.PlaybackTrackChanged, async (event) => {
-            if (event.nextTrack !== undefined) {
-              const queue = get().queue;
-              const track = queue[event.nextTrack];
-              set({
-                currentTrackIndex: event.nextTrack,
-                currentTrack: track || null,
-              });
-            }
-          });
-
-          TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
-            set({ isPlaying: false });
-            // Check if repeat all is enabled
-            const repeatMode = get().repeatMode;
-            if (repeatMode === RepeatMode.Queue) {
-              get().skipTo(0);
-              get().play();
-            }
-          });
-
-          // Sync initial state
-          await get().syncWithTrackPlayer();
-        } catch (error) {
-          console.error('Failed to initialize TrackPlayer:', error);
-          set({ error: error instanceof Error ? error.message : 'Failed to initialize player' });
-        }
+        // expo-audio: audio mode configured in backgroundAudio.ts
+        // Player is created on demand when a track is loaded
       },
 
-      // Queue Management
-      setQueue: async (tracks: QueueItem[]) => {
-        try {
-          await TrackPlayer.reset();
-
-          if (tracks.length > 0) {
-            const trackPlayerTracks = tracks.map(toTrackPlayerTrack);
-            await TrackPlayer.add(trackPlayerTracks);
-
-            set({
-              queue: tracks,
-              currentTrackIndex: 0,
-              currentTrack: tracks[0],
-              error: null,
-            });
-          } else {
-            set({
-              queue: [],
-              currentTrackIndex: null,
-              currentTrack: null,
-            });
-          }
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to set queue' });
-        }
-      },
-
-      addToQueue: async (track: QueueItem, insertBeforeIndex?: number) => {
-        try {
-          const trackPlayerTrack = toTrackPlayerTrack(track);
-
-          if (insertBeforeIndex !== undefined) {
-            await TrackPlayer.add(trackPlayerTrack, insertBeforeIndex);
-            const newQueue = [...get().queue];
-            newQueue.splice(insertBeforeIndex, 0, track);
-            set({ queue: newQueue });
-          } else {
-            await TrackPlayer.add(trackPlayerTrack);
-            set({ queue: [...get().queue, track] });
-          }
-
-          set({ error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to add track to queue' });
-        }
-      },
-
-      removeFromQueue: async (index: number) => {
-        try {
-          await TrackPlayer.remove(index);
-          const newQueue = [...get().queue];
-          newQueue.splice(index, 1);
-
-          // Update current track if needed
-          const currentIndex = get().currentTrackIndex;
-          if (currentIndex !== null) {
-            if (index === currentIndex) {
-              // Removed current track
-              const newCurrentIndex = Math.min(currentIndex, newQueue.length - 1);
-              set({
-                queue: newQueue,
-                currentTrackIndex: newCurrentIndex >= 0 ? newCurrentIndex : null,
-                currentTrack: newCurrentIndex >= 0 ? newQueue[newCurrentIndex] : null,
-              });
-            } else if (index < currentIndex) {
-              // Removed track before current
-              set({
-                queue: newQueue,
-                currentTrackIndex: currentIndex - 1,
-              });
-            } else {
-              // Removed track after current
-              set({ queue: newQueue });
-            }
-          } else {
-            set({ queue: newQueue });
-          }
-
-          set({ error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to remove track from queue' });
-        }
-      },
-
-      clearQueue: async () => {
-        try {
-          await TrackPlayer.reset();
+      setQueue: (tracks: QueueItem[]) => {
+        if (tracks.length > 0) {
+          set({
+            queue: tracks,
+            currentTrackIndex: 0,
+            currentTrack: tracks[0],
+            position: 0,
+            duration: 0,
+            error: null,
+          });
+          loadTrack(tracks[0], true);
+        } else {
+          cleanupPlayer();
           set({
             queue: [],
             currentTrackIndex: null,
             currentTrack: null,
             isPlaying: false,
-            error: null,
+            position: 0,
+            duration: 0,
           });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to clear queue' });
         }
       },
 
-      moveInQueue: async (fromIndex: number, toIndex: number) => {
-        try {
-          // TrackPlayer doesn't have a direct move method, so we need to remove and re-add
-          const queue = get().queue;
-          const track = queue[fromIndex];
+      addToQueue: (track: QueueItem, insertBeforeIndex?: number) => {
+        const newQueue = [...get().queue];
+        if (insertBeforeIndex !== undefined) {
+          newQueue.splice(insertBeforeIndex, 0, track);
+        } else {
+          newQueue.push(track);
+        }
+        set({ queue: newQueue, error: null });
+      },
 
-          await TrackPlayer.remove(fromIndex);
-          await TrackPlayer.add(toTrackPlayerTrack(track), toIndex);
+      removeFromQueue: (index: number) => {
+        const newQueue = [...get().queue];
+        newQueue.splice(index, 1);
 
-          const newQueue = [...queue];
-          newQueue.splice(fromIndex, 1);
-          newQueue.splice(toIndex, 0, track);
-
-          // Update current track index if needed
-          const currentIndex = get().currentTrackIndex;
-          let newCurrentIndex = currentIndex;
-
-          if (currentIndex !== null) {
-            if (fromIndex === currentIndex) {
-              newCurrentIndex = toIndex;
-            } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
-              newCurrentIndex = currentIndex - 1;
-            } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
-              newCurrentIndex = currentIndex + 1;
+        const currentIndex = get().currentTrackIndex;
+        if (currentIndex !== null) {
+          if (index === currentIndex) {
+            const newIdx = Math.min(currentIndex, newQueue.length - 1);
+            const newTrack = newIdx >= 0 ? newQueue[newIdx] : null;
+            set({
+              queue: newQueue,
+              currentTrackIndex: newIdx >= 0 ? newIdx : null,
+              currentTrack: newTrack,
+            });
+            if (newTrack) {
+              loadTrack(newTrack, get().isPlaying);
+            } else {
+              cleanupPlayer();
+              set({ isPlaying: false, position: 0, duration: 0 });
             }
+          } else if (index < currentIndex) {
+            set({ queue: newQueue, currentTrackIndex: currentIndex - 1 });
+          } else {
+            set({ queue: newQueue });
           }
-
-          set({
-            queue: newQueue,
-            currentTrackIndex: newCurrentIndex,
-            error: null,
-          });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to move track in queue' });
+        } else {
+          set({ queue: newQueue });
         }
       },
 
-      // Playback Control
-      play: async () => {
-        try {
-          await TrackPlayer.play();
-          set({ isPlaying: true, error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to play' });
-        }
+      clearQueue: () => {
+        cleanupPlayer();
+        set({
+          queue: [],
+          currentTrackIndex: null,
+          currentTrack: null,
+          isPlaying: false,
+          position: 0,
+          duration: 0,
+          error: null,
+        });
       },
 
-      pause: async () => {
-        try {
-          await TrackPlayer.pause();
-          set({ isPlaying: false, error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to pause' });
+      moveInQueue: (fromIndex: number, toIndex: number) => {
+        const queue = [...get().queue];
+        const [item] = queue.splice(fromIndex, 1);
+        queue.splice(toIndex, 0, item);
+
+        let currentIndex = get().currentTrackIndex;
+        if (currentIndex !== null) {
+          if (fromIndex === currentIndex) {
+            currentIndex = toIndex;
+          } else if (fromIndex < currentIndex && toIndex >= currentIndex) {
+            currentIndex--;
+          } else if (fromIndex > currentIndex && toIndex <= currentIndex) {
+            currentIndex++;
+          }
         }
+
+        set({ queue, currentTrackIndex: currentIndex, error: null });
       },
 
-      skipToNext: async () => {
-        try {
-          await TrackPlayer.skipToNext();
-          set({ error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to skip to next' });
+      play: () => {
+        // Cold start: no player but we have a current track
+        if (!player) {
+          const track = get().currentTrack;
+          if (track) {
+            loadTrack(track, true);
+            return;
+          }
         }
+        if (player) {
+          player.play();
+        }
+        set({ isPlaying: true, error: null });
       },
 
-      skipToPrevious: async () => {
-        try {
-          await TrackPlayer.skipToPrevious();
-          set({ error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to skip to previous' });
+      pause: () => {
+        if (player) {
+          player.pause();
         }
+        set({ isPlaying: false, error: null });
       },
 
-      skipTo: async (index: number) => {
-        try {
-          await TrackPlayer.skip(index);
-          set({ error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to skip to track' });
+      skipToNext: () => {
+        const { queue, currentTrackIndex } = get();
+        if (currentTrackIndex === null || currentTrackIndex >= queue.length - 1)
+          return;
+        const nextIndex = currentTrackIndex + 1;
+        const nextTrack = queue[nextIndex];
+        set({
+          currentTrackIndex: nextIndex,
+          currentTrack: nextTrack,
+          position: 0,
+        });
+        loadTrack(nextTrack, true);
+      },
+
+      skipToPrevious: () => {
+        const { queue, currentTrackIndex, position } = get();
+        if (currentTrackIndex === null) return;
+
+        // If more than 3 seconds in, restart current track
+        if (position > 3 && player) {
+          player.seekTo(0);
+          set({ position: 0 });
+          return;
         }
+
+        if (currentTrackIndex <= 0) return;
+        const prevIndex = currentTrackIndex - 1;
+        const prevTrack = queue[prevIndex];
+        set({
+          currentTrackIndex: prevIndex,
+          currentTrack: prevTrack,
+          position: 0,
+        });
+        loadTrack(prevTrack, true);
+      },
+
+      skipTo: (index: number) => {
+        const { queue } = get();
+        if (index < 0 || index >= queue.length) return;
+        const track = queue[index];
+        set({ currentTrackIndex: index, currentTrack: track, position: 0 });
+        loadTrack(track, true);
       },
 
       seekTo: async (position: number) => {
-        try {
-          await TrackPlayer.seekTo(position);
-          set({ error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to seek' });
+        if (player) {
+          await player.seekTo(position);
+        }
+        set({ position });
+      },
+
+      setRepeatMode: (mode: RepeatMode) => {
+        set({ repeatMode: mode });
+        if (player) {
+          player.loop = mode === 'track';
         }
       },
 
-      // Playback Settings
-      setRepeatMode: async (mode: RepeatMode) => {
-        try {
-          await TrackPlayer.setRepeatMode(mode);
-          set({ repeatMode: mode, error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to set repeat mode' });
-        }
+      toggleRepeatMode: () => {
+        const current = get().repeatMode;
+        const next: RepeatMode =
+          current === 'off' ? 'track' : current === 'track' ? 'queue' : 'off';
+        get().setRepeatMode(next);
       },
 
-      toggleShuffle: async () => {
-        const newShuffleMode = !get().shuffleMode;
-        set({ shuffleMode: newShuffleMode });
-
-        // Note: TrackPlayer doesn't have built-in shuffle
-        // We'll need to implement queue shuffling manually if needed
-        if (newShuffleMode) {
-          // Shuffle logic here
-          // This is a placeholder - actual implementation would shuffle the queue
-          console.log('Shuffle enabled - implement queue shuffling');
-        } else {
-          // Restore original queue order
-          console.log('Shuffle disabled - restore original queue order');
+      setPlaybackRate: (rate: number) => {
+        if (player) {
+          player.setPlaybackRate(rate);
         }
+        set({ playbackRate: rate });
       },
 
-      setPlaybackRate: async (rate: number) => {
-        try {
-          await TrackPlayer.setRate(rate);
-          set({ playbackRate: rate, error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to set playback rate' });
+      setVolume: (volume: number) => {
+        if (player) {
+          player.volume = volume;
         }
+        set({ volume });
       },
 
-      setVolume: async (volume: number) => {
-        try {
-          await TrackPlayer.setVolume(volume);
-          set({ volume, error: null });
-        } catch (error) {
-          set({ error: error instanceof Error ? error.message : 'Failed to set volume' });
-        }
-      },
-
-      // Sleep Timer
       setSleepTimer: (minutes: number) => {
         const endTime = Date.now() + minutes * 60 * 1000;
         set({
@@ -422,13 +370,16 @@ export const usePlayerStore = create<PlayerState>()(
           sleepTimerDuration: minutes,
         });
 
-        // Start checking timer
-        const checkInterval = setInterval(() => {
-          get().checkSleepTimer();
-        }, 1000);
-
-        // Store interval ID for cleanup (would need to add this to state)
-        (global as any).sleepTimerInterval = checkInterval;
+        if ((global as Record<string, unknown>).sleepTimerInterval) {
+          clearInterval(
+            (global as Record<string, unknown>)
+              .sleepTimerInterval as ReturnType<typeof setInterval>,
+          );
+        }
+        (global as Record<string, unknown>).sleepTimerInterval = setInterval(
+          () => get().checkSleepTimer(),
+          1000,
+        );
       },
 
       cancelSleepTimer: () => {
@@ -437,78 +388,44 @@ export const usePlayerStore = create<PlayerState>()(
           sleepTimerEndTime: null,
           sleepTimerDuration: null,
         });
-
-        // Clear interval
-        if ((global as any).sleepTimerInterval) {
-          clearInterval((global as any).sleepTimerInterval);
-          (global as any).sleepTimerInterval = null;
+        if ((global as Record<string, unknown>).sleepTimerInterval) {
+          clearInterval(
+            (global as Record<string, unknown>)
+              .sleepTimerInterval as ReturnType<typeof setInterval>,
+          );
+          (global as Record<string, unknown>).sleepTimerInterval = null;
         }
       },
 
       checkSleepTimer: () => {
         const { sleepTimerActive, sleepTimerEndTime } = get();
-
         if (sleepTimerActive && sleepTimerEndTime) {
-          const now = Date.now();
-          const timeRemaining = sleepTimerEndTime - now;
-
+          const timeRemaining = sleepTimerEndTime - Date.now();
           if (timeRemaining <= 0) {
-            // Timer expired - pause playback with fade out
             get().pause();
             get().cancelSleepTimer();
           } else if (timeRemaining <= 10000) {
-            // Last 10 seconds - could implement fade out here
             const fadeVolume = get().volume * (timeRemaining / 10000);
             get().setVolume(fadeVolume);
           }
         }
       },
 
-      // UI State
       expandPlayer: () => set({ isPlayerExpanded: true }),
       collapsePlayer: () => set({ isPlayerExpanded: false }),
       toggleQueueDisplay: () => set({ showQueue: !get().showQueue }),
-
-      // Utilities
       clearError: () => set({ error: null }),
-
-      syncWithTrackPlayer: async () => {
-        try {
-          const queue = await TrackPlayer.getQueue();
-          const currentTrackIndex = await TrackPlayer.getCurrentTrack();
-          const playbackState = await TrackPlayer.getState();
-          const repeatMode = await TrackPlayer.getRepeatMode();
-          const volume = await TrackPlayer.getVolume();
-          const rate = await TrackPlayer.getRate();
-
-          set({
-            queue: queue as QueueItem[],
-            currentTrackIndex,
-            currentTrack: currentTrackIndex !== null ? (queue[currentTrackIndex] as QueueItem) : null,
-            playbackState,
-            repeatMode,
-            volume,
-            playbackRate: rate,
-            isPlaying: playbackState === State.Playing,
-          });
-        } catch (error) {
-          console.error('Failed to sync with TrackPlayer:', error);
-        }
-      },
     }),
     {
       name: 'player-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        // Persist user preferences
         repeatMode: state.repeatMode,
-        shuffleMode: state.shuffleMode,
         playbackRate: state.playbackRate,
         volume: state.volume,
-        // Optionally persist queue
         queue: state.queue,
         currentTrackIndex: state.currentTrackIndex,
       }),
-    }
-  )
+    },
+  ),
 );

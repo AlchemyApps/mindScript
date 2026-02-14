@@ -8,10 +8,11 @@ import {
   calculateSellerEarnings,
 } from "@mindscript/schemas";
 import { z } from "zod";
+import { getUserFFTier, type FFTier } from "../../../../lib/pricing/ff-tier";
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-02-24.acacia",
 });
 
 export async function POST(request: NextRequest) {
@@ -30,7 +31,7 @@ export async function POST(request: NextRequest) {
     const { items, successUrl, cancelUrl, customerEmail, metadata } = validationResult.data;
 
     // Get Supabase client
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // Get current user (optional - support guest checkout)
     const { data: { user } } = await supabase.auth.getUser();
@@ -85,6 +86,14 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
+    }
+
+    // Determine F&F-aware platform fee percentage
+    let platformFeePct = 15; // default
+    if (user?.id) {
+      const ffTier = await getUserFFTier(user.id);
+      if (ffTier === 'inner_circle') platformFeePct = 0;
+      else if (ffTier === 'cost_pass') platformFeePct = 5;
     }
 
     // Get seller Connect account IDs
@@ -156,15 +165,15 @@ export async function POST(request: NextRequest) {
         sellerId: item.sellerId,
         sellerConnectAccountId: item.sellerConnectAccountId,
         price: item.price,
-        platformFee: calculatePlatformFee(item.price, 15),
-        sellerEarnings: calculateSellerEarnings(item.price, calculatePlatformFee(item.price, 15)),
+        platformFee: calculatePlatformFee(item.price, platformFeePct),
+        sellerEarnings: calculateSellerEarnings(item.price, calculatePlatformFee(item.price, platformFeePct)),
       });
     }
 
     // Calculate total amount and fees
     const totalAmount = items.reduce((sum, item) => sum + item.price, 0);
     const totalPlatformFee = items.reduce((sum, item) => 
-      sum + calculatePlatformFee(item.price, 15), 0
+      sum + calculatePlatformFee(item.price, platformFeePct), 0
     );
 
     // Determine success and cancel URLs
@@ -190,6 +199,7 @@ export async function POST(request: NextRequest) {
         itemCount: items.length.toString(),
         totalAmount: totalAmount.toString(),
         totalPlatformFee: totalPlatformFee.toString(),
+        cogs_cents: '0',
         ...metadata,
       },
       payment_method_types: ["card"],

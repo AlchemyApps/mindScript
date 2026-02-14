@@ -26,7 +26,7 @@ const TrackSchema = z.object({
 // GET /api/catalog - List all tracks with optional filters
 export async function GET(req: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check admin auth
     const { data: { user } } = await supabase.auth.getUser()
@@ -121,7 +121,7 @@ export async function GET(req: NextRequest) {
 // POST /api/catalog - Create a new track
 export async function POST(req: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check admin auth
     const { data: { user } } = await supabase.auth.getUser()
@@ -189,7 +189,7 @@ export async function POST(req: NextRequest) {
 // PATCH /api/catalog - Update a track
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check admin auth
     const { data: { user } } = await supabase.auth.getUser()
@@ -268,7 +268,7 @@ export async function PATCH(req: NextRequest) {
 // DELETE /api/catalog - Delete a track
 export async function DELETE(req: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Check admin auth
     const { data: { user } } = await supabase.auth.getUser()

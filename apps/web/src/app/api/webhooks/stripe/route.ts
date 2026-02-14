@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from '@supabase/supabase-js';
 import Stripe from "stripe";
+import { createServiceRoleClient } from "@mindscript/auth/server";
 import { startTrackBuild } from "../../../../lib/track-builder";
 
 // Set runtime to Node.js for raw body access
@@ -8,20 +8,10 @@ export const runtime = 'nodejs';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-11-20.acacia",
+  apiVersion: "2025-02-24.acacia",
 });
 
-// Create Supabase admin client for webhooks
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createServiceRoleClient();
 
 type StripeMetadata = Record<string, string | undefined>;
 
@@ -117,15 +107,13 @@ async function resolveUserIdentity(
 
   // Fall back to auth admin lookup
   try {
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers({
-      email: normalizedEmail,
-    });
+    const { data, error } = await supabaseAdmin.auth.admin.listUsers();
 
     if (error) {
       console.error('[WEBHOOK] Supabase admin user lookup failed:', error);
     }
 
-    const user = data?.users?.[0];
+    const user = (data?.users as any[])?.find((u: any) => u.email === normalizedEmail);
     if (user?.id) {
       return { userId: user.id, email: normalizedEmail };
     }
@@ -287,17 +275,21 @@ async function recordPurchase({
   currency?: string | null;
   metadata: StripeMetadata;
 }) {
+  const cogsCents = parseInt(metadata.cogs_cents || '0', 10) || 0;
+
   const record = {
     user_id: userId,
     checkout_session_id: sessionId,
     stripe_payment_intent_id: paymentIntentId || null,
     amount,
+    cogs_cents: cogsCents,
     currency: currency || 'usd',
     status: 'completed',
     metadata: {
       type: metadata.type || null,
       is_first_purchase: metadata.is_first_purchase,
       pending_track_id: metadata.pending_track_id || metadata.track_id || null,
+      ff_tier: metadata.ff_tier || null,
     },
     created_at: new Date().toISOString()
   };
@@ -774,18 +766,19 @@ export async function POST(request: NextRequest) {
   let event: Stripe.Event;
 
   try {
-    // DEVELOPMENT ONLY: Skip signature verification if no webhook secret is configured
-    if (process.env.STRIPE_WEBHOOK_SECRET && process.env.STRIPE_WEBHOOK_SECRET !== 'whsec_test_secret_placeholder_replace_me') {
-      event = stripe.webhooks.constructEvent(
-        body,
-        signature,
-        process.env.STRIPE_WEBHOOK_SECRET
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      console.error('[WEBHOOK] STRIPE_WEBHOOK_SECRET is not configured');
+      return NextResponse.json(
+        { error: "Webhook secret not configured" },
+        { status: 500 }
       );
-    } else {
-      // WARNING: Only for development! Parse event without verification
-      console.warn('[WEBHOOK] Running without signature verification - DEVELOPMENT ONLY');
-      event = JSON.parse(body) as Stripe.Event;
     }
+
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
   } catch (err) {
     console.error("Webhook signature verification failed:", err);
     return NextResponse.json(
@@ -819,7 +812,7 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    switch (event.type) {
+    switch (event.type as string) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
 

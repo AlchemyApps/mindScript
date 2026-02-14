@@ -67,7 +67,7 @@ export function Footer({ className }: FooterProps) {
             <Link href="/" className="flex items-center space-x-2 mb-4">
               <div className="relative w-10 h-10">
                 <Image
-                  src="/images/logo.png"
+                  src="/images/logo-original.png"
                   alt="MindScript"
                   fill
                   className="object-contain"
@@ -77,7 +77,7 @@ export function Footer({ className }: FooterProps) {
             </Link>
 
             <p className="text-muted text-sm leading-relaxed mb-6 max-w-xs">
-              Transform your mindset with personalized affirmation audio. AI-powered voices,
+              Transform your mindset with personalized affirmation audio. Studio-quality voices,
               healing frequencies, and ambient soundscapes for your daily practice.
             </p>
 

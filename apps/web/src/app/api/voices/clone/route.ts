@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createServiceRoleClient } from "@mindscript/auth/server";
 import { ElevenLabsVoiceCloning } from "@mindscript/audio-engine/providers/ElevenLabsCloning";
 import {
   voiceCloneRequestSchema,
@@ -32,18 +33,6 @@ function getSupabaseClient(request: NextRequest) {
   });
 }
 
-// Initialize service role client for server operations
-function getServiceRoleClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-  return createClient(supabaseUrl, supabaseServiceKey, {
-    auth: {
-      persistSession: false,
-    },
-  });
-}
-
 /**
  * POST /api/voices/clone
  * Clone a voice from an audio sample
@@ -51,7 +40,7 @@ function getServiceRoleClient() {
 export async function POST(request: NextRequest) {
   try {
     const supabase = getSupabaseClient(request);
-    const serviceSupabase = getServiceRoleClient();
+    const serviceSupabase = createServiceRoleClient();
 
     // Authenticate user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -272,12 +261,12 @@ export async function POST(request: NextRequest) {
         .from("cloned_voices")
         .update({
           status: "failed",
-          error_message: cloneResult.error.message,
+          error_message: (cloneResult as any).error?.message,
         })
         .eq("id", voiceRecord.id);
 
       return NextResponse.json(
-        { error: "Failed to clone voice: " + cloneResult.error.message },
+        { error: "Failed to clone voice: " + (cloneResult as any).error?.message },
         { status: 500 }
       );
     }
@@ -349,7 +338,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = getSupabaseClient(request);
-    const serviceSupabase = getServiceRoleClient();
+    const serviceSupabase = createServiceRoleClient();
 
     // Authenticate user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -399,7 +388,7 @@ export async function DELETE(request: NextRequest) {
       const deleteResult = await elevenLabs.deleteVoice(voice.voice_id);
 
       if (!deleteResult.isOk) {
-        console.error("Failed to delete from ElevenLabs:", deleteResult.error);
+        console.error("Failed to delete from ElevenLabs:", (deleteResult as any).error);
         // Continue with soft delete even if ElevenLabs deletion fails
       }
     }

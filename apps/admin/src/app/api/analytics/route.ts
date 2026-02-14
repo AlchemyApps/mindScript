@@ -1,408 +1,235 @@
 import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
-import { startOfMonth, subMonths, format } from 'date-fns'
 import { cacheQuery, getCacheKey } from '@/lib/cache'
+import { format } from 'date-fns'
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
-  const metric = searchParams.get('metric')
   const period = searchParams.get('period') || '30d'
 
   const supabase = await createServerSupabaseClient()
 
-  // Check authentication
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+  const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    switch (metric) {
-      case 'revenue': {
-        const cacheKey = getCacheKey('revenue', { period })
-        const revenueData = await cacheQuery(
-          cacheKey,
-          () => getRevenueMetrics(supabase, period),
-          { ttl: 300, tags: ['revenue'] } // 5 minutes cache
-        )
-        return NextResponse.json(revenueData)
-      }
-
-      case 'users': {
-        const cacheKey = getCacheKey('users', { period })
-        const userData = await cacheQuery(
-          cacheKey,
-          () => getUserMetrics(supabase, period),
-          { ttl: 300, tags: ['users'] }
-        )
-        return NextResponse.json(userData)
-      }
-
-      case 'content': {
-        const cacheKey = getCacheKey('content', { period })
-        const contentData = await cacheQuery(
-          cacheKey,
-          () => getContentMetrics(supabase, period),
-          { ttl: 300, tags: ['content'] }
-        )
-        return NextResponse.json(contentData)
-      }
-
-      case 'platform': {
-        const cacheKey = getCacheKey('platform', {})
-        const platformData = await cacheQuery(
-          cacheKey,
-          () => getPlatformMetrics(supabase),
-          { ttl: 60, tags: ['platform'] } // 1 minute cache for real-time metrics
-        )
-        return NextResponse.json(platformData)
-      }
-
-      case 'overview': {
-        const cacheKey = getCacheKey('overview', { period })
-        const overviewData = await cacheQuery(
-          cacheKey,
-          async () => {
-            const [revenue, users, content, platform] = await Promise.all([
-              getRevenueMetrics(supabase, period),
-              getUserMetrics(supabase, period),
-              getContentMetrics(supabase, period),
-              getPlatformMetrics(supabase),
-            ])
-
-            return {
-              revenue,
-              users,
-              content,
-              platform,
-            }
-          },
-          { ttl: 300, tags: ['overview'] }
-        )
-        return NextResponse.json(overviewData)
-      }
-
-      default:
-        return NextResponse.json({ error: 'Invalid metric' }, { status: 400 })
-    }
+    const cacheKey = getCacheKey('analytics-dashboard', { period })
+    const data = await cacheQuery(
+      cacheKey,
+      () => getAnalyticsData(supabase, period),
+      { ttl: 300, tags: ['analytics'] }
+    )
+    return NextResponse.json(data)
   } catch (error) {
     console.error('Analytics API error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-async function getRevenueMetrics(supabase: any, period: string) {
-  // Calculate MRR (Monthly Recurring Revenue)
-  const { data: activeSubscriptions } = await supabase
-    .from('subscriptions')
-    .select('price_amount')
-    .eq('status', 'active')
+async function getAnalyticsData(supabase: ReturnType<typeof Object>, period: string) {
+  const { startDate, endDate } = getDateRange(period)
 
-  const mrr = activeSubscriptions?.reduce((sum: number, sub: any) => sum + (sub.price_amount / 100), 0) || 0
-  const arr = mrr * 12 // Annual Recurring Revenue
+  const safeDefaults = {
+    voices: { popular: [] as { voice_name: string; provider: string; tier: string; usage_count: number }[] },
+    backgroundTracks: { popular: [] as { track_name: string; category: string; usage_count: number }[] },
+    features: {
+      solfeggio: { total: 0, withFeature: 0, percentage: 0 },
+      binaural: { total: 0, withFeature: 0, percentage: 0 },
+      backgroundMusic: { total: 0, withFeature: 0, percentage: 0 },
+    },
+    tracks: { total: 0, overTime: [] as { date: string; count: number }[] },
+    users: { total: 0, overTime: [] as { date: string; count: number }[] },
+  }
 
-  // Get revenue over time
-  const { data: revenueOverTime } = await supabase
-    .from('payments')
-    .select('amount, created_at')
-    .gte('created_at', getDateFromPeriod(period))
+  const [voices, bgTracks, features, trackStats, userStats] = await Promise.all([
+    getPopularVoices(supabase, startDate, endDate).catch((e) => {
+      console.warn('Popular voices unavailable:', e.message)
+      return safeDefaults.voices
+    }),
+    getPopularBackgroundTracks(supabase, startDate, endDate).catch((e) => {
+      console.warn('Popular bg tracks unavailable:', e.message)
+      return safeDefaults.backgroundTracks
+    }),
+    getFeatureAdoption(supabase, startDate, endDate).catch((e) => {
+      console.warn('Feature adoption unavailable:', e.message)
+      return safeDefaults.features
+    }),
+    getTrackStats(supabase, startDate, endDate, period).catch((e) => {
+      console.warn('Track stats unavailable:', e.message)
+      return safeDefaults.tracks
+    }),
+    getUserStats(supabase, startDate, endDate, period).catch((e) => {
+      console.warn('User stats unavailable:', e.message)
+      return safeDefaults.users
+    }),
+  ])
+
+  return {
+    voices,
+    backgroundTracks: bgTracks,
+    features,
+    tracks: trackStats,
+    users: userStats,
+  }
+}
+
+async function getPopularVoices(supabase: any, startDate: string, endDate: string) {
+  const { data, error } = await supabase.rpc('get_popular_voices', {
+    start_date: startDate,
+    end_date: endDate,
+    max_results: 10,
+  })
+
+  if (error) throw error
+
+  return {
+    popular: (data || []).map((row: any) => ({
+      voice_name: row.voice_name,
+      provider: row.provider,
+      tier: row.tier,
+      usage_count: Number(row.usage_count),
+    })),
+  }
+}
+
+async function getPopularBackgroundTracks(supabase: any, startDate: string, endDate: string) {
+  const { data, error } = await supabase.rpc('get_popular_background_tracks', {
+    start_date: startDate,
+    end_date: endDate,
+    max_results: 10,
+  })
+
+  if (error) throw error
+
+  return {
+    popular: (data || []).map((row: any) => ({
+      track_name: row.track_name,
+      category: row.category || 'Unknown',
+      usage_count: Number(row.usage_count),
+    })),
+  }
+}
+
+async function getFeatureAdoption(supabase: any, startDate: string, endDate: string) {
+  const { data, error } = await supabase.rpc('get_feature_adoption', {
+    start_date: startDate,
+    end_date: endDate,
+  })
+
+  if (error) throw error
+
+  const row = data?.[0] || {
+    total_tracks: 0,
+    solfeggio_count: 0,
+    solfeggio_pct: 0,
+    binaural_count: 0,
+    binaural_pct: 0,
+    with_music_count: 0,
+    with_music_pct: 0,
+  }
+
+  return {
+    solfeggio: {
+      total: Number(row.total_tracks),
+      withFeature: Number(row.solfeggio_count),
+      percentage: Number(row.solfeggio_pct) || 0,
+    },
+    binaural: {
+      total: Number(row.total_tracks),
+      withFeature: Number(row.binaural_count),
+      percentage: Number(row.binaural_pct) || 0,
+    },
+    backgroundMusic: {
+      total: Number(row.total_tracks),
+      withFeature: Number(row.with_music_count),
+      percentage: Number(row.with_music_pct) || 0,
+    },
+  }
+}
+
+async function getTrackStats(supabase: any, startDate: string, endDate: string, period: string) {
+  // Total tracks (all time)
+  const { count: total } = await supabase
+    .from('tracks')
+    .select('*', { count: 'exact', head: true })
+
+  // Tracks in period for over-time chart
+  const { data: tracksInPeriod } = await supabase
+    .from('tracks')
+    .select('created_at')
+    .gte('created_at', startDate)
+    .lte('created_at', endDate)
     .order('created_at')
 
-  // Calculate churn rate
-  const { data: churnedCount } = await supabase
-    .from('subscriptions')
-    .select('id', { count: 'exact' })
-    .eq('status', 'cancelled')
-    .gte('cancelled_at', getDateFromPeriod('30d'))
+  const overTime = groupByDate(tracksInPeriod || [], period)
 
-  const { data: totalActive } = await supabase
-    .from('subscriptions')
-    .select('id', { count: 'exact' })
-    .eq('status', 'active')
-
-  const churnRate = totalActive?.length > 0
-    ? ((churnedCount?.length || 0) / totalActive.length) * 100
-    : 0
-
-  // Get top revenue sources
-  const { data: topSources } = await supabase
-    .from('payments')
-    .select('seller_id, sellers(name), amount')
-    .gte('created_at', getDateFromPeriod(period))
-    .limit(10)
-
-  // Process revenue by day/month
-  const revenueByPeriod = processRevenueByPeriod(revenueOverTime || [], period)
-
-  return {
-    mrr,
-    arr,
-    churnRate,
-    totalRevenue: revenueOverTime?.reduce((sum: number, payment: any) => sum + payment.amount, 0) || 0,
-    revenueByPeriod,
-    topSources,
-    growth: calculateGrowth(revenueByPeriod),
-  }
+  return { total: total || 0, overTime }
 }
 
-async function getUserMetrics(supabase: any, period: string) {
-  // Get total users
-  const { count: totalUsers } = await supabase
+async function getUserStats(supabase: any, startDate: string, endDate: string, period: string) {
+  // Total users (all time)
+  const { count: total } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
 
-  // Get new users in period
-  const { data: newUsers } = await supabase
+  // Users in period for over-time chart
+  const { data: usersInPeriod } = await supabase
     .from('profiles')
     .select('created_at')
-    .gte('created_at', getDateFromPeriod(period))
+    .gte('created_at', startDate)
+    .lte('created_at', endDate)
+    .order('created_at')
 
-  // Get active users (had activity in last 30 days)
-  const { count: activeUsers } = await supabase
-    .from('user_activities')
-    .select('user_id', { count: 'exact', head: true })
-    .gte('created_at', getDateFromPeriod('30d'))
+  const overTime = groupByDate(usersInPeriod || [], period)
 
-  // User growth over time
-  const userGrowth = processUserGrowth(newUsers || [], period)
-
-  // User cohorts by subscription tier
-  const { data: userCohorts } = await supabase
-    .from('profiles')
-    .select('subscription_tier')
-    .not('subscription_tier', 'is', null)
-
-  const cohortData = processCohortData(userCohorts || [])
-
-  // Calculate retention rate
-  const { data: retainedUsers } = await supabase
-    .from('user_activities')
-    .select('user_id')
-    .gte('created_at', getDateFromPeriod('60d'))
-    .lte('created_at', getDateFromPeriod('30d'))
-
-  const retentionRate = totalUsers > 0
-    ? ((retainedUsers?.length || 0) / totalUsers) * 100
-    : 0
-
-  return {
-    totalUsers,
-    newUsers: newUsers?.length || 0,
-    activeUsers,
-    userGrowth,
-    cohortData,
-    retentionRate,
-    avgSessionDuration: '12m 34s', // Would need session tracking
-  }
+  return { total: total || 0, overTime }
 }
 
-async function getContentMetrics(supabase: any, period: string) {
-  // Get total tracks
-  const { count: totalTracks } = await supabase
-    .from('tracks')
-    .select('*', { count: 'exact', head: true })
+// ── Helpers ──
 
-  // Get new tracks in period
-  const { data: newTracks } = await supabase
-    .from('tracks')
-    .select('created_at')
-    .gte('created_at', getDateFromPeriod(period))
-
-  // Get play counts
-  const { data: playData } = await supabase
-    .from('track_plays')
-    .select('track_id, created_at')
-    .gte('created_at', getDateFromPeriod(period))
-
-  // Get download counts
-  const { data: downloadData } = await supabase
-    .from('track_downloads')
-    .select('track_id, created_at')
-    .gte('created_at', getDateFromPeriod(period))
-
-  // Top performing tracks
-  const { data: topTracks } = await supabase
-    .from('tracks')
-    .select('id, title, play_count, download_count')
-    .order('play_count', { ascending: false })
-    .limit(10)
-
-  // Content creation velocity
-  const contentVelocity = processContentVelocity(newTracks || [], period)
-
-  return {
-    totalTracks,
-    newTracks: newTracks?.length || 0,
-    totalPlays: playData?.length || 0,
-    totalDownloads: downloadData?.length || 0,
-    topTracks,
-    contentVelocity,
-    avgTrackLength: '5m 23s', // Would need to aggregate from tracks
-    popularCategories: ['Meditation', 'Sleep', 'Focus'], // Would need category data
-  }
-}
-
-async function getPlatformMetrics(supabase: any) {
-  // Get job queue stats
-  const { data: queueStats } = await supabase
-    .from('job_queue')
-    .select('status, type')
-
-  const queueMetrics = processQueueMetrics(queueStats || [])
-
-  // Get error rate from last 24 hours
-  const { count: totalRequests } = await supabase
-    .from('api_logs')
-    .select('*', { count: 'exact', head: true })
-    .gte('created_at', getDateFromPeriod('24h'))
-
-  const { count: failedRequests } = await supabase
-    .from('api_logs')
-    .select('*', { count: 'exact', head: true })
-    .gte('created_at', getDateFromPeriod('24h'))
-    .gte('status_code', 400)
-
-  const errorRate = totalRequests > 0
-    ? ((failedRequests || 0) / totalRequests) * 100
-    : 0
-
-  // System health indicators
-  const systemHealth = {
-    database: 'healthy',
-    storage: 'healthy',
-    audioProcessor: queueMetrics.audioRenderQueue.processing > 0 ? 'busy' : 'idle',
-    apiLatency: '45ms', // Would need actual monitoring
-  }
-
-  return {
-    queueMetrics,
-    errorRate,
-    systemHealth,
-    avgResponseTime: '125ms',
-    uptime: '99.9%',
-    activeWorkers: 4,
-  }
-}
-
-function getDateFromPeriod(period: string): string {
+function getDateRange(period: string): { startDate: string; endDate: string } {
   const now = new Date()
-  const match = period.match(/(\d+)([dhm])/)
-  if (!match) return now.toISOString()
+  const endDate = now.toISOString()
 
-  const [, num, unit] = match
-  const amount = parseInt(num)
+  const match = period.match(/^(\d+)([dmy])$/)
+  if (!match) return { startDate: new Date(now.getTime() - 30 * 86400000).toISOString(), endDate }
 
+  const [, numStr, unit] = match
+  const num = parseInt(numStr)
+
+  let startDate: Date
   switch (unit) {
-    case 'h':
-      return new Date(now.getTime() - amount * 60 * 60 * 1000).toISOString()
     case 'd':
-      return new Date(now.getTime() - amount * 24 * 60 * 60 * 1000).toISOString()
+      startDate = new Date(now.getTime() - num * 86400000)
+      break
     case 'm':
-      return new Date(now.setMonth(now.getMonth() - amount)).toISOString()
+      startDate = new Date(now)
+      startDate.setMonth(startDate.getMonth() - num)
+      break
+    case 'y':
+      startDate = new Date(now)
+      startDate.setFullYear(startDate.getFullYear() - num)
+      break
     default:
-      return now.toISOString()
-  }
-}
-
-function processRevenueByPeriod(data: any[], period: string) {
-  const grouped: Record<string, number> = {}
-
-  data.forEach(item => {
-    const date = new Date(item.created_at)
-    const key = period.includes('d')
-      ? format(date, 'yyyy-MM-dd')
-      : format(date, 'yyyy-MM')
-
-    grouped[key] = (grouped[key] || 0) + (item.amount / 100)
-  })
-
-  return Object.entries(grouped).map(([date, amount]) => ({
-    date,
-    amount,
-  }))
-}
-
-function processUserGrowth(users: any[], period: string) {
-  const grouped: Record<string, number> = {}
-
-  users.forEach(user => {
-    const date = new Date(user.created_at)
-    const key = period.includes('d')
-      ? format(date, 'yyyy-MM-dd')
-      : format(date, 'yyyy-MM')
-
-    grouped[key] = (grouped[key] || 0) + 1
-  })
-
-  return Object.entries(grouped).map(([date, count]) => ({
-    date,
-    count,
-  }))
-}
-
-function processCohortData(users: any[]) {
-  const cohorts: Record<string, number> = {}
-
-  users.forEach(user => {
-    const tier = user.subscription_tier || 'free'
-    cohorts[tier] = (cohorts[tier] || 0) + 1
-  })
-
-  return Object.entries(cohorts).map(([tier, count]) => ({
-    tier,
-    count,
-    percentage: (count / users.length) * 100,
-  }))
-}
-
-function processContentVelocity(tracks: any[], period: string) {
-  const grouped: Record<string, number> = {}
-
-  tracks.forEach(track => {
-    const date = new Date(track.created_at)
-    const key = period.includes('d')
-      ? format(date, 'yyyy-MM-dd')
-      : format(date, 'yyyy-MM')
-
-    grouped[key] = (grouped[key] || 0) + 1
-  })
-
-  return Object.entries(grouped).map(([date, count]) => ({
-    date,
-    count,
-  }))
-}
-
-function processQueueMetrics(queueData: any[]) {
-  const metrics: Record<string, any> = {
-    emailQueue: { pending: 0, processing: 0, completed: 0, failed: 0 },
-    audioRenderQueue: { pending: 0, processing: 0, completed: 0, failed: 0 },
-    payoutQueue: { pending: 0, processing: 0, completed: 0, failed: 0 },
+      startDate = new Date(now.getTime() - 30 * 86400000)
   }
 
-  queueData.forEach(job => {
-    const queueType = job.type.includes('email') ? 'emailQueue'
-      : job.type.includes('audio') ? 'audioRenderQueue'
-      : job.type.includes('payout') ? 'payoutQueue'
-      : null
-
-    if (queueType && metrics[queueType]) {
-      metrics[queueType][job.status] = (metrics[queueType][job.status] || 0) + 1
-    }
-  })
-
-  return metrics
+  return { startDate: startDate.toISOString(), endDate }
 }
 
-function calculateGrowth(data: any[]) {
-  if (data.length < 2) return 0
+function groupByDate(rows: { created_at: string }[], period: string): { date: string; count: number }[] {
+  const grouped: Record<string, number> = {}
+  const useDaily = period.includes('d') || period === '1m'
 
-  const recent = data[data.length - 1]?.amount || 0
-  const previous = data[data.length - 2]?.amount || 0
+  for (const row of rows) {
+    const date = new Date(row.created_at)
+    const key = useDaily ? format(date, 'yyyy-MM-dd') : format(date, 'yyyy-MM')
+    grouped[key] = (grouped[key] || 0) + 1
+  }
 
-  if (previous === 0) return 100
-  return ((recent - previous) / previous) * 100
+  return Object.entries(grouped)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }))
 }

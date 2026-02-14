@@ -1,29 +1,9 @@
 'use client';
-
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { AuthForm, OAuthButtons, type AuthFormField } from '@mindscript/ui';
-import { createClient } from '../../../lib/supabase/client';
-
-const loginFields: AuthFormField[] = [
-  {
-    name: 'email',
-    label: 'Email',
-    type: 'email',
-    placeholder: 'you@example.com',
-    required: true,
-    autoComplete: 'email',
-  },
-  {
-    name: 'password',
-    label: 'Password',
-    type: 'password',
-    placeholder: '••••••••',
-    required: true,
-    autoComplete: 'current-password',
-  },
-];
+import { AuthForm, type AuthFormField } from '@mindscript/ui';
+import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,6 +12,27 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
 
   const redirectTo = searchParams.get('redirectTo') || '/dashboard';
+  const prefilledEmail = searchParams.get('email') || '';
+
+  const loginFields: AuthFormField[] = [
+    {
+      name: 'email',
+      label: 'Email',
+      type: 'email',
+      placeholder: 'you@example.com',
+      required: true,
+      autoComplete: 'email',
+      ...(prefilledEmail ? { defaultValue: prefilledEmail, disabled: true } : {}),
+    },
+    {
+      name: 'password',
+      label: 'Password',
+      type: 'password',
+      placeholder: '••••••••',
+      required: true,
+      autoComplete: 'current-password',
+    },
+  ];
 
   const handleLogin = async (data: Record<string, string>) => {
     console.log('Login attempt started', data.email);
@@ -59,7 +60,7 @@ export default function LoginPage() {
       console.log('Server auth successful, establishing session...');
 
       // Now try to establish the session client-side
-      const supabase = createClient();
+      const supabase = getSupabaseBrowserClient();
       const { data: sessionData } = await supabase.auth.getSession();
 
       if (!sessionData?.session) {
@@ -103,27 +104,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`,
-        },
-      });
-      if (error) throw error;
-    } catch (error: any) {
-      console.error('OAuth error:', error);
-      setError(error.message || 'Failed to sign in with Google');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
@@ -146,25 +126,10 @@ export default function LoginPage() {
             fields={loginFields}
             submitLabel="Sign in"
             onSubmit={handleLogin}
-            loading={loading}
             footer={
               <>
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-white text-gray-500">Or continue with</span>
-                  </div>
-                </div>
-
-                <OAuthButtons
-                  onGoogleClick={handleGoogleLogin}
-                  loading={loading}
-                />
-
                 <div className="mt-6 text-center text-sm">
-                  <Link 
+                  <Link
                     href="/auth/reset-password"
                     className="text-indigo-600 hover:text-indigo-500"
                   >
@@ -174,7 +139,7 @@ export default function LoginPage() {
 
                 <div className="mt-6 text-center text-sm text-gray-600">
                   Don't have an account?{' '}
-                  <Link 
+                  <Link
                     href="/auth/signup"
                     className="text-indigo-600 hover:text-indigo-500 font-medium"
                   >

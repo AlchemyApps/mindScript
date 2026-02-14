@@ -68,8 +68,8 @@ export const RenderCompleteEmail = ({
               style={waveform}
             />
 
-            <Text style={trackTitle}>{trackTitle}</Text>
-            <Text style={trackDuration}>Duration: {duration}</Text>
+            <Text style={trackTitleStyle}>{trackTitle}</Text>
+            <Text style={trackDurationStyle}>Duration: {duration}</Text>
           </Section>
 
           <Section style={buttonContainer}>
@@ -201,14 +201,14 @@ const waveform = {
   marginBottom: '16px',
 }
 
-const trackTitle = {
+const trackTitleStyle = {
   color: '#1a1a1a',
   fontSize: '18px',
   fontWeight: '600',
   margin: '8px 0',
 }
 
-const trackDuration = {
+const trackDurationStyle = {
   color: '#6b7280',
   fontSize: '14px',
 }

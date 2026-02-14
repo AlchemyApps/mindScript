@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Log password change event (audit trail)
-    await supabase
+    const { error: auditError } = await supabase
       .from('audit_logs')
       .insert({
         user_id: user.id,
@@ -69,11 +69,11 @@ export async function POST(request: NextRequest) {
           timestamp: new Date().toISOString(),
           ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
         }
-      })
-      .catch(error => {
-        // Don't fail the request if audit log fails
-        console.error('Failed to log password change:', error);
       });
+    if (auditError) {
+      // Don't fail the request if audit log fails
+      console.error('Failed to log password change:', auditError);
+    }
 
     return NextResponse.json({
       message: 'Password changed successfully'

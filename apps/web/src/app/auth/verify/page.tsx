@@ -1,5 +1,4 @@
 "use client";
-
 import { useSearchParams } from "next/navigation";
 import { Card } from "@mindscript/ui";
 import { Mail, ArrowLeft } from "lucide-react";

@@ -128,8 +128,8 @@ function checkRateLimit(request: NextRequest): boolean {
 // Clean up old rate limit entries periodically
 // Note: In production, use Redis or similar for rate limiting
 // setInterval doesn't work well in serverless/edge environments
-if (typeof global !== 'undefined' && !global.rateLimitCleanupStarted) {
-  global.rateLimitCleanupStarted = true;
+if (typeof global !== 'undefined' && !(global as any).rateLimitCleanupStarted) {
+  (global as any).rateLimitCleanupStarted = true;
   setInterval(() => {
     const now = Date.now();
     for (const [key, limit] of rateLimitStore.entries()) {

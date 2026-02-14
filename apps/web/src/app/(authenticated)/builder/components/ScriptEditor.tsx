@@ -60,17 +60,22 @@ export function ScriptEditor({
   }, [onChange]);
   
   const renderMarkdownPreview = () => {
-    // Simple markdown rendering (in production, use a proper markdown library)
-    const htmlContent = value
+    // Escape HTML entities first to prevent XSS, then apply markdown formatting
+    const escaped = value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+    const htmlContent = escaped
       .replace(/^# (.*$)/gim, '<h1>$1</h1>')
       .replace(/^## (.*$)/gim, '<h2>$1</h2>')
       .replace(/^### (.*$)/gim, '<h3>$1</h3>')
       .replace(/\*\*(.*)\*\*/g, '<strong>$1</strong>')
       .replace(/\*(.*)\*/g, '<em>$1</em>')
       .replace(/\n/g, '<br />');
-    
+
     return (
-      <div 
+      <div
         className="prose prose-sm max-w-none p-4 bg-white rounded-lg border border-gray-200 min-h-[300px]"
         dangerouslySetInnerHTML={{ __html: htmlContent }}
         role="article"

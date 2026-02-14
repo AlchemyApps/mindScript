@@ -72,9 +72,9 @@ export default function AudioUploader({
         name: file.name,
         size: file.size,
         type: file.type,
-        status: error ? 'error' : 'pending',
+        status: (error ? 'error' : 'pending') as AudioFile['status'],
         progress: 0,
-        error
+        error: error || undefined,
       }
     })
 
@@ -147,7 +147,7 @@ export default function AudioUploader({
       // Update status to error
       setFiles(prev => prev.map(f =>
         f.id === audioFile.id
-          ? { ...f, status: 'error', error: error.message }
+          ? { ...f, status: 'error' as const, error: error instanceof Error ? error.message : 'Upload failed' }
           : f
       ))
       throw error

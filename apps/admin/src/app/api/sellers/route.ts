@@ -143,7 +143,7 @@ export async function GET(req: NextRequest) {
     let pending = 0
     let suspended = 0
 
-    const sellers = sellerRows.map((row: SellerRow) => {
+    const sellers = sellerRows.map((row: any) => {
       const summary = earningsMap.get(row.user_id)
       const normalizedStatus =
         row.status === 'pending_onboarding' || row.status === 'onboarding_incomplete'

@@ -180,7 +180,7 @@ export class CacheInvalidator {
     // import { CloudFrontClient, CreateInvalidationCommand } from "@aws-sdk/client-cloudfront";
 
     const invalidationId = `INV-${Date.now()}`;
-    console.log(`Creating invalidation ${invalidationId} for paths:`, paths);
+    console.log(`Creating invalidation ${invalidationId} for distribution ${this.distributionId}, paths:`, paths);
 
     // In real implementation:
     // const client = new CloudFrontClient({ region: 'us-east-1' });

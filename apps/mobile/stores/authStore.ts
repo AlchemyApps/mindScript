@@ -6,25 +6,19 @@ import { supabase } from '../lib/supabase';
 import * as SecureStore from 'expo-secure-store';
 
 interface AuthState {
-  // State
   session: Session | null;
   user: User | null;
   isLoading: boolean;
   isInitialized: boolean;
   error: string | null;
 
-  // Actions
   initialize: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, metadata?: Record<string, any>) => Promise<void>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<void>;
-  updateProfile: (updates: Partial<User>) => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
   clearError: () => void;
 }
 
-// Secure token storage
 const TOKEN_KEY = 'mindscript_auth_token';
 const REFRESH_TOKEN_KEY = 'mindscript_refresh_token';
 
@@ -71,13 +65,11 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true, error: null });
         try {
-          // Get stored tokens
           const { refreshToken } = await getStoredTokens();
 
           if (refreshToken) {
-            // Try to restore session with refresh token
             const { data, error } = await supabase.auth.refreshSession({
-              refresh_token: refreshToken
+              refresh_token: refreshToken,
             });
 
             if (error) throw error;
@@ -88,14 +80,16 @@ export const useAuthStore = create<AuthState>()(
                 session: data.session,
                 user: data.user,
                 isInitialized: true,
-                isLoading: false
+                isLoading: false,
               });
               return;
             }
           }
 
-          // No stored session, get current session from Supabase
-          const { data: { session }, error } = await supabase.auth.getSession();
+          const {
+            data: { session },
+            error,
+          } = await supabase.auth.getSession();
 
           if (error) throw error;
 
@@ -105,19 +99,18 @@ export const useAuthStore = create<AuthState>()(
               session,
               user: session.user,
               isInitialized: true,
-              isLoading: false
+              isLoading: false,
             });
           } else {
             set({
               session: null,
               user: null,
               isInitialized: true,
-              isLoading: false
+              isLoading: false,
             });
           }
 
-          // Set up auth state listener
-          supabase.auth.onAuthStateChange(async (event, session) => {
+          supabase.auth.onAuthStateChange(async (_event, session) => {
             if (session) {
               await saveTokens(session);
               set({ session, user: session.user });
@@ -126,16 +119,18 @@ export const useAuthStore = create<AuthState>()(
               set({ session: null, user: null });
             }
           });
-
         } catch (error) {
           console.error('Error initializing auth:', error);
           await clearTokens();
           set({
-            error: error instanceof Error ? error.message : 'Failed to initialize auth',
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to initialize auth',
             isLoading: false,
             isInitialized: true,
             session: null,
-            user: null
+            user: null,
           });
         }
       },
@@ -155,46 +150,14 @@ export const useAuthStore = create<AuthState>()(
             set({
               session: data.session,
               user: data.user,
-              isLoading: false
+              isLoading: false,
             });
           }
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to sign in',
-            isLoading: false
-          });
-          throw error;
-        }
-      },
-
-      signUp: async (email: string, password: string, metadata?: Record<string, any>) => {
-        set({ isLoading: true, error: null });
-        try {
-          const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: metadata,
-            },
-          });
-
-          if (error) throw error;
-
-          if (data.session) {
-            await saveTokens(data.session);
-            set({
-              session: data.session,
-              user: data.user,
-              isLoading: false
-            });
-          } else {
-            // Email confirmation required
-            set({ isLoading: false });
-          }
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to sign up',
-            isLoading: false
+            error:
+              error instanceof Error ? error.message : 'Failed to sign in',
+            isLoading: false,
           });
           throw error;
         }
@@ -210,12 +173,13 @@ export const useAuthStore = create<AuthState>()(
           set({
             session: null,
             user: null,
-            isLoading: false
+            isLoading: false,
           });
         } catch (error) {
           set({
-            error: error instanceof Error ? error.message : 'Failed to sign out',
-            isLoading: false
+            error:
+              error instanceof Error ? error.message : 'Failed to sign out',
+            isLoading: false,
           });
           throw error;
         }
@@ -225,13 +189,10 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: true, error: null });
         try {
           const { refreshToken } = await getStoredTokens();
-
-          if (!refreshToken) {
-            throw new Error('No refresh token available');
-          }
+          if (!refreshToken) throw new Error('No refresh token available');
 
           const { data, error } = await supabase.auth.refreshSession({
-            refresh_token: refreshToken
+            refresh_token: refreshToken,
           });
 
           if (error) throw error;
@@ -241,76 +202,33 @@ export const useAuthStore = create<AuthState>()(
             set({
               session: data.session,
               user: data.user,
-              isLoading: false
+              isLoading: false,
             });
           }
         } catch (error) {
           console.error('Error refreshing session:', error);
-          // If refresh fails, clear auth state
           await clearTokens();
           set({
             session: null,
             user: null,
-            error: error instanceof Error ? error.message : 'Failed to refresh session',
-            isLoading: false
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Failed to refresh session',
+            isLoading: false,
           });
           throw error;
         }
       },
 
-      updateProfile: async (updates: Partial<User>) => {
-        set({ isLoading: true, error: null });
-        try {
-          const { data, error } = await supabase.auth.updateUser({
-            data: updates as any,
-          });
-
-          if (error) throw error;
-
-          set({
-            user: data.user,
-            isLoading: false
-          });
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to update profile',
-            isLoading: false
-          });
-          throw error;
-        }
-      },
-
-      resetPassword: async (email: string) => {
-        set({ isLoading: true, error: null });
-        try {
-          const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: 'mindscript://reset-password',
-          });
-
-          if (error) throw error;
-
-          set({ isLoading: false });
-        } catch (error) {
-          set({
-            error: error instanceof Error ? error.message : 'Failed to send reset email',
-            isLoading: false
-          });
-          throw error;
-        }
-      },
-
-      clearError: () => {
-        set({ error: null });
-      },
+      clearError: () => set({ error: null }),
     }),
     {
       name: 'auth-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        // Only persist non-sensitive data
         user: state.user,
-        isInitialized: state.isInitialized,
       }),
-    }
-  )
+    },
+  ),
 );

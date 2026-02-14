@@ -26,7 +26,7 @@ export function PublishPreview() {
   const getVoiceDisplay = () => {
     if (!trackData?.voice_config) return 'Not selected';
     const { provider, voice_id } = trackData.voice_config;
-    return `${provider === 'openai' ? 'OpenAI' : 'ElevenLabs'} - ${voice_id}`;
+    return `${provider === 'openai' ? 'Standard' : 'Premium'} - ${voice_id}`;
   };
 
   // Get audio layers summary

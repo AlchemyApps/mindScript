@@ -4,7 +4,7 @@ import { formatPrice } from "@mindscript/schemas";
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Base query for published tracks
     const baseQuery = () => supabase

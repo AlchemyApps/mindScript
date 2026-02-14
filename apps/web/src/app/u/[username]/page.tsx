@@ -1,6 +1,7 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createStaticClient } from '@supabase/supabase-js';
 import Image from 'next/image';
 import Link from 'next/link';
 import { TrackPurchaseButton } from '@/components/track/purchase-button';
@@ -13,7 +14,10 @@ interface PageProps {
 
 // Generate static params for SSG
 export async function generateStaticParams() {
-  const supabase = await createClient();
+  const supabase = createStaticClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   // Fetch all active sellers with published tracks
   const { data: sellers } = await supabase
@@ -67,7 +71,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   const title = `${profile.display_name || profile.username} | MindScript Creator`;
   const description = profile.bio ||
-    `Discover ${trackCount} mindfulness tracks by ${profile.display_name || profile.username} on MindScript. AI-powered meditations, affirmations, and healing frequencies.`;
+    `Discover ${trackCount} mindfulness tracks by ${profile.display_name || profile.username} on MindScript. Personalized meditations, affirmations, and healing frequencies.`;
 
   return {
     title,
@@ -193,6 +197,15 @@ function generateJsonLd(profile: any, tracks: any[], stats: any) {
   };
 }
 
+function formatPrice(priceCents?: number | null) {
+  if (!priceCents || priceCents <= 0) return 'Free';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+  }).format(priceCents / 100);
+}
+
 export default async function SellerProfilePage({ params }: PageProps) {
   const supabase = await createClient();
 
@@ -256,26 +269,17 @@ export default async function SellerProfilePage({ params }: PageProps) {
   const totalTracks = tracksWithSlugs.length;
   const totalPlays = tracksWithSlugs.reduce((sum, track) => sum + (track.play_count || 0), 0);
 
-const stats = {
-  totalTracks,
+  const stats = {
+    totalTracks,
     totalPlays,
     totalSales: sellerProfile?.total_sales || 0,
     totalRevenue: sellerProfile?.total_revenue || 0,
     averageRating: sellerProfile?.average_rating || 0,
-    totalReviews: 0, // Would come from reviews table
+    totalReviews: 0,
   };
 
-// Generate structured data
+  // Generate structured data
   const jsonLd = generateJsonLd(profile, tracksWithSlugs, stats);
-
-const formatPrice = (priceCents?: number | null) => {
-  if (!priceCents || priceCents <= 0) return 'Free'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0,
-  }).format(priceCents / 100)
-}
 
   return (
     <>
@@ -408,7 +412,7 @@ const formatPrice = (priceCents?: number | null) => {
                         </div>
                         {track.tags && track.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 text-xs">
-                            {track.tags.slice(0, 3).map((tag, index) => (
+                            {track.tags.slice(0, 3).map((tag: string, index: number) => (
                               <span
                                 key={index}
                                 className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-gray-600"
@@ -419,6 +423,7 @@ const formatPrice = (priceCents?: number | null) => {
                           </div>
                         )}
                       </div>
+                    </div>
                     </article>
                   </Link>
 

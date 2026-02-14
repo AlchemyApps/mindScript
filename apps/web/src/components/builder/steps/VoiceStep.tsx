@@ -29,6 +29,7 @@ interface VoiceStepProps {
   loopPause: number;
   scriptLength?: number;
   isAuthenticated?: boolean;
+  isFF?: boolean;
   onVoiceChange: (voice: VoiceSelection) => void;
   onDurationChange: (duration: number) => void;
   onLoopChange: (enabled: boolean, pause: number) => void;
@@ -43,6 +44,7 @@ export function VoiceStep({
   loopPause,
   scriptLength = 0,
   isAuthenticated = false,
+  isFF,
   onVoiceChange,
   onDurationChange,
   onLoopChange,
@@ -82,6 +84,7 @@ export function VoiceStep({
         isAuthenticated={isAuthenticated}
         scriptLength={scriptLength}
         onOpenVoiceClone={onOpenVoiceClone}
+        isFF={isFF}
       />
 
       {/* Duration Selection */}

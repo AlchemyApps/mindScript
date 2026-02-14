@@ -81,7 +81,7 @@ export async function GET(request: NextRequest) {
     }
     
     const params = validationResult.data;
-    const supabase = createClient();
+    const supabase = await createClient();
     
     // Build base query for tracks
     let query = supabase

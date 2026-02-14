@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serverSupabase } from '@/lib/supabase/server'
 import Stripe from 'stripe'
+import { createServiceRoleClient } from '@mindscript/auth/server'
+import { getUserFFTier } from '../../../../lib/pricing/ff-tier'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2023-10-16',
+  apiVersion: '2025-02-24.acacia',
 })
 
 export async function POST(request: NextRequest) {
@@ -39,6 +41,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Track cannot be purchased' }, { status: 400 })
     }
 
+    // Inner Circle F&F: grant access for free
+    const ffTier = await getUserFFTier(user.id)
+    if (ffTier === 'inner_circle') {
+      const supabaseAdmin = createServiceRoleClient()
+
+      // Record $0 purchase
+      await supabaseAdmin.from('purchases').insert({
+        user_id: user.id,
+        checkout_session_id: `ff_purchase_${Date.now()}_${user.id.slice(0, 8)}`,
+        amount: 0,
+        cogs_cents: 0,
+        currency: 'usd',
+        status: 'completed',
+        metadata: { type: 'track_purchase', track_id: track.id, ff_tier: ffTier },
+        created_at: new Date().toISOString(),
+      })
+
+      // Grant track access
+      await supabaseAdmin.from('track_access').insert({
+        user_id: user.id,
+        track_id: track.id,
+        access_type: 'purchased',
+        granted_at: new Date().toISOString(),
+      })
+
+      return NextResponse.json({
+        skipStripe: true,
+        redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success?trackId=${track.id}`,
+      })
+    }
+
     const { data: owner } = await supabase
       .from('profiles')
       .select('display_name, username')
@@ -67,6 +100,7 @@ export async function POST(request: NextRequest) {
         type: 'track_purchase',
         track_id: track.id,
         seller_id: track.user_id,
+        cogs_cents: '0',
       },
       success_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout/success?trackId=${track.id}`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/u/${owner?.username ?? ''}/${track.slug}`,

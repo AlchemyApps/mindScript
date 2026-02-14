@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "mindscript",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
@@ -17,10 +18,21 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mindscript.app",
+      "buildNumber": "5",
       "jsEngine": "hermes",
       "infoPlist": {
-        "UIBackgroundModes": ["audio", "fetch", "remote-notification"],
-        "NSMicrophoneUsageDescription": "MindScript needs access to your microphone to record custom voice affirmations."
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": [
+          {
+            "NSPrivacyAccessedAPIType": "NSPrivacyAccessedAPICategoryUserDefaults",
+            "NSPrivacyAccessedAPITypeReasons": ["CA92.1"]
+          }
+        ]
       }
     },
     "android": {
@@ -30,22 +42,30 @@
       },
       "package": "com.mindscript.app",
       "jsEngine": "hermes",
-      "permissions": ["RECORD_AUDIO", "VIBRATE"],
-      "enableProguardInReleaseBuilds": true,
-      "enableShrinkResourcesInReleaseBuilds": true
+      "permissions": [
+        "FOREGROUND_SERVICE"
+      ]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "scheme": "mindscript",
     "plugins": [
       "expo-router",
-      [
-        "react-native-track-player",
-        {
-          "enableBackgroundAudio": true
+      "expo-font",
+      "expo-audio",
+      ["expo-build-properties", {
+        "android": {
+          "compileSdkVersion": 35,
+          "targetSdkVersion": 35,
+          "buildToolsVersion": "35.0.0"
         }
-      ]
-    ]
+      }]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b21c223f-bb45-4704-9252-73ccf4a20034"
+      }
+    }
   }
 }

@@ -4,15 +4,15 @@ import { accountDeletionRequestSchema } from '@mindscript/schemas';
 import { z } from 'zod';
 
 /**
- * POST /api/profile/delete-account - Delete user account
+ * POST /api/profile/delete-account - Schedule account for deletion (30-day grace period)
  */
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createServerClient();
-    
+
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
+
     if (authError || !user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -67,7 +67,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Log account deletion request with reason
+    // Calculate deletion date (30 days from now)
+    const deletionDate = new Date();
+    deletionDate.setDate(deletionDate.getDate() + 30);
+
+    // Set soft-delete flags on profile
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        deletion_requested_at: new Date().toISOString(),
+        deletion_scheduled_for: deletionDate.toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', user.id);
+
+    if (updateError) {
+      console.error('Failed to set deletion flags:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to schedule account deletion. Please contact support.' },
+        { status: 500 }
+      );
+    }
+
+    // Log account deletion request
     await supabase
       .from('audit_logs')
       .insert({
@@ -75,78 +97,20 @@ export async function POST(request: NextRequest) {
         action: 'account_deletion_requested',
         metadata: {
           reason: validatedData.reason,
+          scheduled_for: deletionDate.toISOString(),
           timestamp: new Date().toISOString(),
-          ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip')
+          ip_address: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
         }
-      })
-      .catch(error => {
-        console.error('Failed to log deletion request:', error);
       });
-
-    // Anonymize user data instead of hard delete
-    const anonymizedEmail = `deleted_${user.id}@mindscript.deleted`;
-    
-    // Update profile to anonymized state
-    await supabase
-      .from('profiles')
-      .update({
-        email: anonymizedEmail,
-        display_name: 'Deleted User',
-        username: null,
-        bio: null,
-        avatar_url: null,
-        stripe_customer_id: null,
-        role_flags: { is_admin: false, is_seller: false },
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', user.id);
-
-    // Delete user preferences
-    await supabase
-      .from('user_preferences')
-      .delete()
-      .eq('user_id', user.id);
-
-    // Delete seller agreement if exists
-    await supabase
-      .from('seller_agreements')
-      .delete()
-      .eq('user_id', user.id);
-
-    // Delete avatar from storage if exists
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('avatar_url')
-      .eq('id', user.id)
-      .single();
-
-    if (profile?.avatar_url) {
-      const filePath = profile.avatar_url.split('/').slice(-2).join('/');
-      await supabase.storage
-        .from('avatars')
-        .remove([filePath])
-        .catch(error => {
-          console.error('Failed to delete avatar:', error);
-        });
-    }
-
-    // Finally, delete the auth user
-    // This will trigger CASCADE deletes for related records
-    const { error: deleteError } = await supabase.auth.admin.deleteUser(user.id);
-
-    if (deleteError) {
-      console.error('User deletion error:', deleteError);
-      return NextResponse.json(
-        { error: 'Failed to delete account. Please contact support.' },
-        { status: 500 }
-      );
-    }
 
     // Sign out the user
     await supabase.auth.signOut();
 
     return NextResponse.json({
-      message: 'Account deleted successfully. We\'re sorry to see you go.'
+      message: 'Your account has been scheduled for deletion on ' +
+        deletionDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) +
+        '. You can cancel by logging back in within 30 days.',
+      deletion_scheduled_for: deletionDate.toISOString(),
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -155,8 +119,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    
-    console.error('Error deleting account:', error);
+
+    console.error('Error scheduling account deletion:', error);
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

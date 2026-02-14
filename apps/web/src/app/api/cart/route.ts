@@ -73,17 +73,20 @@ export async function GET(request: NextRequest) {
     }
     
     // Transform to cart item format
-    const items: CartItem[] = (cartItems || []).map(item => ({
-      trackId: item.track_id,
-      title: item.tracks?.title || "",
-      artistName: item.tracks?.profiles?.display_name || "Unknown Artist",
-      artistId: item.tracks?.user_id || "",
-      price: item.tracks?.price_cents || 0,
-      sellerId: item.tracks?.user_id || "",
-      sellerConnectAccountId: item.tracks?.seller_agreements?.stripe_connect_account_id || "",
-      quantity: item.quantity,
-      addedAt: new Date(item.added_at),
-    }));
+    const items: CartItem[] = (cartItems || []).map(item => {
+      const track = item.tracks as any;
+      return {
+        trackId: item.track_id,
+        title: track?.title || "",
+        artistName: track?.profiles?.display_name || "Unknown Artist",
+        artistId: track?.user_id || "",
+        price: track?.price_cents || 0,
+        sellerId: track?.user_id || "",
+        sellerConnectAccountId: track?.seller_agreements?.stripe_connect_account_id || "",
+        quantity: item.quantity,
+        addedAt: new Date(item.added_at),
+      };
+    });
     
     const response = NextResponse.json({ items });
     

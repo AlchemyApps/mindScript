@@ -213,7 +213,7 @@ export default function EditTrackPage() {
             {/* Actions */}
             <div className="flex gap-4">
               {track.audio_url && (
-                <Button onClick={handleDownload} variant="outline">
+                <Button onClick={handleDownload} variant="secondary">
                   <DownloadIcon className="h-4 w-4 mr-2" />
                   Download
                 </Button>

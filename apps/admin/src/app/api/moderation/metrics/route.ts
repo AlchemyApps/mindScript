@@ -138,8 +138,8 @@ export async function GET() {
         .reverse()
         .map(([date, value]) => ({ date, ...value })),
       topReporters:
-        topReporters?.map((reporter) => ({
-          username: reporter.profiles?.username || 'unknown',
+        topReporters?.map((reporter: any) => ({
+          username: (Array.isArray(reporter.profiles) ? reporter.profiles[0]?.username : reporter.profiles?.username) || 'unknown',
           reports: reporter.total_reports,
           accuracy: (reporter.credibility_score || 0) * 100,
         })) || [],

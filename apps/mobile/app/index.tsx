@@ -1,34 +1,82 @@
+import { View, Image, ActivityIndicator, StyleSheet } from 'react-native';
+import { Redirect } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withRepeat,
+  withTiming,
+  Easing,
+} from 'react-native-reanimated';
 import { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-import { supabase } from '../lib/supabase';
+import { useAuthStore } from '../stores/authStore';
+import { Colors, Gradients } from '../lib/constants';
 
-export default function Index() {
-  const router = useRouter();
+export default function IndexScreen() {
+  const { session, isLoading, isInitialized } = useAuthStore();
+
+  const breathe = useSharedValue(0.85);
 
   useEffect(() => {
-    // Check for existing session and redirect accordingly
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        router.replace('/(tabs)/library');
-      } else {
-        router.replace('/(auth)/login');
-      }
-    });
-  }, []);
+    breathe.value = withRepeat(
+      withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true,
+    );
+  }, [breathe]);
 
-  return (
-    <View style={styles.container}>
-      <ActivityIndicator size="large" color="#7C3AED" />
-    </View>
-  );
+  const pulseStyle = useAnimatedStyle(() => ({
+    opacity: breathe.value,
+    transform: [{ scale: breathe.value }],
+  }));
+
+  if (!isInitialized || isLoading) {
+    return (
+      <LinearGradient
+        colors={[...Gradients.calmPurple.colors]}
+        start={Gradients.calmPurple.start}
+        end={Gradients.calmPurple.end}
+        style={styles.container}
+      >
+        <Animated.View style={[styles.logoContainer, pulseStyle]}>
+          <Image
+            source={require('../assets/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </Animated.View>
+        <ActivityIndicator
+          size="small"
+          color={Colors.primary}
+          style={styles.loader}
+        />
+      </LinearGradient>
+    );
+  }
+
+  if (session) {
+    return <Redirect href="/(tabs)/library" />;
+  }
+
+  return <Redirect href="/(auth)/login" />;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FC',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    borderRadius: 24,
+  },
+  loader: {
+    marginTop: 32,
   },
 });

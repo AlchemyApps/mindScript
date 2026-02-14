@@ -7,7 +7,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { toast } from '@/components/ui/use-toast'
+import { toast } from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
@@ -76,11 +76,7 @@ export default function ModerationPage() {
       setReports(data.reports || [])
     } catch (error) {
       console.error('Error fetching reports:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load reports',
-        variant: 'destructive',
-      })
+      toast.error('Failed to load reports')
     } finally {
       setLoading(false)
     }
@@ -120,20 +116,13 @@ export default function ModerationPage() {
         throw new Error('Failed to process report')
       }
 
-      toast({
-        title: 'Success',
-        description: `Report ${action === 'approve' ? 'actioned' : 'dismissed'} successfully`,
-      })
+      toast.success(`Report ${action === 'approve' ? 'actioned' : 'dismissed'} successfully`)
 
       fetchReports()
       fetchMetrics()
     } catch (error) {
       console.error('Error processing report:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to process report',
-        variant: 'destructive',
-      })
+      toast.error('Failed to process report')
     } finally {
       setProcessing(null)
     }

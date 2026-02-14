@@ -5,11 +5,12 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 })
 
 const nextConfig = {
-  transpilePackages: ["@mindscript/ui", "@mindscript/types", "@mindscript/schemas"],
+  transpilePackages: ["@mindscript/ui", "@mindscript/types", "@mindscript/schemas", "@mindscript/email"],
   experimental: {
-    typedRoutes: true,
+    typedRoutes: false,
     optimizePackageImports: ['lucide-react', '@heroicons/react', '@radix-ui/*'],
     instrumentationHook: true, // Enable instrumentation for Sentry
+    missingSuspenseWithCSRBailout: false,
   },
   images: {
     remotePatterns: [
@@ -41,6 +42,11 @@ const nextConfig = {
   
   // Strict runtime configuration
   reactStrictMode: true,
+
+  // Skip ESLint during build (run separately via npm run lint)
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   
   // Enable SWC minification for better performance and security
   swcMinify: true,

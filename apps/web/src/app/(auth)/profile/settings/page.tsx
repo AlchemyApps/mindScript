@@ -1,9 +1,7 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createServerClient } from '@mindscript/auth/server';
-import { SettingsForm, AccountManagement } from '@/components/profile';
-// TODO: Add Tabs component to UI package
-// import { Tabs, TabsContent, TabsList, TabsTrigger } from '@mindscript/ui';
+import { SettingsTabs } from '@/components/profile/SettingsTabs';
 
 export const metadata: Metadata = {
   title: 'Settings | MindScript',
@@ -12,10 +10,10 @@ export const metadata: Metadata = {
 
 export default async function SettingsPage() {
   const supabase = await createServerClient();
-  
+
   // Check authentication
   const { data: { user }, error } = await supabase.auth.getUser();
-  
+
   if (error || !user) {
     redirect('/auth/login');
   }
@@ -26,20 +24,7 @@ export default async function SettingsPage() {
         Settings
       </h1>
 
-      <Tabs defaultValue="preferences" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
-          <TabsTrigger value="account">Account</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="preferences" className="space-y-6">
-          <SettingsForm />
-        </TabsContent>
-
-        <TabsContent value="account" className="space-y-6">
-          <AccountManagement />
-        </TabsContent>
-      </Tabs>
+      <SettingsTabs />
     </div>
   );
 }

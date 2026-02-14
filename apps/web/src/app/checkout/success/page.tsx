@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -19,6 +18,10 @@ export default function CheckoutSuccessPage() {
 
   // Trigger track creation immediately
   useEffect(() => {
+    // Clear builder state on mount (both interior and exterior builders)
+    localStorage.removeItem('stepBuilderState');
+    localStorage.removeItem('guestBuilderState');
+
     if (!sessionId) {
       setLoading(false);
       return;
@@ -267,7 +270,7 @@ export default function CheckoutSuccessPage() {
 
           <div className="space-y-3">
             {[
-              { text: "Recording your voice narration with our AI voices", delay: "0ms" },
+              { text: "Recording your voice narration with studio-quality voices", delay: "0ms" },
               { text: "Mixing background music and healing tones", delay: "100ms" },
               { text: "Mastering the final track for optimal quality", delay: "200ms" },
             ].map((item, i) => (
@@ -298,7 +301,7 @@ export default function CheckoutSuccessPage() {
             </GradientButton>
           </Link>
 
-          <Link href="/builder" className="flex-1">
+          <Link href="/builder?fresh=true" className="flex-1">
             <button className="w-full px-6 py-3 rounded-xl glass text-text font-medium hover-lift flex items-center justify-center gap-2 transition-all">
               Create Another
               <ArrowRight className="w-4 h-4" />

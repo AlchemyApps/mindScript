@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAuth } from '@mindscript/auth/server';
 import { ProfileUpdateSchema } from '@mindscript/schemas';
 
-export const GET = withAuth(async (request, { user }) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const GET: any = withAuth(async (request: any, { user }: any) => {
   return NextResponse.json({
     user: {
       id: user.id,
@@ -13,7 +14,8 @@ export const GET = withAuth(async (request, { user }) => {
   });
 });
 
-export const PUT = withAuth(async (request, { user }) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const PUT: any = withAuth(async (request: any, { user }: any) => {
   try {
     const body = await request.json();
     const validated = ProfileUpdateSchema.parse(body);

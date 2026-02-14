@@ -13,6 +13,8 @@ export interface AuthFormField {
   placeholder?: string;
   required?: boolean;
   autoComplete?: string;
+  defaultValue?: string;
+  disabled?: boolean;
 }
 
 interface AuthFormProps {
@@ -36,7 +38,13 @@ export function AuthForm({
   footer,
   className,
 }: AuthFormProps) {
-  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [formData, setFormData] = useState<Record<string, string>>(() => {
+    const initial: Record<string, string> = {};
+    fields.forEach(f => {
+      if (f.defaultValue) initial[f.name] = f.defaultValue;
+    });
+    return initial;
+  });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -154,7 +162,7 @@ export function AuthForm({
                 value={formData[field.name] || ''}
                 onChange={handleChange}
                 error={errors[field.name]}
-                disabled={loading}
+                disabled={field.disabled || loading}
                 required={field.required}
               />
               {field.name === 'password' && showStrength && (

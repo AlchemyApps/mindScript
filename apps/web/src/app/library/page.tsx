@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -22,6 +21,7 @@ import { GradientButton } from "@/components/ui/GradientButton";
 import { LibraryTrackCard } from "@/components/library/LibraryTrackCard";
 import { LibraryEmptyState } from "@/components/library/LibraryEmptyState";
 import { RenderProgressBanner } from "@/components/library/RenderProgressBanner";
+import { TrackActivityDrawer } from "@/components/library/TrackActivityDrawer";
 import { Header } from "@/components/navigation/Header";
 import { VoiceCloneCTA } from "@/components/builder/VoiceCloneCTA";
 import { VoiceCloneShelf } from "@/components/builder/VoiceCloneShelf";
@@ -84,6 +84,8 @@ export default function LibraryPage() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [showCloneShelf, setShowCloneShelf] = useState(false);
   const [hasClonedVoice, setHasClonedVoice] = useState(false);
+  const [isFF, setIsFF] = useState(false);
+  const [activityTrackId, setActivityTrackId] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<Filters>({
     search: searchParams.get("search") || "",
@@ -108,6 +110,7 @@ export default function LibraryPage() {
   const [newTrackStatus, setNewTrackStatus] = useState<"creating" | "rendering" | "complete" | null>(
     isAwaitingRender ? "creating" : null
   );
+  const [renderProgress, setRenderProgress] = useState<number | undefined>(undefined);
   const [showSuccessNotification, setShowSuccessNotification] = useState(false);
 
   // Core fetch — silent flag skips loading UI (used by polling/realtime)
@@ -134,7 +137,7 @@ export default function LibraryPage() {
 
       if (!response.ok) {
         if (response.status === 401) {
-          router.push("/auth/login?redirectTo=/library");
+          router.replace("/auth/login?redirectTo=/library");
           return null;
         }
         throw new Error("Failed to fetch tracks");
@@ -180,6 +183,11 @@ export default function LibraryPage() {
           } catch {
             // Non-critical
           }
+          // Check F&F tier
+          fetch("/api/pricing/check-eligibility")
+            .then(r => r.ok ? r.json() : null)
+            .then(d => { if (d?.ffTier) setIsFF(d.ffTier === 'inner_circle' || d.ffTier === 'cost_pass'); })
+            .catch(() => {});
         }
       } catch (error) {
         console.error("Error fetching user:", error);
@@ -206,12 +214,19 @@ export default function LibraryPage() {
         );
 
         if (newTrack) {
-          const isComplete = newTrack.audio_url || newTrack.status === "published";
+          // Only consider complete when status is "published" AND no active render job
+          const hasActiveRender = newTrack.renderStatus &&
+            newTrack.renderStatus.status !== 'completed' &&
+            newTrack.renderStatus.status !== 'failed';
+          const isComplete = newTrack.status === "published" && !hasActiveRender;
 
           if (isComplete && newTrackStatus !== "complete") {
             setNewTrackStatus("complete");
             setShowSuccessNotification(true);
             clearInterval(pollInterval);
+
+            // Force a non-silent refresh to get fresh signed URLs
+            fetchTracks();
 
             setTimeout(() => setShowSuccessNotification(false), 5000);
             setTimeout(() => {
@@ -225,6 +240,11 @@ export default function LibraryPage() {
             setNewTrackStatus("rendering");
           } else if (newTrack.status === "draft" && newTrackStatus === "creating") {
             setNewTrackStatus("rendering");
+          }
+
+          // Extract real progress from render status
+          if (newTrack.renderStatus?.progress != null) {
+            setRenderProgress(newTrack.renderStatus.progress);
           }
         }
 
@@ -246,6 +266,25 @@ export default function LibraryPage() {
       clearInterval(pollInterval);
     };
   }, [isAwaitingRender, fetchTracks, newTrackStatus]);
+
+  // Sync player store when a track's audio URL changes after re-render
+  useEffect(() => {
+    if (!currentTrack) return;
+    const match = tracks.find((t) => t.id === currentTrack.id);
+    if (!match) return;
+    const newUrl = match.audio_signed_url || match.audio_url;
+    if (newUrl && newUrl !== currentTrack.url) {
+      // Update the queue entry and current track in the player store
+      const store = usePlayerStore.getState();
+      const updatedQueue = store.queue.map((t) =>
+        t.id === currentTrack.id ? { ...t, url: newUrl } : t
+      );
+      usePlayerStore.setState({
+        queue: updatedQueue,
+        currentTrack: { ...store.currentTrack!, url: newUrl },
+      });
+    }
+  }, [tracks, currentTrack]);
 
   // Realtime subscription — listen for job updates, refresh silently
   useEffect(() => {
@@ -502,6 +541,7 @@ export default function LibraryPage() {
           <div className="container mx-auto px-4 py-4">
             <RenderProgressBanner
               status={newTrackStatus}
+              progress={renderProgress}
               onDismiss={() => setNewTrackStatus("complete")}
             />
           </div>
@@ -598,6 +638,7 @@ export default function LibraryPage() {
           <VoiceCloneCTA
             variant="inline"
             hasClonedVoice={hasClonedVoice}
+            isFF={isFF}
             onClick={() => setShowCloneShelf(true)}
           />
         </div>
@@ -619,7 +660,7 @@ export default function LibraryPage() {
         {error && !isLoading && (
           <GlassCard className="border-error/20">
             <p className="text-error mb-2">Error: {error}</p>
-            <Button variant="outline" size="sm" onClick={fetchTracks}>
+            <Button variant="outline" size="sm" onClick={() => fetchTracks()}>
               Try again
             </Button>
           </GlassCard>
@@ -644,6 +685,7 @@ export default function LibraryPage() {
                 onPlay={() => handlePlayTrack(track, index)}
                 onDownload={() => handleDownloadTrack(track)}
                 onEdit={() => handleEditTrack(track.id)}
+                onActivity={track.ownership === 'owned' ? () => setActivityTrackId(track.id) : undefined}
               />
             ))}
           </div>
@@ -697,6 +739,13 @@ export default function LibraryPage() {
           setShowCloneShelf(false);
           window.location.reload();
         }}
+      />
+
+      {/* Track Activity Drawer */}
+      <TrackActivityDrawer
+        isOpen={!!activityTrackId}
+        onClose={() => setActivityTrackId(null)}
+        trackId={activityTrackId}
       />
     </div>
   );

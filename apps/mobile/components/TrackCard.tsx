@@ -1,166 +1,183 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  Image,
-} from 'react-native';
+import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LibraryTrack } from '../services/trackService';
+import DownloadButton from './DownloadButton';
+import { Colors, Spacing, Radius, Shadows } from '../lib/constants';
 
 interface TrackCardProps {
-  id: string;
-  title: string;
-  description?: string;
-  duration: number;
-  thumbnailUrl?: string;
-  isPublished?: boolean;
+  track: LibraryTrack;
   onPress: () => void;
-  onOptionsPress?: () => void;
+  onAddToQueue?: () => void;
+  onLongPress?: () => void;
+  isActive?: boolean;
 }
 
-export function TrackCard({
-  title,
-  description,
-  duration,
-  thumbnailUrl,
-  isPublished = false,
-  onPress,
-  onOptionsPress,
-}: TrackCardProps) {
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
+export default function TrackCard({ track, onPress, onAddToQueue, onLongPress, isActive }: TrackCardProps) {
   return (
-    <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={[styles.card, isActive && styles.cardActive]}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      activeOpacity={0.7}
+    >
+      {/* Thumbnail */}
       <View style={styles.thumbnailContainer}>
-        {thumbnailUrl ? (
-          <Image source={{ uri: thumbnailUrl }} style={styles.thumbnail} />
+        {track.cover_image_url ? (
+          <Image
+            source={{ uri: track.cover_image_url }}
+            style={styles.thumbnail}
+          />
         ) : (
-          <View style={styles.placeholderThumbnail}>
-            <Ionicons name="musical-notes" size={24} color="#9CA3AF" />
+          <View style={[styles.thumbnail, styles.thumbnailPlaceholder]}>
+            <Ionicons
+              name="musical-notes"
+              size={20}
+              color={Colors.primaryLight}
+            />
+          </View>
+        )}
+        {isActive && (
+          <View style={styles.activeIndicator}>
+            <View style={styles.activeDot} />
           </View>
         )}
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title} numberOfLines={1}>
-            {title}
+      {/* Info */}
+      <View style={styles.info}>
+        <Text style={[styles.title, isActive && styles.titleActive]} numberOfLines={1}>
+          {track.title}
+        </Text>
+        <View style={styles.metaRow}>
+          <Text style={styles.duration}>
+            {formatDuration(track.duration_seconds)}
           </Text>
-          {onOptionsPress && (
-            <TouchableOpacity onPress={onOptionsPress} style={styles.optionsButton}>
-              <Ionicons name="ellipsis-vertical" size={18} color="#6B7280" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {description && (
-          <Text style={styles.description} numberOfLines={2}>
-            {description}
-          </Text>
-        )}
-
-        <View style={styles.footer}>
-          <View style={styles.metadata}>
-            <Ionicons name="time-outline" size={14} color="#9CA3AF" />
-            <Text style={styles.duration}>{formatDuration(duration)}</Text>
-          </View>
-
-          {isPublished && (
-            <View style={styles.badge}>
-              <Ionicons name="checkmark-circle" size={14} color="#059669" />
-              <Text style={styles.badgeText}>Published</Text>
-            </View>
+          {track.play_count > 0 && (
+            <>
+              <View style={styles.dot} />
+              <Text style={styles.plays}>
+                {track.play_count} {track.play_count === 1 ? 'play' : 'plays'}
+              </Text>
+            </>
           )}
         </View>
       </View>
+
+      {/* Add to queue */}
+      {onAddToQueue && (
+        <TouchableOpacity
+          style={styles.queueButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            onAddToQueue();
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.6}
+        >
+          <Ionicons name="list-outline" size={18} color={Colors.muted} />
+        </TouchableOpacity>
+      )}
+
+      {/* Download button */}
+      <DownloadButton trackId={track.id} />
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  card: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    gap: Spacing.md,
+    ...Shadows.sm,
   },
+  cardActive: {
+    backgroundColor: '#F5F3FF',
+    borderWidth: 1,
+    borderColor: 'rgba(108, 99, 255, 0.15)',
+  },
+
+  // Thumbnail
   thumbnailContainer: {
-    marginRight: 12,
+    position: 'relative',
   },
   thumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
+    width: 52,
+    height: 52,
+    borderRadius: Radius.md,
   },
-  placeholderThumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+  thumbnailPlaceholder: {
+    backgroundColor: Colors.softLavender,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  content: {
+  activeIndicator: {
+    position: 'absolute',
+    bottom: -3,
+    right: -3,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: Colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
+
+  // Info
+  info: {
     flex: 1,
-    justifyContent: 'space-between',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
   },
   title: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#0F172A',
-    flex: 1,
+    color: Colors.text,
+    marginBottom: 3,
   },
-  optionsButton: {
-    padding: 4,
+  titleActive: {
+    color: Colors.primary,
   },
-  description: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 8,
-    lineHeight: 18,
-  },
-  footer: {
+  metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  metadata: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    gap: 6,
   },
   duration: {
     fontSize: 12,
-    color: '#9CA3AF',
+    color: Colors.muted,
+    fontWeight: '500',
   },
-  badge: {
-    flexDirection: 'row',
+  dot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: Colors.gray300,
+  },
+  plays: {
+    fontSize: 12,
+    color: Colors.gray400,
+  },
+  queueButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.softLavender,
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  badgeText: {
-    fontSize: 11,
-    color: '#059669',
-    fontWeight: '600',
+    justifyContent: 'center',
   },
 });

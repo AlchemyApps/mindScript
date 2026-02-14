@@ -2,6 +2,7 @@ import { Resend } from 'resend'
 import type {
   EmailOptions,
   EmailResponse,
+  EmailTemplate,
   WelcomeEmailProps,
   PurchaseConfirmationProps,
   RenderCompleteProps,
@@ -209,7 +210,7 @@ export class EmailService {
 
     for (const email of emails) {
       try {
-        const templateMap = {
+        const templateMap: Partial<Record<EmailTemplate, (to: string, data: any) => Promise<EmailResponse>>> = {
           'welcome': this.sendWelcome,
           'purchase-confirmation': this.sendPurchaseConfirmation,
           'render-complete': this.sendRenderComplete,

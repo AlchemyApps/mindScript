@@ -172,6 +172,14 @@ export default function SellersPage() {
 
   return (
     <div className="p-8 space-y-6">
+      {/* Under Construction Banner */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+        <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+        <p className="text-sm text-amber-700">
+          Seller marketplace is under construction. This page will populate once seller onboarding is enabled.
+        </p>
+      </div>
+
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">

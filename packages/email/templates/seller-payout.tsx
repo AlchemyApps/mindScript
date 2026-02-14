@@ -66,8 +66,8 @@ export const SellerPayoutEmail = ({
           </Text>
 
           <Section style={payoutCard}>
-            <Text style={payoutAmount}>{payoutAmount}</Text>
-            <Text style={payoutCurrency}>{currency}</Text>
+            <Text style={payoutAmountStyle}>{payoutAmount}</Text>
+            <Text style={payoutCurrencyStyle}>{currency}</Text>
 
             <Hr style={divider} />
 
@@ -210,7 +210,7 @@ const payoutCard = {
   color: '#ffffff',
 }
 
-const payoutAmount = {
+const payoutAmountStyle = {
   fontSize: '36px',
   fontWeight: '700',
   lineHeight: '1',
@@ -218,7 +218,7 @@ const payoutAmount = {
   textAlign: 'center' as const,
 }
 
-const payoutCurrency = {
+const payoutCurrencyStyle = {
   fontSize: '16px',
   fontWeight: '500',
   margin: '8px 0 20px',

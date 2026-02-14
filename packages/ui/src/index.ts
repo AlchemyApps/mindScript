@@ -13,6 +13,8 @@ export * from "./components/OAuthButtons";
 export * from "./components/PasswordStrength";
 export * from "./components/EmailVerificationBanner";
 export * from "./components/Switch";
+export * from "./components/Label";
+export * from "./components/Checkbox";
 export * from "./components/RadioGroup";
 export * from "./components/Tabs";
 export * from "./components/Select";

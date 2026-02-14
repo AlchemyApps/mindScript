@@ -433,7 +433,7 @@ export function BuilderForm({ onSubmit, className }: BuilderFormProps) {
               render={({ field }) => (
                 <>
                   <VoiceSelector
-                    value={field.value}
+                    value={field.value as any}
                     onChange={field.onChange}
                   />
                   {errors.voice?.voice_id && (

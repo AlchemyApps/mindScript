@@ -1,105 +1,38 @@
-import { Stack } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
+import { Slot } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Session } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
-import { audioService } from '../lib/audio-service';
-import { backgroundAudioService } from '../services/backgroundAudioService';
-import { carPlayService } from '../services/carPlayService';
-import { Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useAuthStore } from '../stores/authStore';
+import { configureAudioMode } from '../services/backgroundAudio';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
       retry: 2,
+      staleTime: 5 * 60 * 1000,
     },
   },
 });
 
-export default function RootLayout() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+function AppBootstrap() {
+  const initialize = useAuthStore((s) => s.initialize);
 
   useEffect(() => {
-    // Initialize audio services
-    if (Platform.OS !== 'web') {
-      const initializeAudioServices = async () => {
-        try {
-          // Initialize background audio service first
-          await backgroundAudioService.initialize();
+    initialize();
+    configureAudioMode();
+  }, [initialize]);
 
-          // Then initialize the main audio service
-          await audioService.initialize();
+  return <Slot />;
+}
 
-          // Initialize CarPlay/Android Auto service
-          await carPlayService.initialize();
-
-          console.log('All audio services initialized successfully');
-        } catch (error) {
-          console.error('Failed to initialize audio services:', error);
-        }
-      };
-
-      initializeAudioServices();
-    }
-
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setIsLoading(false);
-    });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-
-      // Cleanup audio services
-      if (Platform.OS !== 'web') {
-        backgroundAudioService.destroy().catch(console.error);
-        carPlayService.destroy();
-      }
-    };
-  }, []);
-
-  if (isLoading) {
-    // TODO: Add loading screen
-    return null;
-  }
-
+export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Stack.Screen
-          name="(auth)"
-          options={{
-            headerShown: false,
-            presentation: 'modal'
-          }}
-        />
-        <Stack.Screen
-          name="(tabs)"
-          options={{
-            headerShown: false
-          }}
-        />
-        <Stack.Screen
-          name="index"
-          options={{
-            headerShown: false
-          }}
-        />
-      </Stack>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style="dark" />
+        <AppBootstrap />
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }

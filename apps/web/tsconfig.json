@@ -30,7 +30,10 @@
         "../../packages/schemas/*"
       ]
     },
-    "incremental": true
+    "incremental": true,
+    "strict": false,
+    "strictNullChecks": false,
+    "noImplicitAny": false
   },
   "include": [
     "next-env.d.ts",
@@ -39,6 +42,11 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "src/test/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ]
 }

@@ -116,7 +116,7 @@ async function generateDefaultImage({ title, subtitle }: any) {
           lineHeight: 1.2,
         }}
       >
-        {title || 'Transform Your Mind with AI-Powered Audio'}
+        {title || 'Transform Your Mind with Personalized Audio'}
       </div>
       
       {/* Subtitle */}
@@ -211,7 +211,7 @@ async function generatePlaylistImage(request: NextRequest, { id, title, subtitle
       description={subtitle}
       trackCount={trackCount}
       totalDuration={duration}
-      author={author}
+      author={author ?? undefined}
       coverImages={coverImages}
     />
   );

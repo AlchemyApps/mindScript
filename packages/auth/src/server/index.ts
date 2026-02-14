@@ -11,3 +11,4 @@ export {
   requireAuthWithProfile 
 } from './session';
 export { withAuth, withOptionalAuth, withAdminAuth, withSellerAuth } from './api-route';
+export { createServiceRoleClient } from './supabase-admin';

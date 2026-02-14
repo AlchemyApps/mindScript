@@ -3,28 +3,24 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  LayoutDashboard,
   Users,
   ShoppingCart,
-  FileText,
   Music,
   Settings,
   Activity,
   TrendingUp,
   Shield,
-  CreditCard,
-  Package,
   DollarSign,
+  Heart,
 } from 'lucide-react'
 
 const navigation = [
   { name: 'Analytics', href: '/analytics', icon: TrendingUp },
-  { name: 'Revenue', href: '/analytics/revenue', icon: CreditCard },
   { name: 'User Management', href: '/users', icon: Users },
-  { name: 'Content', href: '/analytics/content', icon: FileText },
   { name: 'Catalog', href: '/catalog', icon: Music },
   { name: 'Sellers', href: '/sellers', icon: ShoppingCart },
   { name: 'Pricing', href: '/pricing', icon: DollarSign },
+  { name: 'Friends & Family', href: '/friends-family', icon: Heart },
   { name: 'Moderation', href: '/moderation', icon: Shield },
   { name: 'Activity Log', href: '/activity', icon: Activity },
   { name: 'Queue Monitor', href: '/monitoring/queue', icon: Activity },

@@ -1,3 +1,458 @@
+# Session: Production Cleanup & UX Fixes
+
+## Session Date: 2026-02-11
+
+## Branch
+`feature/prod-cleanup-ux-fixes` (merged to `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Goal
+Address UX issues surfaced during real-world testing of the deployed web app: broken assets, AI branding leaks, builder flow gaps, render status confusion, stale audio playback, and missing features.
+
+## What Was Accomplished
+
+### Phase 1: Quick Visual & Auth Fixes
+- **Fixed broken logo** in Header + Footer (`logo.png` -> `logo-original.png`)
+- **Removed AI provider branding** across 18+ files (AI Voices -> Studio Voices, OpenAI -> Standard, ElevenLabs -> Premium, AI-powered -> personalized/studio-quality)
+- **Removed third-party OAuth** buttons from login/signup pages (email/password only)
+- **Added scroll-to-top** on builder step transitions
+
+### Phase 2: Builder Logic Fixes
+- **Create button routing**: logged-in -> `/builder`, logged-out on landing -> scroll to top with hint banner
+- **Required explicit voice selection** before proceeding (added `voiceExplicitlySelected` gate)
+- **Clear builder state after checkout** (removed localStorage persistence entirely after QA revealed stale state bugs)
+
+### Phase 3: Render Status & Player Fixes
+- **Fixed banner flashing**: completion detection now checks both `status === "published"` AND no active render job
+- **Real progress in banner**: `RenderProgressBanner` accepts `progress` prop from polling
+- **Force refresh on render complete**: fetches fresh signed URLs, syncs player store
+- **Player reloads on URL change**: added `currentTrack?.url` to MiniPlayer dependency array
+
+### Phase 4: Marketplace
+- **Replaced marketplace with Coming Soon page** using glass morphism design system
+
+### Phase 5: Track Activity Log
+- **New API route**: `GET /api/tracks/[id]/activity` returns config, render history, payment history
+- **New TrackActivityDrawer**: slide-out drawer with config summary, render timeline, payment records
+- **Library integration**: history button on track cards, drawer state management
+
+### QA Iteration Fixes
+- **Hero layout**: made left column `lg:sticky lg:top-32` so hero text stays in view as builder card expands
+- **Library back button**: changed `router.push` to `router.replace` for auth redirects
+- **Removed localStorage persistence entirely** from both StepBuilder and GuestBuilder — builder always starts fresh (resolved persistent stale script, voice selection, and music selection bugs)
+
+## Files Changed (28 modified, 2 new)
+- Header, Footer, HeroSection, page.tsx (landing), layout.tsx, builder layouts
+- Login, signup, checkout success, dashboard, marketplace, library, u/[username]
+- StepBuilder, guest-builder, CreateStep, PublishPreview
+- VoiceCloneCTA, VoiceCloneShelf, VoiceCloneModal
+- MiniPlayer, RenderProgressBanner, LibraryTrackCard
+- MetaTags, schemaGenerator, og route
+- **New**: `api/tracks/[id]/activity/route.ts`, `TrackActivityDrawer.tsx`
+
+## Next Session
+- Further QA testing on deployed version
+- App Store submission prep (delete account, privacy policy, terms, screenshots)
+
+---
+
+# Session: TestFlight Deployment & Crash Debugging
+
+## Session Date: 2026-02-10
+
+## Branch
+`dev` (no feature branch created — changes are unstaged)
+
+## Status: INCOMPLETE
+
+---
+
+## Goal
+Get the MindScript mobile app (Expo 54) onto TestFlight for testing.
+
+## What Was Accomplished
+
+### 1. EAS Build & TestFlight Pipeline Setup
+- Logged into EAS CLI (`npx eas-cli login`)
+- Registered bundle ID `com.mindscript.app` in Apple Developer Portal (done automatically by EAS)
+- Created EAS project: `b21c223f-bb45-4704-9252-73ccf4a20034`
+- App Store Connect app created with ID: `6758994576`
+- Configured `eas.json` submit profile with `appleId` and `ascAppId`
+- Reused existing distribution certificate (serial: `353ACE51D1C39FF2A4F6F98D65B7EC48`)
+- Generated new provisioning profile for `com.mindscript.app`
+- Successfully built and submitted to TestFlight (builds 1-4)
+
+### 2. Fixed: `eas.json` Validation Errors
+- Empty strings in `submit.production` fields caused EAS CLI validation failure
+- Fixed by adding real values: `appleId: "chrisschrade22@gmail.com"`, `ascAppId: "6758994576"`
+
+### 3. Fixed: `react-native-track-player` Not an Expo Plugin
+- Added `react-native-track-player` to `app.json` plugins array (thinking it needed a config plugin)
+- This BROKE the build because `react-native-track-player` v4.1.2 does NOT have an Expo config plugin
+- Error: `Cannot find module '.../react-native-track-player/lib/src/trackPlayer'`
+- **Fix:** Removed it from plugins array. It autolinks without being listed there.
+
+### 4. Fixed: Disabled CarPlay (No Entitlement)
+- `react-native-carplay` was being imported and initialized on startup
+- CarPlay requires a specific Apple entitlement that isn't configured
+- Likely contributed to crash #1 (native TurboModule exception)
+- **Fix:** Commented out CarPlay import and initialization in `app/_layout.tsx`
+
+### 5. Fixed: Deferred TrackPlayer Initialization
+- `index.js` was calling `TrackPlayer.registerPlaybackService()` synchronously before app loaded
+- This native call was happening before the React Native bridge was ready
+- **Fix:** Removed eager registration from `index.js`, moved to deferred async init in `_layout.tsx` with try/catch
+
+### 6. Updated App Icon & Loading Screen
+- Replaced placeholder purple square assets with the brain+quill logo (`logo-original.png`)
+- Updated `icon.png`, `adaptive-icon.png`, added `logo.png` for in-app use
+- Updated `app/index.tsx` to show actual logo Image instead of purple View circles
+- Note: Logo source is 203x203 — needs 1024x1024 version for App Store submission
+
+### 7. Fixed: Duplicate UIBackgroundModes
+- `app.json` had `"audio"` listed twice in `UIBackgroundModes` — removed duplicate
+
+## Still Crashing — Needs Next Session
+
+### Crash #1 (Build 1) — `ObjCTurboModule::performVoidMethodInvocation`
+- Thread 8, native TurboModule void method call
+- Likely caused by CarPlay or TrackPlayer eager init
+- **Addressed** by fixes #4 and #5 above
+
+### Crash #2 (Build 2) — Hermes `stringPrototypeReplace` + Native Exception
+- Thread 10 crashed in Hermes during `String.prototype.replace()`
+- Thread 5 showed `convertNSExceptionToJSError` — a native module threw an NSException
+- Both happen ~148ms after launch — still during initialization
+- Despite deferring TrackPlayer, a native module is still crashing on startup
+
+### Crash #3 (Build 4) — Not yet analyzed
+- New crash report downloaded but not yet examined
+- Located at: `~/Downloads/testflight_feedback` (latest)
+
+## Files Modified (Unstaged)
+- `apps/mobile/app.json` — buildNumber=4, removed track-player from plugins, fixed UIBackgroundModes duplicate, added ITSAppUsesNonExemptEncryption
+- `apps/mobile/eas.json` — added submit.production profile with Apple credentials
+- `apps/mobile/index.js` — removed eager TrackPlayer.registerPlaybackService, now just imports expo-router/entry
+- `apps/mobile/app/_layout.tsx` — deferred TrackPlayer init with dynamic imports + try/catch, disabled CarPlay
+- `apps/mobile/app/index.tsx` — replaced purple circle placeholder with logo Image
+- `apps/mobile/assets/icon.png` — replaced with brain+quill logo
+- `apps/mobile/assets/adaptive-icon.png` — replaced with brain+quill logo
+- `apps/mobile/assets/logo.png` — added for in-app loading screen
+
+## Key Info for Next Session
+- **EAS Project ID:** `b21c223f-bb45-4704-9252-73ccf4a20034`
+- **App Store ID:** `6758994576`
+- **Bundle ID:** `com.mindscript.app`
+- **Apple Team:** TCD69QYQXS (Chris Schrade, Individual)
+- **Current build number:** 4 (bump to 5 for next build)
+- **Build command:** `cd apps/mobile && npx eas-cli build --platform ios --profile production --auto-submit`
+- The app crashes on launch on real device (iPhone 16 Pro Max, iOS 18.7.2)
+- Crashes are all during startup initialization (~100-400ms after launch)
+- Root cause appears to be a native module throwing an NSException during TurboModule invocation
+- Likely suspects: `react-native-track-player` native setup, `react-native-reanimated`, or workspace package resolution (`@mindscript/schemas`, `@mindscript/types`)
+- Consider: stripping app to bare minimum (no TrackPlayer, no Reanimated) to isolate the crash
+
+## Next Session TODO
+1. Analyze crash #3 report
+2. Consider building a minimal version without native audio deps to isolate the issue
+3. If TrackPlayer is the culprit, may need to remove it from dependencies entirely for initial TestFlight (not just defer init — the native module still loads)
+4. Get a non-crashing build on TestFlight
+5. Commit all changes once stable
+
+---
+
+# Session: Mobile App Rebuild — Phase 1 Reader App (Expo 54)
+
+## Session Date: 2026-02-09
+
+## Branch
+`feature/native-mobile` (off `main`)
+
+## Status: COMPLETE
+
+---
+
+## Overview
+Rebuilt the mobile app from scratch on Expo SDK 54 as a lean "reader app" (login, library, player). Stripped all builder/recorder/signup/profile features from the old Expo 51 codebase. Added playback analytics to both mobile and web. Created database migration for `playback_events` table and storage policy for `audio-renders` bucket. App builds and runs on iOS simulator — login, library browsing, and track playback all functional.
+
+## Database Changes
+1. **`supabase/migrations/20260209_playback_events.sql`** — `playback_events` table with indexes, RLS, and RPC functions (`get_user_listening_stats`, `get_platform_listening_stats`, `increment_play_count`)
+2. **`supabase/migrations/20260209_audio_renders_storage_policy.sql`** — Storage SELECT policy on `audio-renders` bucket for authenticated users (enables mobile signed URL creation without service-role)
+
+## New Files (20)
+| File | Purpose |
+|------|---------|
+| `apps/mobile/lib/constants.ts` | Full design token system (colors, gradients, spacing, typography, shadows) |
+| `apps/mobile/lib/theme.ts` | Shared gradient configs |
+| `apps/mobile/lib/analytics.ts` | Playback event tracking (inserts into `playback_events`) |
+| `apps/mobile/stores/downloadStore.ts` | Per-track download state (idle/queued/downloading/downloaded/error) |
+| `apps/mobile/services/backgroundAudio.ts` | TrackPlayer setup with SpokenAudio category |
+| `apps/mobile/services/downloadService.ts` | Download manager (expo-file-system v19 API) |
+| `apps/mobile/services/trackService.ts` | Library fetching + signed URL generation |
+| `apps/mobile/hooks/useLibraryTracks.ts` | React Query for library data |
+| `apps/mobile/hooks/usePlaybackAnalytics.ts` | Playback event emission |
+| `apps/mobile/hooks/useNetworkStatus.ts` | NetInfo wrapper |
+| `apps/mobile/hooks/useDownloadTrack.ts` | Download trigger + progress |
+| `apps/mobile/components/PlayerControls.tsx` | Play/pause/skip/jump controls |
+| `apps/mobile/components/ProgressBar.tsx` | Seekable slider |
+| `apps/mobile/components/SleepTimerSheet.tsx` | Sleep timer bottom sheet |
+| `apps/mobile/components/QueueSheet.tsx` | Queue display |
+| `apps/mobile/eas.json` | EAS build profiles (dev/preview/production) |
+| `apps/web/src/lib/playback-analytics.ts` | Web analytics service |
+| `apps/web/src/hooks/useWebPlaybackAnalytics.ts` | Web playback analytics hook |
+| `supabase/migrations/20260209_playback_events.sql` | Playback events table + RPC |
+| `supabase/migrations/20260209_audio_renders_storage_policy.sql` | Storage policy |
+
+## Modified Files (17)
+| File | Change |
+|------|--------|
+| `apps/mobile/app.json` | iOS/Android config for Expo 54, CarPlay, background audio |
+| `apps/mobile/package.json` | Fresh dependencies for Expo SDK 54 |
+| `apps/mobile/metro.config.js` | Monorepo fix: `resolveRequest` override for react/react-native |
+| `apps/mobile/tsconfig.json` | Updated for Expo 54 |
+| `apps/mobile/index.js` | TrackPlayer PlaybackService registration |
+| `apps/mobile/app/_layout.tsx` | Root layout with QueryClientProvider, auth/audio init |
+| `apps/mobile/app/index.tsx` | Auth gate redirect |
+| `apps/mobile/app/(auth)/_layout.tsx` | Auth stack navigator |
+| `apps/mobile/app/(auth)/login.tsx` | Login with breathing orb, post-login navigation |
+| `apps/mobile/app/(tabs)/_layout.tsx` | 2-tab layout (Library + Now Playing) + NowPlayingBar |
+| `apps/mobile/app/(tabs)/library.tsx` | Track list, search, download filter, offline banner |
+| `apps/mobile/app/(tabs)/player.tsx` | Full player with gradient bg, controls, speed, sleep timer |
+| `apps/mobile/components/TrackCard.tsx` | Track list item with download indicator |
+| `apps/mobile/components/NowPlayingBar.tsx` | Mini-player (glass morphism) |
+| `apps/mobile/stores/authStore.ts` | Stripped to login-only |
+| `apps/mobile/stores/playerStore.ts` | Queue/playback/sleep timer state |
+| `apps/mobile/services/PlaybackService.ts` | Background playback event handlers |
+| `apps/mobile/services/cacheService.ts` | Rewritten for expo-file-system v19 class API |
+| `apps/mobile/services/carPlayService.ts` | CarPlay integration (iOS only) |
+| `apps/mobile/lib/supabase.ts` | Dropped url-polyfill, SecureStore adapter |
+| `apps/web/src/components/MiniPlayer.tsx` | Wired analytics hook + complete events |
+| `apps/admin/src/app/(authenticated)/analytics/page.tsx` | Added playback analytics tab |
+
+## Deleted Files (18)
+Old Expo 51 builder/recorder/signup/profile features removed:
+- `apps/mobile/App.tsx`, `app/(auth)/register.tsx`, `app/(tabs)/builder.tsx`, `app/(tabs)/profile.tsx`
+- `components/AudioPlayer.tsx`, `ErrorBoundary.tsx`, `LoadingStates.tsx`
+- `components/builder/*` (6 files), `docs/*` (2 files)
+- `hooks/useBuilder.ts`, `lib/audio-service.ts`
+- `services/backgroundAudioService.ts`, `draftService.ts`, `recordingService.ts`
+- `stores/__tests__/*`, `services/__tests__/*`
+
+## Bugs Fixed During Build/QA
+1. **expo-file-system v18 build failure** — Upgraded to v19, rewrote cacheService + downloadService for new class-based API
+2. **Duplicate React in monorepo** — Metro `resolveRequest` catches react/react-native + all sub-paths (jsx-runtime, jsx-dev-runtime)
+3. **Expo Go vs dev build** — Must use `npx expo run:ios`, not `npx expo start --ios` (native modules require dev build)
+4. **Login doesn't navigate after sign-in** — Added `useEffect` watching `session` to call `router.replace('/(tabs)/library')`
+5. **Zustand infinite loop** — `useDownloadStore((s) => s.getDownloadedTrackIds())` creates new array each render; fixed with `useMemo` on raw `downloads` map
+6. **`track_access.revoked_at` column doesn't exist** — Removed filter from trackService query
+7. **StorageApiError: Object not found** — Was hardcoding `audio-files` bucket; fixed to extract bucket name from `audio_url` (actual bucket is `audio-renders`)
+8. **Storage policy missing** — `audio-renders` bucket had no policies for authenticated users; added SELECT policy
+9. **NowPlayingBar overlapping library** — Increased FlatList bottom padding
+
+## Key Technical Decisions
+- **RN 0.81.5** (not 0.83.1) — Expo SDK 54 recommended version
+- **react 19.1.0** — Expo SDK 54 expected version
+- **expo-file-system v19** — New class-based API (File, Directory, Paths.cache)
+- **Metro resolveRequest** — Forces single React copy from mobile's node_modules
+- **Storage policy over edge function** — Added SELECT policy on `audio-renders` for authenticated users rather than creating an API route for signing (simpler, tracks table RLS gates URL discovery)
+
+## QA Fixes (Post-Testing)
+1. **Auth doesn't persist between app closes** — `isInitialized` was persisted via zustand partialize, so on restart it rehydrated as `true` and `initialize()` bailed out without restoring the Supabase session from SecureStore. Fixed by removing `isInitialized` from partialize config.
+2. **NowPlayingBar overlaps content and sheets** — Was `position: absolute` floating over everything. Moved into tab bar layout flow using a custom `tabBar` render prop that stacks NowPlayingBar above BottomTabBar. Removed absolute positioning from NowPlayingBar component. Reduced library FlatList paddingBottom to simple `Spacing.lg`.
+3. **No logout button** — Added sign-out icon in library header (top-right) with confirmation alert dialog.
+4. **No way to add tracks to queue** — Added queue icon button on TrackCard (lavender circle, list icon). Only appears when queue is non-empty. Tapping appends track to queue via `playerStore.addToQueue()`.
+
+## Known Issues / Next Steps
+- Library scrolling needs real-device verification (simulator mouse scroll unreliable)
+- Android build not yet tested (`npx expo run:android`)
+- CarPlay requires Apple entitlement — untested
+- Phase 6 (unit tests) and Phase 7 (build verification) still pending
+- Download functionality needs real-device testing
+
+---
+
+# Session: Friends & Family Program + App-Wide COGS Tracking
+
+## Session Date: 2026-02-09
+
+## Branch
+`feature/friends-and-family` (off `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Overview
+Implemented the Friends & Family invite program with two tiers (inner_circle = everything free, cost_pass = AI costs only), app-wide COGS tracking on every purchase, admin F&F management page, and COGS & Margins analytics tab. Also fixed pre-existing broken auth imports and added auth-aware audio player hiding.
+
+## Database Changes (via Supabase MCP)
+1. **Added `ff_tier` column to `profiles`** — nullable TEXT with CHECK constraint (`inner_circle` | `cost_pass`)
+2. **Added `cogs_cents` column to `purchases`** — INTEGER DEFAULT 0 for backward compatibility
+3. **Created `ff_invites` table** — code, email, tier, status (pending/redeemed/revoked), redeemed_by, redeemed_at
+4. **Created `get_cogs_analytics` RPC** — SECURITY DEFINER function returning revenue, COGS, margin, breakdown by type
+
+## New Files (14)
+| File | Purpose |
+|------|---------|
+| `supabase/migrations/20260208_ff_and_cogs.sql` | Migration: ff_invites, ff_tier, cogs_cents, RPC |
+| `apps/web/src/lib/pricing/cost-calculator.ts` | Pure COGS calculation (ElevenLabs/OpenAI/uploaded) |
+| `apps/web/src/lib/pricing/cost-calculator.test.ts` | 10 unit tests, all passing |
+| `apps/web/src/lib/pricing/ff-tier.ts` | getUserFFTier() helper |
+| `apps/web/src/app/api/admin/ff/invite/route.ts` | Admin: create/list invites (web app) |
+| `apps/web/src/app/api/admin/ff/invite/[id]/route.ts` | Admin: revoke/resend invites (web app) |
+| `apps/web/src/app/api/ff/redeem/route.ts` | User: redeem invite code |
+| `apps/web/src/app/invite/[code]/page.tsx` | Invite landing page (server component) |
+| `apps/web/src/app/invite/[code]/InviteRedeemClient.tsx` | Invite redemption client component |
+| `apps/admin/src/app/(authenticated)/friends-family/page.tsx` | Admin F&F management page |
+| `apps/admin/src/app/api/ff/invites/route.ts` | Admin API: GET list, POST create |
+| `apps/admin/src/app/api/ff/invites/[id]/route.ts` | Admin API: PATCH revoke/resend |
+| `apps/admin/src/app/api/analytics/cogs/route.ts` | Admin API: COGS analytics data |
+
+## Modified Files (15)
+| File | Change |
+|------|--------|
+| `apps/web/src/app/api/checkout/guest-conversion/route.ts` | COGS calc, F&F tier check, skipStripe for inner_circle |
+| `apps/web/src/app/api/checkout/track-edit/route.ts` | COGS calc, F&F bypass edit fee |
+| `apps/web/src/app/api/checkout/purchase-track/route.ts` | F&F free access for inner_circle |
+| `apps/web/src/app/api/checkout/session/route.ts` | Dynamic platform fee (0%/5%/15%) |
+| `apps/web/src/app/api/pricing/check-eligibility/route.ts` | Returns ffTier, $0 pricing for F&F |
+| `apps/web/src/app/api/webhooks/stripe/route.ts` | Records cogs_cents + ff_tier on purchases |
+| `apps/web/src/lib/track-builder.ts` | Added createFreeTrack() for F&F |
+| `apps/web/src/components/builder/StepBuilder.tsx` | F&F $0 total, handles skipStripe response |
+| `apps/web/src/components/builder/steps/CreateStep.tsx` | F&F pricing display, strikethrough add-ons |
+| `apps/web/src/components/MiniPlayer.tsx` | Auth-aware: hides for logged-out users |
+| `apps/web/src/components/navigation/Header.tsx` | Clears player on signOut |
+| `apps/web/src/app/auth/login/page.tsx` | Fixed broken import (lib/supabase/client → @mindscript/auth/client) |
+| `apps/web/src/app/auth/signup/page.tsx` | Fixed broken import (lib/supabase/client → @mindscript/auth/client) |
+| `apps/admin/src/components/admin-sidebar.tsx` | Added Friends & Family nav item |
+| `apps/admin/src/app/(authenticated)/analytics/page.tsx` | Added COGS & Margins tab |
+| `packages/email/src/types.ts` | Added FFInviteEmailProps type |
+
+## Bugs Found & Fixed During Testing
+1. **Admin API 404s** — Admin was serving old build; rebuilt to include new routes
+2. **Resend 403 domain error** — Email `from` was `mindscript.app`, domain is `mindscript.studio`
+3. **Invite URLs hardcoded to mindscript.app** — Made dynamic via `NEXT_PUBLIC_WEB_URL` env var
+4. **Signup page 404** — Invite linked to `/sign-up` but auth is at `/auth/signup`; also fixed `/sign-in` → `/auth/login`
+5. **Auth pages broken import** — Both login and signup imported from non-existent `lib/supabase/client`; switched to `@mindscript/auth/client`
+6. **Audio player persisting after logout** — Added auth state listener to MiniPlayer; clears track on signOut
+7. **F&F user seeing regular prices** — Invite never redeemed (broken signup link), manually set ff_tier; also fixed CreateStep to show $0 for all line items
+8. **Add-on prices not zeroed for F&F** — CreateStep component had its own calculateTotal that didn't know about ffTier
+
+## Key Design Decisions
+- **Stripe $0.50 minimum**: When F&F cost < $0.50, skip Stripe via `createFreeTrack()`
+- **COGS at checkout time**: Embedded in Stripe metadata, persisted by webhook
+- **Cookie-based invite for new users**: `ff_invite_code` cookie survives auth redirect
+- **Dynamic platform fee**: inner_circle=0%, cost_pass=5%, normal=15%
+
+## Environment Config
+- `apps/admin/.env.local` — Added `NEXT_PUBLIC_WEB_URL=http://localhost:3001`, `RESEND_API_KEY`
+- Domain: `mindscript.studio` (NOT mindscript.app)
+- Ports: web=3001, admin=3002
+
+## Next Session
+- Full E2E test: invite → signup → redeem → create track → verify $0 purchase recorded
+- Test cost_pass tier with COGS >= $0.50 (goes through Stripe at cost)
+- Admin COGS analytics tab with real data
+- Consider migrating Resend calls to EmailService pattern
+
+---
+
+# Session: Admin Dashboard Bug Fixes, Analytics Consolidation & RLS Hardening
+
+## Session Date: 2026-02-08
+
+## Branch
+`feature/admin-pricing-analytics` (off `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Overview
+Fixed blocking bugs in the admin app (analytics zeros, pricing 500s, catalog errors), consolidated scattered analytics pages into a single tabbed page with real data, created SECURITY DEFINER RLS function for admin access, and fixed ~10 pre-existing build errors.
+
+## Changes This Session
+
+### Database Changes (via Supabase MCP)
+1. **Updated admin role_flags**: Set `is_admin: true` for admin/super_admin users so tracks RLS policies grant access
+2. **Created `pricing_configurations` table**: With seed data and RLS policies (was referenced by code but never migrated)
+3. **Created `is_admin()` SECURITY DEFINER function**: Safely checks admin status without circular RLS reference on profiles table
+4. **Added admin SELECT policy on `profiles`**: Uses `is_admin()` function — avoids self-referential RLS circular evaluation
+5. **Added admin SELECT policy on `purchases`**: Uses `is_admin() OR user_id = auth.uid()`
+
+### Analytics Consolidation (Fix 4 — major change)
+- **Removed** standalone `/analytics/revenue`, `/analytics/content`, `/analytics/users` pages
+- **Removed** Revenue and Content from admin sidebar
+- **Rewrote** `/analytics/page.tsx` with 4 tabs: Overview | Revenue | Content | Users
+- **Created** `/api/analytics/revenue/route.ts` — real data from `purchases` table
+- **Created** `/api/analytics/content/route.ts` — real data from `tracks` table
+- **Created** `/api/analytics/users/route.ts` — real data from `profiles` table
+- Revenue shows: total, all-time, by type, over time, unique paying users, avg order value
+- Content shows: track count, creation velocity, categories, feature usage, "coming soon" banners
+- Users shows: total, new, active, paying, premium, by tier, by status, signup trends
+
+### Bug Fixes
+- **Catalog 500**: Added missing `await` on `createClient()` in `catalog/route.ts` (4 handlers) and `catalog/upload/route.ts` (2 handlers)
+- **Pricing 500**: Created missing `pricing_configurations` table
+- **Analytics zeros**: Fixed admin `role_flags` + added RLS policies for purchases/profiles
+- **"Access Denied" lockout**: Dropped self-referential profiles RLS policy, replaced with SECURITY DEFINER function approach
+
+### Page Cleanup
+- **Settings**: Removed fake Pricing tab (real pricing at `/pricing`), feature flags marked "not connected"
+- **Sellers**: Added "under construction" banner
+- **Queue Monitor**: Added "Audio rendering runs on Heroku" info banner
+
+### Pre-existing Build Fixes
+- Missing `textarea.tsx` and `use-toast.ts` UI components
+- Missing `CheckCircle` import in moderation/appeals
+- `unknown[]` type from `Map.values()` in activity page
+- Supabase join array types in moderation review + sellers API
+- Outdated Stripe API version `2023-10-16` → `2025-02-24.acacia`
+- `Record<string, any>` for parsed metadata in catalog upload
+- `error` typed as `unknown` in catch blocks
+- Lazy-init Stripe in sellers resend route (build-time crash)
+- `useSearchParams` Suspense wrapper in unauthorized page
+- Supabase `.in()` subquery fix in moderation review
+
+## Files Modified
+- `apps/admin/src/app/(authenticated)/analytics/page.tsx` — full rewrite with tabs
+- `apps/admin/src/components/admin-sidebar.tsx` — removed Revenue/Content entries
+- `apps/admin/src/app/(authenticated)/settings/page.tsx` — removed pricing tab, added banners
+- `apps/admin/src/app/(authenticated)/sellers/page.tsx` — added banner
+- `apps/admin/src/app/(authenticated)/monitoring/queue/page.tsx` — added banner
+- `apps/admin/src/app/api/catalog/route.ts` — await fix
+- `apps/admin/src/app/api/catalog/upload/route.ts` — await + typing fixes
+- `apps/admin/src/app/(authenticated)/activity/page.tsx` — Map generic type
+- `apps/admin/src/app/(authenticated)/moderation/appeals/page.tsx` — CheckCircle import
+- `apps/admin/src/app/(authenticated)/moderation/review/[id]/page.tsx` — join type + subquery fix
+- `apps/admin/src/app/api/moderation/metrics/route.ts` — array join access
+- `apps/admin/src/app/api/sellers/[id]/resend/route.ts` — Stripe version + lazy init
+- `apps/admin/src/app/api/sellers/route.ts` — join type fix
+- `apps/admin/src/app/unauthorized/page.tsx` — Suspense wrapper
+- `apps/admin/src/components/AudioUploader.tsx` — status literal + error typing
+
+## Files Created
+- `apps/admin/src/app/api/analytics/revenue/route.ts`
+- `apps/admin/src/app/api/analytics/content/route.ts`
+- `apps/admin/src/app/api/analytics/users/route.ts`
+- `apps/admin/src/components/ui/textarea.tsx`
+- `apps/admin/src/components/ui/use-toast.ts`
+
+## Files Deleted
+- `apps/admin/src/app/(authenticated)/analytics/revenue/page.tsx`
+- `apps/admin/src/app/(authenticated)/analytics/content/page.tsx`
+- `apps/admin/src/app/(authenticated)/analytics/users/page.tsx`
+
+## Next Session
+- Add friends & family feature to admin
+- Consider adding session/event tracking for user behavior analytics
+- Heroku worker redeployment still pending
+
+---
+
 # Session: Voice Speed Control & Full Branch Commit
 
 ## Session Date: 2026-02-07

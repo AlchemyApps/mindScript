@@ -1,5 +1,4 @@
 'use client';
-
 // Login redirect page
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';

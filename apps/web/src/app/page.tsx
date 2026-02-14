@@ -31,7 +31,7 @@ export default function HomePage() {
                 Everything you need to transform your mindset
               </h2>
               <p className="text-muted max-w-2xl mx-auto">
-                Combine cutting-edge AI technology with ancient wisdom for personalized audio
+                Combine modern technology with ancient wisdom for personalized audio
                 experiences that actually work.
               </p>
             </div>
@@ -39,8 +39,8 @@ export default function HomePage() {
             <div className="grid md:grid-cols-3 gap-8">
               <FeatureCard
                 icon={<AudioLines className="w-6 h-6" />}
-                title="Premium AI Voices"
-                description="Choose from OpenAI's natural voices or ElevenLabs' ultra-realistic premium voices. Find the perfect tone for your affirmations."
+                title="Premium Voices"
+                description="Choose from natural and ultra-realistic studio-quality voices. Find the perfect tone for your affirmations."
                 gradient="from-primary to-primary-light"
               />
               <FeatureCard
@@ -117,7 +117,7 @@ export default function HomePage() {
                 role="Yoga Instructor"
               />
               <TestimonialCard
-                quote="The quality of the AI voices is incredible. I use my confidence track every morning before important meetings. It's become a non-negotiable part of my routine."
+                quote="The quality of the voices is incredible. I use my confidence track every morning before important meetings. It's become a non-negotiable part of my routine."
                 author="Marcus T."
                 role="Startup Founder"
               />
@@ -143,7 +143,7 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center justify-center gap-8 md:gap-16">
               <TrustBadge icon={<Shield className="w-5 h-5" />} text="Secure Payments" />
               <TrustBadge icon={<Heart className="w-5 h-5" />} text="Lifetime Access" />
-              <TrustBadge icon={<Sparkles className="w-5 h-5" />} text="AI-Powered" />
+              <TrustBadge icon={<Sparkles className="w-5 h-5" />} text="Studio Quality" />
             </div>
           </div>
         </section>
@@ -161,13 +161,16 @@ export default function HomePage() {
               Create your first personalized affirmation track today with special pricing.
               Start your journey to a calmer, more focused mind.
             </p>
-            <a
-              href="#builder"
+            <button
+              onClick={() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                window.dispatchEvent(new CustomEvent('mindscript:showBuilderHint'));
+              }}
               className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-primary text-white font-semibold text-lg hover:bg-primary/90 transition-all duration-300 glow-primary"
             >
               <Sparkles className="w-5 h-5" />
               Create Your First Track
-            </a>
+            </button>
             <p className="mt-4 text-sm text-muted">
               First track only $0.99 • Regular price $2.99
             </p>

@@ -246,6 +246,14 @@ export default function QueueMonitoringPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      {/* Architecture Note */}
+      <Alert className="border-blue-300 bg-blue-50">
+        <AlertCircle className="h-4 w-4 text-blue-500" />
+        <AlertDescription className="text-blue-700">
+          Audio rendering now runs on Heroku. This page monitors the <code className="px-1 py-0.5 bg-blue-100 rounded text-xs">audio_job_queue</code> table.
+        </AlertDescription>
+      </Alert>
+
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Queue Monitoring</h1>

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/use-toast'
-import { Check, X, Clock, AlertCircle, ChevronRight, MessageSquare } from 'lucide-react'
+import { Check, CheckCircle, X, Clock, AlertCircle, ChevronRight, MessageSquare } from 'lucide-react'
 import { format } from 'date-fns'
 
 interface ModerationAppeal {

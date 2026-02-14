@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "mindscript",
+    "slug": "mindscript",
+    "version": "0.0.1",
+    "description": "MindScript AI audio content creation platform",
+    "sdkVersion": "51.0.0",
+    "platforms": []
+  }
+}

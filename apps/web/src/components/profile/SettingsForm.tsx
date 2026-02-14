@@ -26,19 +26,19 @@ export function SettingsForm() {
     defaultValues: {
       theme: profile?.preferences?.theme || 'system',
       notification_settings: {
-        marketing_emails: profile?.preferences?.notificationSettings?.marketing_emails || false,
-        product_updates: profile?.preferences?.notificationSettings?.product_updates || true,
-        security_alerts: profile?.preferences?.notificationSettings?.security_alerts || true,
-        newsletter: profile?.preferences?.notificationSettings?.newsletter || false,
-        render_complete: profile?.preferences?.notificationSettings?.render_complete || true,
-        payment_receipts: profile?.preferences?.notificationSettings?.payment_receipts || true
+        marketing_emails: (profile?.preferences as any)?.notificationSettings?.marketing_emails || false,
+        product_updates: (profile?.preferences as any)?.notificationSettings?.product_updates || true,
+        security_alerts: (profile?.preferences as any)?.notificationSettings?.security_alerts || true,
+        newsletter: (profile?.preferences as any)?.notificationSettings?.newsletter || false,
+        render_complete: (profile?.preferences as any)?.notificationSettings?.render_complete || true,
+        payment_receipts: (profile?.preferences as any)?.notificationSettings?.payment_receipts || true
       },
       privacy_settings: {
-        profile_visible: profile?.preferences?.privacySettings?.profilePublic !== false,
-        show_email: profile?.preferences?.privacySettings?.show_email || false,
-        show_tracks: profile?.preferences?.privacySettings?.show_tracks !== false,
-        allow_messages: profile?.preferences?.privacySettings?.allow_messages || false,
-        searchable: profile?.preferences?.privacySettings?.searchable !== false
+        profile_visible: (profile?.preferences as any)?.privacySettings?.profilePublic !== false,
+        show_email: (profile?.preferences as any)?.privacySettings?.show_email || false,
+        show_tracks: (profile?.preferences as any)?.privacySettings?.show_tracks !== false,
+        allow_messages: (profile?.preferences as any)?.privacySettings?.allow_messages || false,
+        searchable: (profile?.preferences as any)?.privacySettings?.searchable !== false
       }
     }
   });
