@@ -4,7 +4,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@mindscript/auth/server';
 import { createClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
 import { CUSTOM_VOICE_CREATION_FEE_CENTS } from '@mindscript/schemas';
@@ -16,11 +16,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-02-24.acacia',
 });
 
-const supabaseAdmin = createSupabaseClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const supabaseAdmin = createServiceRoleClient();
 
 export async function POST(request: NextRequest) {
   try {

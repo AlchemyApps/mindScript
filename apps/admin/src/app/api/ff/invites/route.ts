@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@mindscript/auth/server';
 import { createClient } from '@/lib/supabase/server';
 
-const supabaseAdmin = createAdminClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const supabaseAdmin = createServiceRoleClient();
 
 async function requireAdmin() {
   const supabase = await createClient();

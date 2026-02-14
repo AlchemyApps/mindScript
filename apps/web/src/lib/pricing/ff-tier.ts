@@ -1,12 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
+import { createServiceRoleClient } from '@mindscript/auth/server'
 
 export type FFTier = 'inner_circle' | 'cost_pass' | null
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-)
+const supabaseAdmin = createServiceRoleClient()
 
 /**
  * Look up a user's Friends & Family tier.

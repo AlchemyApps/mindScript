@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { z } from "zod";
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@mindscript/auth/server';
 import { calculateVoiceFee, type VoiceTier } from '@mindscript/schemas';
 import { calculateAICost } from '../../../../lib/pricing/cost-calculator';
 import { getUserFFTier } from '../../../../lib/pricing/ff-tier';
@@ -12,17 +12,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2025-02-24.acacia",
 });
 
-// Initialize Supabase Admin Client
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createServiceRoleClient();
 
 // Request validation schema - matches what BuilderForm actually sends
 const GuestCheckoutRequestSchema = z.object({

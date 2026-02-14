@@ -1,17 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@mindscript/auth/server';
 import type { FFTier } from './pricing/ff-tier';
 
-// Create Supabase admin client for track building
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-);
+const supabaseAdmin = createServiceRoleClient();
 
 /**
  * Normalize track config to worker payload format

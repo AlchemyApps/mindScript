@@ -1,15 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
-import { createClient as createAdminClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@mindscript/auth/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
-
-// Service-role client for storage signing (private buckets have no RLS policies)
-function getAdminClient(): SupabaseClient {
-  return createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
 
 export interface TrackAccessCheck {
   hasAccess: boolean;
@@ -71,7 +62,7 @@ export async function generateSignedUrl(
 ): Promise<{ signedUrl: string | null; error: Error | null }> {
   // Always use admin client — audio-renders is a private bucket with no RLS policies,
   // so user-scoped clients get 400 on createSignedUrl
-  const client = getAdminClient();
+  const client = createServiceRoleClient();
 
   // Extract bucket and path from the audio URL
   // The URL can be either:

@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@mindscript/auth/server';
 import { z } from 'zod';
 import { serverSupabase } from '@/lib/supabase/server';
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
+const supabaseAdmin = createServiceRoleClient();
 
 const EditRequestSchema = z.object({
   gains: z.object({

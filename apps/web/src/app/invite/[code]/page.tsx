@@ -1,13 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@mindscript/auth/server';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { InviteRedeemClient } from './InviteRedeemClient';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { autoRefreshToken: false, persistSession: false } }
-);
 
 interface Props {
   params: Promise<{ code: string }>;
@@ -15,6 +9,7 @@ interface Props {
 
 export default async function InvitePage({ params }: Props) {
   const { code } = await params;
+  const supabaseAdmin = createServiceRoleClient();
 
   // Validate the invite code
   const { data: invite, error } = await supabaseAdmin

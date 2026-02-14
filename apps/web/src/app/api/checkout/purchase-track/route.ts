@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { serverSupabase } from '@/lib/supabase/server'
 import Stripe from 'stripe'
-import { createClient } from '@supabase/supabase-js'
+import { createServiceRoleClient } from '@mindscript/auth/server'
 import { getUserFFTier } from '../../../../lib/pricing/ff-tier'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
@@ -44,11 +44,7 @@ export async function POST(request: NextRequest) {
     // Inner Circle F&F: grant access for free
     const ffTier = await getUserFFTier(user.id)
     if (ffTier === 'inner_circle') {
-      const supabaseAdmin = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
-      )
+      const supabaseAdmin = createServiceRoleClient()
 
       // Record $0 purchase
       await supabaseAdmin.from('purchases').insert({
