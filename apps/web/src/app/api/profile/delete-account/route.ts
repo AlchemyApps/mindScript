@@ -1,14 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@mindscript/auth/server';
+import { createClient } from '@supabase/supabase-js';
 import { accountDeletionRequestSchema } from '@mindscript/schemas';
 import { z } from 'zod';
+
+/**
+ * Get an authenticated Supabase client from either:
+ * 1. Bearer token (mobile app) — creates a standalone client with the token
+ * 2. Cookies (web app) — uses the SSR cookie-based client
+ */
+async function getAuthenticatedClient(request: NextRequest) {
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+  }
+  return await createServerClient();
+}
 
 /**
  * POST /api/profile/delete-account - Schedule account for deletion (30-day grace period)
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerClient();
+    const supabase = await getAuthenticatedClient(request);
 
     // Get authenticated user
     const { data: { user }, error: authError } = await supabase.auth.getUser();

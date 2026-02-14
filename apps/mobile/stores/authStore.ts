@@ -1,9 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Session, User } from '@supabase/supabase-js';
+import { Session, User, Subscription } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import * as SecureStore from 'expo-secure-store';
 
 interface AuthState {
   session: Session | null;
@@ -19,37 +18,8 @@ interface AuthState {
   clearError: () => void;
 }
 
-const TOKEN_KEY = 'mindscript_auth_token';
-const REFRESH_TOKEN_KEY = 'mindscript_refresh_token';
-
-async function saveTokens(session: Session) {
-  try {
-    await SecureStore.setItemAsync(TOKEN_KEY, session.access_token);
-    await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, session.refresh_token);
-  } catch (error) {
-    console.error('Error saving tokens to secure store:', error);
-  }
-}
-
-async function clearTokens() {
-  try {
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-  } catch (error) {
-    console.error('Error clearing tokens from secure store:', error);
-  }
-}
-
-async function getStoredTokens() {
-  try {
-    const accessToken = await SecureStore.getItemAsync(TOKEN_KEY);
-    const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-    return { accessToken, refreshToken };
-  } catch (error) {
-    console.error('Error retrieving tokens from secure store:', error);
-    return { accessToken: null, refreshToken: null };
-  }
-}
+// Keep a reference to the auth state change subscription so we can clean up
+let authSubscription: Subscription | null = null;
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -65,27 +35,7 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true, error: null });
         try {
-          const { refreshToken } = await getStoredTokens();
-
-          if (refreshToken) {
-            const { data, error } = await supabase.auth.refreshSession({
-              refresh_token: refreshToken,
-            });
-
-            if (error) throw error;
-
-            if (data.session) {
-              await saveTokens(data.session);
-              set({
-                session: data.session,
-                user: data.user,
-                isInitialized: true,
-                isLoading: false,
-              });
-              return;
-            }
-          }
-
+          // Let the SDK retrieve its own persisted session (via ExpoSecureStoreAdapter)
           const {
             data: { session },
             error,
@@ -94,7 +44,6 @@ export const useAuthStore = create<AuthState>()(
           if (error) throw error;
 
           if (session) {
-            await saveTokens(session);
             set({
               session,
               user: session.user,
@@ -110,18 +59,30 @@ export const useAuthStore = create<AuthState>()(
             });
           }
 
-          supabase.auth.onAuthStateChange(async (_event, session) => {
-            if (session) {
-              await saveTokens(session);
-              set({ session, user: session.user });
-            } else {
-              await clearTokens();
-              set({ session: null, user: null });
-            }
-          });
+          // Listen for SDK-driven auth changes (auto-refresh, sign-out, etc.)
+          // Clean up any previous subscription first
+          if (authSubscription) {
+            authSubscription.unsubscribe();
+          }
+
+          const { data: { subscription } } = supabase.auth.onAuthStateChange(
+            (_event, session) => {
+              if (session) {
+                set({ session, user: session.user, error: null });
+              } else {
+                set({ session: null, user: null });
+              }
+            },
+          );
+          authSubscription = subscription;
         } catch (error) {
           console.error('Error initializing auth:', error);
-          await clearTokens();
+          // Clean up any stale SDK session
+          try {
+            await supabase.auth.signOut();
+          } catch {
+            // ignore cleanup errors
+          }
           set({
             error:
               error instanceof Error
@@ -146,7 +107,7 @@ export const useAuthStore = create<AuthState>()(
           if (error) throw error;
 
           if (data.session) {
-            await saveTokens(data.session);
+            // SDK persists tokens automatically via ExpoSecureStoreAdapter
             set({
               session: data.session,
               user: data.user,
@@ -166,10 +127,16 @@ export const useAuthStore = create<AuthState>()(
       signOut: async () => {
         set({ isLoading: true, error: null });
         try {
+          // Unsubscribe from auth changes before signing out
+          if (authSubscription) {
+            authSubscription.unsubscribe();
+            authSubscription = null;
+          }
+
           const { error } = await supabase.auth.signOut();
           if (error) throw error;
 
-          await clearTokens();
+          // SDK clears its own token storage automatically
           set({
             session: null,
             user: null,
@@ -188,17 +155,12 @@ export const useAuthStore = create<AuthState>()(
       refreshSession: async () => {
         set({ isLoading: true, error: null });
         try {
-          const { refreshToken } = await getStoredTokens();
-          if (!refreshToken) throw new Error('No refresh token available');
-
-          const { data, error } = await supabase.auth.refreshSession({
-            refresh_token: refreshToken,
-          });
+          // Let the SDK use its own stored refresh token
+          const { data, error } = await supabase.auth.refreshSession();
 
           if (error) throw error;
 
           if (data.session) {
-            await saveTokens(data.session);
             set({
               session: data.session,
               user: data.user,
@@ -207,7 +169,6 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('Error refreshing session:', error);
-          await clearTokens();
           set({
             session: null,
             user: null,

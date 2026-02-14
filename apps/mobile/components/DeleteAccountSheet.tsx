@@ -18,8 +18,6 @@ import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
 import { Colors, Spacing, Radius, Shadows } from '../lib/constants';
 
-const WEB_BASE_URL = process.env.EXPO_PUBLIC_WEB_URL ?? 'https://mindscript.studio';
-
 interface DeleteAccountSheetProps {
   onClose: () => void;
 }
@@ -31,29 +29,40 @@ export default function DeleteAccountSheet({ onClose }: DeleteAccountSheetProps)
   const user = useAuthStore((s) => s.user);
 
   const handleDelete = async () => {
-    if (!password.trim()) {
+    if (!password.trim() || !user?.email) {
       Alert.alert('Password required', 'Please enter your password to confirm.');
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${WEB_BASE_URL}/api/profile/delete-account`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
-        },
-        body: JSON.stringify({
-          password,
-          confirm: true,
-        }),
+      // Verify password directly via Supabase
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password,
       });
 
-      const data = await response.json();
+      if (signInError) {
+        Alert.alert('Error', 'Invalid password');
+        return;
+      }
 
-      if (!response.ok) {
-        Alert.alert('Error', data.error ?? 'Failed to delete account');
+      // Schedule deletion: 30-day grace period
+      const deletionDate = new Date();
+      deletionDate.setDate(deletionDate.getDate() + 30);
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          deletion_requested_at: new Date().toISOString(),
+          deletion_scheduled_for: deletionDate.toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('[DeleteAccount] profile update error:', updateError);
+        Alert.alert('Error', 'Failed to schedule account deletion. Please contact support.');
         return;
       }
 

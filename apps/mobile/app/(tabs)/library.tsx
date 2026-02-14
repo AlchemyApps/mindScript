@@ -22,6 +22,7 @@ import { useDownloadStore } from '../../stores/downloadStore';
 import { usePlaylistStore, Playlist } from '../../stores/playlistStore';
 import { trackService, LibraryTrack } from '../../services/trackService';
 import { downloadService } from '../../services/downloadService';
+import { cacheService } from '../../services/cacheService';
 import TrackCard from '../../components/TrackCard';
 import EmptyLibrary from '../../components/EmptyLibrary';
 import PlaylistList from '../../components/PlaylistList';
@@ -87,12 +88,19 @@ export default function LibraryScreen() {
 
   const handlePlayTrack = useCallback(
     async (track: LibraryTrack) => {
-      const localUri = downloadService.getLocalAudioUri(track.id);
-      let audioUrl = localUri;
+      let localUri = downloadService.getLocalAudioUri(track.id);
 
-      if (!audioUrl) {
-        audioUrl = await trackService.getSignedAudioUrl(track.id);
+      // Verify the cached file actually exists on disk
+      if (localUri && !cacheService.isCached(track.id)) {
+        // Stale download entry — clear it and fall back to streaming
+        await downloadService.removeDownload(track.id);
+        localUri = null;
       }
+
+      // Always get a signed URL for streaming fallback
+      const signedUrl = localUri ? null : await trackService.getSignedAudioUrl(track.id);
+      const audioUrl = localUri ?? signedUrl;
+
       if (!audioUrl) {
         Alert.alert(
           'Audio unavailable',
@@ -103,7 +111,7 @@ export default function LibraryScreen() {
 
       const queueItem: QueueItem = {
         id: track.id,
-        url: audioUrl,
+        url: signedUrl ?? audioUrl, // Always keep signed URL for fallback
         title: track.title,
         artist: 'MindScript',
         artwork: track.cover_image_url ?? undefined,
@@ -122,12 +130,16 @@ export default function LibraryScreen() {
 
   const handleAddToQueue = useCallback(
     async (track: LibraryTrack) => {
-      const localUri = downloadService.getLocalAudioUri(track.id);
-      let audioUrl = localUri;
+      let localUri = downloadService.getLocalAudioUri(track.id);
 
-      if (!audioUrl) {
-        audioUrl = await trackService.getSignedAudioUrl(track.id);
+      if (localUri && !cacheService.isCached(track.id)) {
+        await downloadService.removeDownload(track.id);
+        localUri = null;
       }
+
+      const signedUrl = localUri ? null : await trackService.getSignedAudioUrl(track.id);
+      const audioUrl = localUri ?? signedUrl;
+
       if (!audioUrl) {
         Alert.alert('Audio unavailable', 'This track cannot be added to the queue.');
         return;
@@ -135,7 +147,7 @@ export default function LibraryScreen() {
 
       const queueItem: QueueItem = {
         id: track.id,
-        url: audioUrl,
+        url: signedUrl ?? audioUrl,
         title: track.title,
         artist: 'MindScript',
         artwork: track.cover_image_url ?? undefined,
