@@ -70,6 +70,25 @@ function loadTrack(track: QueueItem, shouldPlay: boolean): void {
   if (shouldPlay) {
     p.play();
   }
+
+  // If loading from a local file with a streaming fallback, check after a delay
+  // that the track actually loaded. If not, fall back to streaming URL.
+  if (track.localPath && track.url && track.url !== track.localPath) {
+    setTimeout(() => {
+      const state = usePlayerStore.getState();
+      if (state.currentTrack?.id === track.id && state.duration === 0 && !state.isPlaying) {
+        console.warn('Local file failed to load, falling back to streaming URL');
+        usePlayerStore.setState({
+          currentTrack: { ...track, localPath: undefined, isDownloaded: false },
+          error: null,
+        });
+        p.replace(track.url);
+        if (shouldPlay) {
+          p.play();
+        }
+      }
+    }, 3000);
+  }
 }
 
 function handleTrackFinished(): void {

@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mindscript.app",
-      "buildNumber": "5",
+      "buildNumber": "7",
       "jsEngine": "hermes",
       "infoPlist": {
         "UIBackgroundModes": [

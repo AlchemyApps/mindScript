@@ -1,3 +1,58 @@
+# Session: Mobile Fixes & Web Legal Page Redesign
+
+## Session Date: 2026-02-14
+
+## Branch
+`feature/mobile-fixes-web-design` (merged to `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Goal
+Fix multiple mobile app issues from TestFlight testing and redesign web legal pages.
+
+## What Was Accomplished
+
+### 1. Fixed Refresh Token "Already Used" Error
+- **Root cause**: Dual token storage — SDK persisted via `ExpoSecureStoreAdapter` while authStore manually stored separate copies in SecureStore. SDK auto-refresh rotated tokens, making manual copies stale.
+- **Fix**: Removed all manual token storage (`saveTokens`, `clearTokens`, `getStoredTokens`). `initialize()` now uses `supabase.auth.getSession()` and `onAuthStateChange` exclusively. Subscription properly tracked and cleaned up on sign-out.
+- **File**: `apps/mobile/stores/authStore.ts`
+
+### 2. Fixed Downloaded Track Playback Resilience
+- `handlePlayTrack()` and `handleAddToQueue()` now verify file exists on disk via `cacheService.isCached()` before using local path
+- Stale download entries are cleared and playback falls back to streaming
+- `playerStore.ts` `loadTrack()` has a 3-second timeout fallback: if local file fails to load, retries with streaming URL
+- **Files**: `apps/mobile/app/(tabs)/library.tsx`, `apps/mobile/stores/playerStore.ts`
+
+### 3. Added Logo to Login Screen
+- Replaced CSS placeholder (`logoMark`/`logoDot`) with actual `logo.png` via `<Image>` component (68x68, borderRadius 16)
+- **File**: `apps/mobile/app/(auth)/login.tsx`
+
+### 4. Fixed Account Deletion for Mobile
+- Rewrote `DeleteAccountSheet.tsx` to talk directly to Supabase instead of routing through web API
+- Flow: verify password via `supabase.auth.signInWithPassword()` → update `profiles` with `deletion_requested_at`/`deletion_scheduled_for` → sign out
+- Added Bearer token support to web API route as well (for any future mobile→web API calls)
+- **DB migration**: Added `deletion_requested_at`, `deletion_scheduled_for` columns to `profiles`
+- **pg_cron job**: `process-expired-deletions` runs daily at 3 AM UTC, anonymizes expired accounts
+- **Auto-cancel trigger**: `trg_cancel_deletion_on_login` clears deletion flags if user logs back in
+- **Files**: `apps/mobile/components/DeleteAccountSheet.tsx`, `apps/web/src/app/api/profile/delete-account/route.ts`
+
+### 5. Redesigned Privacy/Terms Web Pages
+- Updated `(public)/layout.tsx` with branded header (logo + "Back to MindScript" link), warm gradient background, glass morphism content card, Footer component
+- Restyled all 3 legal pages with custom Tailwind classes (no `@tailwindcss/typography` dependency)
+- Mobile-responsive for Safari in-app browser
+- **Files**: `apps/web/src/app/(public)/layout.tsx`, `privacy/page.tsx`, `terms/listener/page.tsx`, `terms/creator/page.tsx`
+
+### 6. Fixed Worklets Native Binary Mismatch
+- `react-native-worklets` JS (0.7.2) vs native (0.5.1) mismatch caused app crash on launch
+- Resolved via `expo prebuild --clean` + rebuild
+
+## DB Migration (DEV)
+- `add_account_deletion_scheduling`: columns, index, cron job, cancel trigger
+
+---
+
 # Session: Production Cleanup & UX Fixes
 
 ## Session Date: 2026-02-11
@@ -2045,5 +2100,133 @@ Continuing execution of PLAN.md on `feature/plan-execution`. Features 1-3 (Voice
 
 ## Branch
 `feature/plan-execution` → merging to `dev`
+
+**Status:** COMPLETE
+
+---
+
+# Session: 2026-02-14 — Vercel Build Fix + Heroku Dual-Env Deploy
+
+## Objective
+Fix two deployment issues after recent merges to `dev`:
+1. Vercel web app build failing (missing workspace package builds)
+2. Heroku audio worker — dual-environment refactor committed but not deployed
+
+## What Was Done
+
+### Vercel Build Fix
+- **Root cause:** Vercel build command only built `@mindscript/audio-engine` before `next build`, but audio-engine's DTS generation depends on `@mindscript/schemas`, and multiple API routes import `@mindscript/auth/server` — neither had `dist/` on clean CI
+- **First fix attempt:** Added `@mindscript/schemas` build step — resolved schemas error but surfaced auth error
+- **Final fix:** Replaced manual chained build commands with Turborepo:
+  ```
+  cd ../../ && npx turbo run build --filter=@mindscript/web
+  ```
+  Turbo resolves the full dependency graph automatically (types → schemas → auth, audio-engine, ui → web)
+- **Updated in:** Vercel Dashboard → Project Settings → Build Command (Override)
+- Build succeeded after this change
+
+### Heroku Audio Worker Deploy
+- Deployed dual-environment audio worker via `git subtree push --prefix infrastructure/heroku-audio-worker heroku main`
+- Worker started successfully in dual-env mode:
+  - DEV: byicqjniboevzbhbfxui.supabase.co
+  - PROD: tjuvcfiefebtanqlfalk.supabase.co
+  - Priority: PROD > DEV
+  - Fallback poll every 300s (Realtime subscriptions timed out)
+- Health endpoint not externally accessible (H14 — worker-only dyno, no web process) — expected behavior
+- Released as Heroku v14
+
+## Key Decisions
+- Switched from manual `cd && npm run build` chains to Turbo for Vercel builds — more maintainable as new packages are added
+- Health endpoint on worker dyno is internal-only; verified via `heroku logs` instead
+
+## Files Changed
+- None (dashboard-only config change + Heroku deploy of existing code)
+
+## Known Remaining Items
+- Realtime subscriptions on Heroku worker timing out — fallback polling works but latency is 0-300s vs instant
+- `audio-renders` bucket RLS policies still pending
+- Voice cloning flow not end-to-end tested
+
+## Branch
+`dev` (no code changes — deployment/config only)
+
+**Status:** COMPLETE
+
+---
+
+# Session: 2026-02-14 (cont.) — Env Var Cleanup, Domain Setup, Admin Prod/Dev Split
+
+## Objective
+Clean up Vercel environment variables for proper dev/prod Supabase separation, set up custom domain, disable CI workflows for MVP, and configure admin app with same pattern.
+
+## What Was Done
+
+### Vercel CLI Auth
+- Authenticated via `npx vercel@latest login` (device OAuth flow)
+- Token stored at `~/Library/Application Support/com.vercel.cli/auth.json`
+- Used Vercel REST API for all env var operations (MCP is read-only for settings)
+
+### Web App Env Var Cleanup (prj_8l7pzZMV9qYmQX8c7pWLq30MS3Oi)
+**Deleted (4):**
+- `OPENAI_API_KEY` — not used by web app (only Heroku worker)
+- `NEXT_PUBLIC_WEB_URL` — not referenced in code
+- `NEXT_PUBLIC_SITE_URL` — auth routes have `request.nextUrl.origin` fallback
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (All Environments) — redundant with per-env entries
+
+**Split into per-environment (dev→DEV Supabase, prod→PROD Supabase):**
+- `NEXT_PUBLIC_SUPABASE_URL` — 3 entries (dev, preview, production)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` — 3 entries
+- `SUPABASE_SERVICE_ROLE_KEY` — 3 entries
+
+**Updated:**
+- `NEXT_PUBLIC_APP_URL` → `https://mindscript.studio` (production only)
+
+**Final: 15 entries, down from ~18**
+
+### Domain Setup
+- Domain: `mindscript.studio` (registered at GoDaddy)
+- Deleted GoDaddy A record (`@` → WebsiteBuilder Site)
+- Added A record: `@` → `76.76.21.21` (Vercel)
+- Added domain in Vercel dashboard
+- `NEXT_PUBLIC_APP_URL` set to `https://mindscript.studio` for production
+- Preview uses Vercel-issued URL: `mindscript-git-dev-chrisschrade22-4337s-projects.vercel.app`
+
+### CI Workflows Disabled
+- All 10 GitHub Actions workflows renamed to `.yml.disabled`
+- Workflows required 30+ unconfigured GitHub secrets — re-enable post-MVP
+- Disabled: ci, deploy-staging, deploy-production, e2e-tests, lighthouse-ci, pr-checks, mobile-build, rollback, scheduled-jobs, database-migrations
+- Committed and pushed to `dev`, merged PR #3 (dev → main)
+
+### Admin App Setup (prj_cmFagEJTtmDmRwGYIfUwYErfYJMo)
+**Build command:** Updated to `cd ../../ && npx turbo run build --filter=@mindscript/admin`
+
+**Env var cleanup:**
+- Deleted `NEXT_PUBLIC_WEB_URL` (code falls back to `mindscript.studio`)
+- Split all Supabase vars into per-env (same pattern as web)
+- Final: 12 entries, clean
+
+**Deployments verified:**
+- Production (main) → READY, PROD Supabase
+- Preview (dev) → READY, DEV Supabase
+
+## Environment Mapping (Both Apps)
+| Vercel Env | Branch | Supabase |
+|-----------|--------|----------|
+| Production | main | PROD (tjuvcfiefebtanqlfalk) |
+| Preview | dev / feature branches | DEV (byicqjniboevzbhbfxui) |
+| Development | vercel dev | DEV |
+
+## Files Changed
+- `.github/workflows/*.yml` → `.github/workflows/*.yml.disabled` (10 files)
+
+## Known Remaining Items
+- Stripe keys still need live/test split when ready for launch
+- Stripe webhook endpoints need updating for `mindscript.studio` domain
+- Supabase Auth redirect URLs need `mindscript.studio` added
+- Realtime subscriptions on Heroku worker timing out
+- `audio-renders` bucket RLS policies still pending
+
+## Branch
+`dev` → merged to `main` via PR #3
 
 **Status:** COMPLETE

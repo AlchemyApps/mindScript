@@ -10,6 +10,7 @@ import {
   Pressable,
   Keyboard,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
@@ -101,9 +102,10 @@ export default function LoginScreen() {
             entering={FadeInDown.duration(700).delay(100)}
             style={styles.brandSection}
           >
-            <View style={styles.logoMark}>
-              <View style={styles.logoDot} />
-            </View>
+            <Image
+              source={require('../../assets/logo.png')}
+              style={styles.logoImage}
+            />
             <Text style={styles.brandName}>MindScript</Text>
             <Text style={styles.tagline}>Your inner voice, amplified</Text>
           </Animated.View>
@@ -229,21 +231,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  logoMark: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 16,
     marginBottom: Spacing.md,
-    ...Shadows.md,
-  },
-  logoDot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
   },
   brandName: {
     fontSize: 30,
