@@ -194,15 +194,10 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     try {
       const { data: { user: currentUser } } = await supabaseClient.auth.getUser();
       setUser(currentUser);
-
-      // If user is already authenticated, check pricing now
-      if (currentUser) {
-        await checkPricingEligibility();
-      }
     } catch (error) {
       console.error('Error checking auth status:', error);
     }
-  }, [supabaseClient, checkPricingEligibility]);
+  }, [supabaseClient]);
 
   // Initialize and check auth (no localStorage persistence — builder always starts fresh)
   useEffect(() => {
@@ -210,7 +205,9 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     localStorage.removeItem('guestBuilderState');
     setIsHydrated(true);
     checkAuthStatus();
-  }, [checkAuthStatus]);
+    // Always fetch pricing on mount — works for anonymous and authenticated users
+    checkPricingEligibility();
+  }, [checkAuthStatus, checkPricingEligibility]);
 
   const calculateTotal = () => {
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;

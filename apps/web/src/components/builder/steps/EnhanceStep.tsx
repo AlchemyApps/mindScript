@@ -64,6 +64,8 @@ interface EnhanceStepProps {
   onMusicChange: (music: { id: string; name: string; price: number } | undefined) => void;
   isFirstPurchase?: boolean;
   standardBgTrackCents?: number;
+  solfeggioCents?: number;
+  binauralCents?: number;
   className?: string;
 }
 
@@ -76,24 +78,20 @@ export function EnhanceStep({
   onMusicChange,
   isFirstPurchase = true,
   standardBgTrackCents = 99,
+  solfeggioCents: solfeggioCentsProp,
+  binauralCents: binauralCentsProp,
   className,
 }: EnhanceStepProps) {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { tracks: musicTracks, grouped: musicGrouped, loading: musicLoading } = useBackgroundMusic();
-  const [addonPrices, setAddonPrices] = useState({ solfeggio: 0.99, binaural: 0.99 });
 
-  useEffect(() => {
-    fetch('/api/pricing/addons')
-      .then(res => res.json())
-      .then(data => {
-        setAddonPrices({
-          solfeggio: (data.solfeggio_cents ?? 100) / 100,
-          binaural: (data.binaural_cents ?? 100) / 100,
-        });
-      })
-      .catch(() => {});
-  }, []);
+  // Use props from parent (which fetches via service-role check-eligibility),
+  // convert from cents to dollars for display
+  const addonPrices = {
+    solfeggio: (solfeggioCentsProp ?? 0) / 100,
+    binaural: (binauralCentsProp ?? 0) / 100,
+  };
 
   const handlePreview = useCallback((id: string, url: string) => {
     if (playingId === id) {

@@ -60,7 +60,7 @@ const DEFAULTS: PricingConfig = {
 // In-memory cache
 let cached: PricingConfig | null = null
 let cachedAt = 0
-const CACHE_TTL_MS = 60_000 // 60 seconds
+const CACHE_TTL_MS = 10_000 // 10 seconds — fast propagation of admin changes
 
 /**
  * Fetch ALL pricing config from pricing_configurations + admin_settings.

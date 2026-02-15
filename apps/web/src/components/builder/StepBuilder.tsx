@@ -97,6 +97,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     isFirstPurchase: true,
     standardBgTrackCents: 99,
     voiceCloneFeeCents: 2900,
+    solfeggioCents: 0,
+    binauralCents: 0,
   });
 
   // Initialize Supabase client
@@ -116,7 +118,6 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
       const { data: { user: currentUser } } = await supabaseClient.auth.getUser();
       setUser(currentUser);
       if (currentUser) {
-        await checkPricingEligibility();
         // Check if user has any custom cloned voices
         try {
           const res = await fetch('/api/voices?includeCustom=true');
@@ -147,6 +148,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
           isFirstPurchase: data.isFirstPurchase ?? data.isEligibleForDiscount,
           standardBgTrackCents: data.standardBgTrackCents ?? 99,
           voiceCloneFeeCents: data.voiceCloneFeeCents ?? 2900,
+          solfeggioCents: data.addons?.solfeggioCents ?? 0,
+          binauralCents: data.addons?.binauralCents ?? 0,
         });
       }
     } catch (error) {
@@ -160,6 +163,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     localStorage.removeItem('stepBuilderState');
     setIsHydrated(true);
     checkAuthStatus();
+    // Always fetch pricing on mount — works for anonymous and authenticated users
+    checkPricingEligibility();
   }, [checkAuthStatus]);
 
   const canProceed = () => {
@@ -377,6 +382,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             onMusicChange={(music) => setState((prev) => ({ ...prev, music }))}
             isFirstPurchase={pricingInfo.isFirstPurchase}
             standardBgTrackCents={pricingInfo.standardBgTrackCents}
+            solfeggioCents={pricingInfo.solfeggioCents}
+            binauralCents={pricingInfo.binauralCents}
           />
         );
       case 4:

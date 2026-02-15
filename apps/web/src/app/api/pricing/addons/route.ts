@@ -1,23 +1,14 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { getPricingConfig } from '../../../../lib/pricing/pricing-service'
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-
-    const { data: pricingRows } = await supabase
-      .from('pricing_configurations')
-      .select('key, value')
-      .in('key', ['solfeggio_cents', 'binaural_cents'])
-      .eq('is_active', true)
-
-    const pricingMap = new Map(
-      (pricingRows || []).map((r: { key: string; value: unknown }) => [r.key, Number(r.value)])
-    )
+    // Use centralized pricing service (service-role, bypasses RLS)
+    const pricingConfig = await getPricingConfig()
 
     return NextResponse.json({
-      solfeggio_cents: pricingMap.get('solfeggio_cents') ?? 100,
-      binaural_cents: pricingMap.get('binaural_cents') ?? 100,
+      solfeggio_cents: pricingConfig.solfeggioCents,
+      binaural_cents: pricingConfig.binauralCents,
     })
   } catch (error) {
     console.error('Error fetching addon pricing:', error)
