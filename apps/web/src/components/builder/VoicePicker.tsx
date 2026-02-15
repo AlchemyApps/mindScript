@@ -19,6 +19,7 @@ interface VoicePickerProps {
   scriptLength?: number;
   onOpenVoiceClone?: () => void;
   isFF?: boolean;
+  cloneFeeCents?: number;
   className?: string;
 }
 
@@ -59,6 +60,7 @@ export function VoicePicker({
   scriptLength = 0,
   onOpenVoiceClone,
   isFF,
+  cloneFeeCents = 2900,
   className,
 }: VoicePickerProps) {
   const [voices, setVoices] = useState<VoicesResponse | null>(null);
@@ -197,6 +199,7 @@ export function VoicePicker({
           variant="hero"
           hasClonedVoice={hasClonedVoice}
           isFF={isFF}
+          cloneFeeCents={cloneFeeCents}
           onClick={onOpenVoiceClone}
         />
       )}
@@ -279,7 +282,7 @@ export function VoicePicker({
       {isAuthenticated && filteredVoicesByTier.custom.length > 0 && (
         <VoiceSection
           title="Your Voices"
-          subtitle="Custom cloned voices"
+          subtitle="Custom cloned voices &middot; per-track fees apply"
           voices={filteredVoicesByTier.custom}
           selectedVoice={selectedVoice}
           playingVoiceId={playingVoiceId}
@@ -306,7 +309,7 @@ export function VoicePicker({
           <div className="text-left">
             <span className="text-sm font-semibold text-text block">Clone Another Voice</span>
             <span className="text-xs text-muted">
-              Clone another voice with AI — $29 one-time
+              Clone another voice with AI — ${(cloneFeeCents / 100).toFixed(0)} one-time
             </span>
           </div>
           <Sparkles className="w-4 h-4 text-primary ml-auto flex-shrink-0" />

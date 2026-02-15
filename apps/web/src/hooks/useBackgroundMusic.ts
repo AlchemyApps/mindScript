@@ -12,6 +12,7 @@ export interface BackgroundTrack {
   duration_seconds: number;
   attributes: string[];
   previewUrl: string;
+  tier: 'standard' | 'premium';
 }
 
 export function useBackgroundMusic() {

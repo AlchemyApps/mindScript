@@ -8,9 +8,10 @@ import { cn } from '../../lib/utils';
 interface HeroSectionProps {
   className?: string;
   children?: React.ReactNode;
+  pricingCta?: string;
 }
 
-export function HeroSection({ className, children }: HeroSectionProps) {
+export function HeroSection({ className, children, pricingCta }: HeroSectionProps) {
   const [showBuilderHint, setShowBuilderHint] = useState(false);
 
   useEffect(() => {
@@ -69,6 +70,19 @@ export function HeroSection({ className, children }: HeroSectionProps) {
                 <FeaturePill icon={<Headphones className="w-4 h-4" />} label="Binaural Beats" />
                 <FeaturePill icon={<Sparkles className="w-4 h-4" />} label="Solfeggio Tones" />
               </div>
+
+              {/* Pricing CTA */}
+              {pricingCta && (
+                <div className="pt-2">
+                  <button
+                    onClick={scrollToBuilder}
+                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-semibold text-lg hover:bg-primary/90 transition-all duration-300 glow-primary"
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    {pricingCta}
+                  </button>
+                </div>
+              )}
 
               {/* Trust Indicators */}
               <div className="pt-4">

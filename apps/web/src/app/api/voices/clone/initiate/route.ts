@@ -7,8 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@mindscript/auth/server';
 import { createClient } from '@/lib/supabase/server';
 import Stripe from 'stripe';
-import { CUSTOM_VOICE_CREATION_FEE_CENTS } from '@mindscript/schemas';
 import { getUserFFTier } from '@/lib/pricing/ff-tier';
+import { getPricingConfig } from '@/lib/pricing/pricing-service';
 
 export const maxDuration = 60;
 
@@ -269,6 +269,10 @@ export async function POST(request: NextRequest) {
       ? { customer: stripeCustomerId }
       : { customer_creation: 'always' as const };
 
+    // Fetch dynamic voice clone fee from admin-controlled pricing
+    const pricingConfig = await getPricingConfig();
+    const voiceCloneFeeCents = pricingConfig.voiceCloneFeeCents;
+
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
@@ -276,7 +280,7 @@ export async function POST(request: NextRequest) {
         {
           price_data: {
             currency: 'usd',
-            unit_amount: CUSTOM_VOICE_CREATION_FEE_CENTS,
+            unit_amount: voiceCloneFeeCents,
             product_data: {
               name: 'Custom Voice Setup',
               description: 'One-time voice cloning fee — create your unique AI voice',

@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const { data, error } = await supabase
       .from('background_tracks')
-      .select('id, title, slug, category, bpm, key_signature, price_cents, duration_seconds, is_active, is_platform_asset')
+      .select('id, title, slug, category, bpm, key_signature, price_cents, duration_seconds, is_active, is_platform_asset, tier')
       .order('category')
       .order('title')
 
@@ -35,7 +35,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Track id is required' }, { status: 400 })
     }
 
-    const allowedFields = ['title', 'price_cents', 'is_active', 'category']
+    const allowedFields = ['title', 'price_cents', 'is_active', 'category', 'tier']
     const safeUpdates: Record<string, unknown> = {}
     for (const field of allowedFields) {
       if (field in updates) {

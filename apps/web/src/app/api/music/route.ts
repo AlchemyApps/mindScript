@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const { data: tracks, error } = await supabaseAdmin
       .from('background_tracks')
-      .select('id, title, slug, description, category, bpm, key:key_signature, price_cents, duration_seconds, attributes, url')
+      .select('id, title, slug, description, category, bpm, key:key_signature, price_cents, duration_seconds, attributes, url, tier')
       .eq('is_active', true)
       .eq('is_platform_asset', true)
       .order('category')

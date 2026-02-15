@@ -10,7 +10,12 @@ interface VoiceCloneCTAProps {
   hasClonedVoice: boolean;
   onClick: () => void;
   isFF?: boolean;
+  cloneFeeCents?: number;
   className?: string;
+}
+
+function formatFee(cents: number): string {
+  return `$${(cents / 100).toFixed(0)}`;
 }
 
 const BENEFITS = [
@@ -19,7 +24,8 @@ const BENEFITS = [
   'Works instantly after setup',
 ];
 
-export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, className }: VoiceCloneCTAProps) {
+export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, cloneFeeCents = 2900, className }: VoiceCloneCTAProps) {
+  const fee = formatFee(cloneFeeCents);
   if (hasClonedVoice) return null;
 
   if (variant === 'sidebar') {
@@ -57,10 +63,10 @@ export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, classNam
           <div className="flex items-center justify-between">
             {isFF ? (
               <span className="text-[11px] font-semibold text-accent">
-                <span className="line-through text-muted mr-1">$29</span> FREE
+                <span className="line-through text-muted mr-1">{fee}</span> FREE
               </span>
             ) : (
-              <span className="text-[11px] font-semibold text-primary">$29 one-time</span>
+              <span className="text-[11px] font-semibold text-primary">{fee} one-time</span>
             )}
             <span className="flex items-center gap-1 text-[10px] text-primary font-medium group-hover:gap-1.5 transition-all">
               Get started <ArrowRight className="w-2.5 h-2.5" />
@@ -113,10 +119,10 @@ export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, classNam
             <div className="flex items-center gap-3 pt-0.5">
               {isFF ? (
                 <span className="text-sm font-semibold text-accent">
-                  <span className="line-through text-muted mr-1">$29</span> FREE
+                  <span className="line-through text-muted mr-1">{fee}</span> FREE
                 </span>
               ) : (
-                <span className="text-sm font-semibold text-primary">$29 one-time setup</span>
+                <span className="text-sm font-semibold text-primary">{fee} one-time setup</span>
               )}
               <span className="flex items-center gap-1 text-sm text-primary font-medium group-hover:gap-2 transition-all">
                 Clone your voice <ArrowRight className="w-4 h-4" />
@@ -156,10 +162,10 @@ export function VoiceCloneCTA({ variant, hasClonedVoice, onClick, isFF, classNam
           <div className="flex items-center justify-between">
             {isFF ? (
               <span className="text-xs font-semibold text-accent">
-                <span className="line-through text-muted mr-1">$29</span> FREE
+                <span className="line-through text-muted mr-1">{fee}</span> FREE
               </span>
             ) : (
-              <span className="text-xs font-semibold text-primary">$29 one-time</span>
+              <span className="text-xs font-semibold text-primary">{fee} one-time</span>
             )}
             <span className="flex items-center gap-1 text-xs text-primary font-medium group-hover:gap-2 transition-all">
               Get started <ArrowRight className="w-3.5 h-3.5" />

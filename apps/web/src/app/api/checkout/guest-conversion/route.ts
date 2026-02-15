@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { z } from "zod";
 import { createServiceRoleClient } from '@mindscript/auth/server';
-import { calculateVoiceFee, type VoiceTier } from '@mindscript/schemas';
+import { type VoiceTier } from '@mindscript/schemas';
 import { calculateAICost } from '../../../../lib/pricing/cost-calculator';
 import { getUserFFTier } from '../../../../lib/pricing/ff-tier';
+import { getPricingConfig, calculateDynamicVoiceFee } from '../../../../lib/pricing/pricing-service';
 import { createFreeTrack } from '../../../../lib/track-builder';
 
 // Initialize Stripe
@@ -118,9 +119,10 @@ export async function POST(request: NextRequest) {
     const voiceTier = (builderState.voice.tier || 'included') as VoiceTier;
     const duration = builderState.duration || 10; // Default to 10 minutes if not specified
 
-    // Calculate voice fee for premium/custom voices based on script length
+    // Calculate voice fee for premium/custom voices based on script length (dynamic pricing)
+    const pricingConfig = await getPricingConfig();
     const scriptLength = builderState.script.length;
-    const voiceFeeCents = calculateVoiceFee(scriptLength, voiceTier);
+    const voiceFeeCents = calculateDynamicVoiceFee(scriptLength, voiceTier, pricingConfig.voicePricingTiers);
 
     // Add voice tier to features if premium/custom
     if (voiceTier === 'premium') {
@@ -291,7 +293,7 @@ export async function POST(request: NextRequest) {
       total_amount: (priceAmount + voiceFeeCents).toString(),
       voice_tier: voiceTier,
       voice_fee_cents: voiceFeeCents.toString(),
-      cogs_cents: calculateAICost({ scriptLength, voiceProvider: builderState.voice.provider }).totalCents.toString(),
+      cogs_cents: calculateAICost({ scriptLength, voiceProvider: builderState.voice.provider, cogsRates: pricingConfig }).totalCents.toString(),
     };
 
     // Add pending track ID if we have one
@@ -332,7 +334,7 @@ export async function POST(request: NextRequest) {
     if (!userId.includes('@')) {
       const ffTier = await getUserFFTier(userId);
       if (ffTier) {
-        const cogsCents = calculateAICost({ scriptLength, voiceProvider: builderState.voice.provider }).totalCents;
+        const cogsCents = calculateAICost({ scriptLength, voiceProvider: builderState.voice.provider, cogsRates: pricingConfig }).totalCents;
         const shouldSkipStripe = ffTier === 'inner_circle' || cogsCents < 50; // Stripe min $0.50
 
         if (shouldSkipStripe) {

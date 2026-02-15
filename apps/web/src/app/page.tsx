@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { Header } from '../components/navigation/Header';
 import { Footer } from '../components/navigation/Footer';
 import { HeroSection } from '../components/landing/HeroSection';
@@ -8,13 +9,27 @@ import { StepBuilder } from '../components/builder/StepBuilder';
 import { AudioLines, Headphones, Smartphone, Sparkles, Heart, Shield } from 'lucide-react';
 
 export default function HomePage() {
+  const [firstTrackPrice, setFirstTrackPrice] = useState('$1.00');
+  const [regularPrice, setRegularPrice] = useState('$2.99');
+
+  useEffect(() => {
+    fetch('/api/pricing/check-eligibility')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.pricing) {
+          setFirstTrackPrice(`$${(data.pricing.discountedPrice / 100).toFixed(2)}`);
+          setRegularPrice(`$${(data.pricing.basePrice / 100).toFixed(2)}`);
+        }
+      })
+      .catch(() => {});
+  }, []);
   return (
     <div className="flex min-h-screen flex-col bg-warm-gradient">
       <Header variant="transparent" />
 
       <main className="flex-1">
         {/* Hero Section with Builder */}
-        <HeroSection>
+        <HeroSection pricingCta={`Create your first track for only ${firstTrackPrice}`}>
           <StepBuilder variant="card" className="max-w-2xl mx-auto" />
         </HeroSection>
 
@@ -172,7 +187,7 @@ export default function HomePage() {
               Create Your First Track
             </button>
             <p className="mt-4 text-sm text-muted">
-              First track only $0.99 • Regular price $2.99
+              First track only {firstTrackPrice} • Regular price {regularPrice}
             </p>
           </div>
         </section>
