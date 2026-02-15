@@ -262,7 +262,7 @@ export function voiceRowToMetadata(row: VoiceCatalogRow): VoiceMetadata {
 // Voice Tier Pricing
 // ============================================
 
-// Character length tiers for premium/custom voice pricing
+/** @deprecated Use dynamic pricing from getPricingConfig() in apps/web/src/lib/pricing/pricing-service.ts. Kept as fallback defaults only. */
 export const VOICE_PRICING_TIERS = {
   short:    { maxChars: 200,  priceCents: 49 },   // $0.49
   medium:   { maxChars: 500,  priceCents: 79 },   // $0.79
@@ -270,7 +270,7 @@ export const VOICE_PRICING_TIERS = {
   extended: { maxChars: 2000, priceCents: 149 },  // $1.49
 } as const;
 
-// Custom voice creation one-time fee
+/** @deprecated Use dynamic pricing from getPricingConfig() in apps/web/src/lib/pricing/pricing-service.ts. Kept as fallback default only. */
 export const CUSTOM_VOICE_CREATION_FEE_CENTS = 2900; // $29.00
 
 /**

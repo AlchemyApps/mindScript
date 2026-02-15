@@ -23,6 +23,17 @@ type GlobalPricing = {
   binaural_cents: number
   edit_fee_cents: number
   free_edit_limit: number
+  voice_clone_fee_cents: number
+  premium_voice_short_cents: number
+  premium_voice_medium_cents: number
+  premium_voice_long_cents: number
+  premium_voice_extended_cents: number
+  premium_voice_short_max_chars: number
+  premium_voice_medium_max_chars: number
+  premium_voice_long_max_chars: number
+  premium_voice_extended_max_chars: number
+  elevenlabs_cost_per_char_millicents: number
+  openai_tts_cost_per_char_millicents: number
 }
 
 type Voice = {
@@ -51,6 +62,7 @@ type BackgroundTrack = {
   duration_seconds: number | null
   is_active: boolean
   is_platform_asset: boolean
+  tier: 'standard' | 'premium'
 }
 
 // ── Main Component ──
@@ -195,6 +207,7 @@ export default function PricingPage() {
           title: track.title,
           price_cents: track.price_cents,
           is_active: track.is_active,
+          tier: track.tier,
         }),
       })
       if (!res.ok) throw new Error('Failed to save track')
@@ -317,6 +330,64 @@ export default function PricingPage() {
               </div>
 
               <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Voice Clone Fee</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <CentsInput
+                    label="Voice Clone Setup Fee"
+                    value={global.voice_clone_fee_cents}
+                    onChange={(v) => updateGlobalField('voice_clone_fee_cents', v)}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Premium Voice Pricing Tiers</h2>
+                <p className="text-sm text-gray-500 mb-4">Per-track fees for premium and custom voices based on script length.</p>
+                <div className="space-y-4">
+                  {(['short', 'medium', 'long', 'extended'] as const).map((tier) => (
+                    <div key={tier} className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1 capitalize">{tier} Tier</label>
+                        <p className="text-xs text-gray-500">Max characters for this tier</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Max Chars</label>
+                        <input
+                          type="number"
+                          value={global[`premium_voice_${tier}_max_chars`]}
+                          onChange={(e) => updateGlobalField(`premium_voice_${tier}_max_chars`, parseInt(e.target.value) || 0)}
+                          min={1}
+                          className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <CentsInput
+                        label="Price"
+                        value={global[`premium_voice_${tier}_cents`]}
+                        onChange={(v) => updateGlobalField(`premium_voice_${tier}_cents`, v)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">COGS Rates</h2>
+                <p className="text-sm text-gray-500 mb-4">Cost-of-goods rates in millicents per character (1 millicent = $0.00001).</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <MillicentsInput
+                    label="ElevenLabs Cost/Char"
+                    value={global.elevenlabs_cost_per_char_millicents}
+                    onChange={(v) => updateGlobalField('elevenlabs_cost_per_char_millicents', v)}
+                  />
+                  <MillicentsInput
+                    label="OpenAI TTS Cost/Char"
+                    value={global.openai_tts_cost_per_char_millicents}
+                    onChange={(v) => updateGlobalField('openai_tts_cost_per_char_millicents', v)}
+                  />
+                </div>
+              </div>
+
+              <div>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit Settings</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <CentsInput
@@ -429,6 +500,7 @@ export default function PricingPage() {
                       <th className="pb-3 pr-4 font-medium">Title</th>
                       <th className="pb-3 pr-4 font-medium">Category</th>
                       <th className="pb-3 pr-4 font-medium">BPM</th>
+                      <th className="pb-3 pr-4 font-medium">Tier</th>
                       <th className="pb-3 pr-4 font-medium">Price</th>
                       <th className="pb-3 pr-4 font-medium text-center">Active</th>
                       <th className="pb-3 font-medium text-right">Actions</th>
@@ -511,6 +583,32 @@ function CentsInput({ label, value, onChange }: {
           className="w-full pl-8 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
+    </div>
+  )
+}
+
+function MillicentsInput({ label, value, onChange }: {
+  label: string
+  value: number
+  onChange: (millicents: number) => void
+}) {
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => {
+          const val = parseFloat(e.target.value)
+          if (!Number.isNaN(val)) onChange(val)
+        }}
+        step="0.1"
+        min="0"
+        className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      />
+      <p className="text-xs text-gray-500 mt-1">
+        = ${(value / 100_000).toFixed(6)}/char
+      </p>
     </div>
   )
 }
@@ -651,6 +749,16 @@ function TrackRow({ track, isEditing, isSaving, onEdit, onCancel, onSave, onTogg
         <td className="py-3 pr-4 text-gray-600">{track.category}</td>
         <td className="py-3 pr-4 text-gray-600">{track.bpm || '--'}</td>
         <td className="py-3 pr-4">
+          <select
+            value={track.tier}
+            onChange={(e) => onUpdateLocal({ ...track, tier: e.target.value as 'standard' | 'premium' })}
+            className="px-2 py-1 border rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="standard">Standard</option>
+            <option value="premium">Premium</option>
+          </select>
+        </td>
+        <td className="py-3 pr-4">
           <div className="relative w-24">
             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
             <input
@@ -699,6 +807,11 @@ function TrackRow({ track, isEditing, isSaving, onEdit, onCancel, onSave, onTogg
       <td className="py-3 pr-4 font-medium text-gray-900">{track.title}</td>
       <td className="py-3 pr-4 text-gray-600">{track.category}</td>
       <td className="py-3 pr-4 text-gray-600">{track.bpm || '--'}</td>
+      <td className="py-3 pr-4">
+        <span className={`px-2 py-0.5 text-xs rounded-full ${track.tier === 'premium' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+          {track.tier}
+        </span>
+      </td>
       <td className="py-3 pr-4 text-gray-600">${(track.price_cents / 100).toFixed(2)}</td>
       <td className="py-3 pr-4 text-center">
         <ToggleSwitch enabled={track.is_active} onToggle={onToggle} disabled={isSaving} />

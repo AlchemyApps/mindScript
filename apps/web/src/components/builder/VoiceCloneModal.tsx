@@ -20,6 +20,7 @@ interface VoiceCloneModalProps {
   isOpen: boolean;
   onClose: () => void;
   onComplete: () => void;
+  cloneFeeCents?: number;
   className?: string;
 }
 
@@ -27,7 +28,9 @@ type WizardStep = 'intro' | 'consent' | 'record' | 'review' | 'processing';
 
 const STEP_ORDER: WizardStep[] = ['intro', 'consent', 'record', 'review'];
 
-export function VoiceCloneModal({ isOpen, onClose, onComplete, className }: VoiceCloneModalProps) {
+export function VoiceCloneModal({ isOpen, onClose, onComplete, cloneFeeCents = 2900, className }: VoiceCloneModalProps) {
+  const feeDisplay = `$${(cloneFeeCents / 100).toFixed(0)}`;
+  const feeDisplayFull = `$${(cloneFeeCents / 100).toFixed(2)}`;
   const [step, setStep] = useState<WizardStep>('intro');
   const [consent, setConsent] = useState<ConsentState>(EMPTY_CONSENT);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -215,7 +218,7 @@ export function VoiceCloneModal({ isOpen, onClose, onComplete, className }: Voic
               <div className="space-y-3">
                 <FeatureItem
                   icon={<Sparkles className="w-4 h-4 text-primary" />}
-                  title="One-time fee of $29"
+                  title={`One-time fee of ${feeDisplay}`}
                   description="Create your voice once, use it on unlimited tracks"
                 />
                 <FeatureItem
@@ -232,7 +235,7 @@ export function VoiceCloneModal({ isOpen, onClose, onComplete, className }: Voic
 
               {/* Price badge */}
               <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 text-center">
-                <span className="text-2xl font-bold text-primary">$29</span>
+                <span className="text-2xl font-bold text-primary">{feeDisplay}</span>
                 <span className="text-sm text-muted ml-2">one-time fee</span>
               </div>
             </div>
@@ -323,7 +326,7 @@ export function VoiceCloneModal({ isOpen, onClose, onComplete, className }: Voic
                   </div>
                   <div className="flex justify-between pt-2 border-t border-gray-200">
                     <span className="font-semibold text-text">Total</span>
-                    <span className="font-bold text-primary text-lg">$29.00</span>
+                    <span className="font-bold text-primary text-lg">{feeDisplayFull}</span>
                   </div>
                 </div>
               </div>
@@ -372,7 +375,7 @@ export function VoiceCloneModal({ isOpen, onClose, onComplete, className }: Voic
                 ) : (
                   <span className="flex items-center justify-center gap-2">
                     <CreditCard className="w-4 h-4" />
-                    Pay $29 & Create Voice
+                    Pay {feeDisplay} & Create Voice
                   </span>
                 )}
               </button>

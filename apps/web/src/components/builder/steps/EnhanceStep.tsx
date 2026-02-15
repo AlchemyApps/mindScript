@@ -163,7 +163,7 @@ export function EnhanceStep({
             </div>
             <div>
               <h3 className="font-semibold text-text">Solfeggio Frequencies</h3>
-              <p className="text-sm text-muted">Ancient healing tones &middot; +${addonPrices.solfeggio.toFixed(2)}</p>
+              <p className="text-sm text-muted">Ancient healing tones{addonPrices.solfeggio > 0 ? ` · +$${addonPrices.solfeggio.toFixed(2)}` : ' · included'}</p>
             </div>
           </div>
           <ToggleSwitch
@@ -228,7 +228,7 @@ export function EnhanceStep({
             </div>
             <div>
               <h3 className="font-semibold text-text">Binaural Beats</h3>
-              <p className="text-sm text-muted">Brainwave entrainment &middot; +${addonPrices.binaural.toFixed(2)}</p>
+              <p className="text-sm text-muted">Brainwave entrainment{addonPrices.binaural > 0 ? ` · +$${addonPrices.binaural.toFixed(2)}` : ' · included'}</p>
             </div>
           </div>
           <ToggleSwitch
@@ -299,7 +299,7 @@ export function EnhanceStep({
           </div>
           <div>
             <h3 className="font-semibold text-text">Background Music</h3>
-            <p className="text-sm text-muted">Ambient soundscapes &middot; $0.99 each</p>
+            <p className="text-sm text-muted">Ambient soundscapes</p>
           </div>
         </div>
 
@@ -439,7 +439,9 @@ function MusicTrackCard({
 
         {/* Price + Preview */}
         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-          <span className="text-xs text-muted">+${(track.price_cents / 100).toFixed(2)}</span>
+          <span className="text-xs text-muted">
+            {track.tier === 'premium' ? `+$${(track.price_cents / 100).toFixed(2)}` : 'Included'}
+          </span>
           <button
             type="button"
             onClick={onPreview}

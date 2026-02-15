@@ -54,10 +54,10 @@ const VOICE_OPTIONS = {
 
 const BACKGROUND_MUSIC_OPTIONS = [
   { id: 'none', name: 'No Background Music', price: 0 },
-  { id: 'calm-waters', name: 'Calm Waters', price: 0.99 },
-  { id: 'forest-ambience', name: 'Forest Ambience', price: 0.99 },
-  { id: 'cosmic-journey', name: 'Cosmic Journey', price: 0.99 },
-  { id: 'meditation-bells', name: 'Meditation Bells', price: 0.99 },
+  { id: 'calm-waters', name: 'Calm Waters', price: 0 },
+  { id: 'forest-ambience', name: 'Forest Ambience', price: 0 },
+  { id: 'cosmic-journey', name: 'Cosmic Journey', price: 0 },
+  { id: 'meditation-bells', name: 'Meditation Bells', price: 0 },
 ];
 
 const SOLFEGGIO_FREQUENCIES = [
@@ -73,11 +73,11 @@ const SOLFEGGIO_FREQUENCIES = [
 ];
 
 const BINAURAL_BANDS = [
-  { id: 'delta', name: 'Delta (0.5-4 Hz) - Deep Sleep', price: 0.99 },
-  { id: 'theta', name: 'Theta (4-8 Hz) - Meditation', price: 0.99 },
-  { id: 'alpha', name: 'Alpha (8-13 Hz) - Relaxation', price: 0.99 },
-  { id: 'beta', name: 'Beta (13-30 Hz) - Focus', price: 0.99 },
-  { id: 'gamma', name: 'Gamma (30-100 Hz) - Peak Awareness', price: 0.99 },
+  { id: 'delta', name: 'Delta (0.5-4 Hz) - Deep Sleep' },
+  { id: 'theta', name: 'Theta (4-8 Hz) - Meditation' },
+  { id: 'alpha', name: 'Alpha (8-13 Hz) - Relaxation' },
+  { id: 'beta', name: 'Beta (13-30 Hz) - Focus' },
+  { id: 'gamma', name: 'Gamma (30-100 Hz) - Peak Awareness' },
 ];
 
 interface GuestBuilderProps {
@@ -103,12 +103,12 @@ const DEFAULT_BUILDER_STATE: BuilderState = {
   solfeggio: {
     enabled: false,
     frequency: 528,
-    price: 0.99,
+    price: 0,
   },
   binaural: {
     enabled: false,
     band: 'alpha',
-    price: 0.99,
+    price: 0,
   },
 };
 
@@ -125,7 +125,10 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     discountedPrice: number;
     savings: number;
     isEligibleForDiscount: boolean;
-  }>({ basePrice: 2.99, discountedPrice: 0.99, savings: 2.00, isEligibleForDiscount: true });
+    solfeggioCents: number;
+    binauralCents: number;
+    voiceCloneFeeCents: number;
+  }>({ basePrice: 2.99, discountedPrice: 0.99, savings: 2.00, isEligibleForDiscount: true, solfeggioCents: 0, binauralCents: 0, voiceCloneFeeCents: 2900 });
   const [supabaseClient, setSupabaseClient] = useState<ReturnType<typeof getSupabaseBrowserClient> | null>(null);
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
 
@@ -153,25 +156,35 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
       }
 
       const pricingData = await response.json();
+      const solCents = pricingData.addons?.solfeggioCents ?? 0;
+      const binCents = pricingData.addons?.binauralCents ?? 0;
 
       // Update pricing display
       setPricingInfo({
-        basePrice: pricingData.pricing.basePrice / 100, // Convert cents to dollars
+        basePrice: pricingData.pricing.basePrice / 100,
         discountedPrice: pricingData.pricing.discountedPrice / 100,
         savings: pricingData.pricing.savings / 100,
-        isEligibleForDiscount: pricingData.isEligibleForDiscount
+        isEligibleForDiscount: pricingData.isEligibleForDiscount,
+        solfeggioCents: solCents,
+        binauralCents: binCents,
+        voiceCloneFeeCents: pricingData.voiceCloneFeeCents ?? 2900,
       });
 
-      // Alert user if they already used their discount
+      // Update solfeggio/binaural default prices in builder state
+      setState(prev => ({
+        ...prev,
+        solfeggio: prev.solfeggio ? { ...prev.solfeggio, price: solCents / 100 } : prev.solfeggio,
+        binaural: prev.binaural ? { ...prev.binaural, price: binCents / 100 } : prev.binaural,
+      }));
+
       if (!pricingData.isEligibleForDiscount) {
         alert(
           "You've already used your first-track discount.\n\n" +
-          "Regular pricing ($2.99) applies, but you can still create amazing tracks!"
+          `Regular pricing ($${(pricingData.pricing.basePrice / 100).toFixed(2)}) applies, but you can still create amazing tracks!`
         );
       }
     } catch (error) {
       console.error('Error checking pricing:', error);
-      // On error, still proceed but show message
       alert('Unable to verify pricing. Please contact support if you encounter issues.');
     }
   }, []);
@@ -343,14 +356,16 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
           basePrice: pricingData.pricing.basePrice / 100,
           discountedPrice: pricingData.pricing.discountedPrice / 100,
           savings: pricingData.pricing.savings / 100,
-          isEligibleForDiscount: pricingData.isEligibleForDiscount
+          isEligibleForDiscount: pricingData.isEligibleForDiscount,
+          solfeggioCents: pricingData.addons?.solfeggioCents ?? 0,
+          binauralCents: pricingData.addons?.binauralCents ?? 0,
+          voiceCloneFeeCents: pricingData.voiceCloneFeeCents ?? 2900,
         });
 
-        // Alert user if they already used their discount (non-blocking)
         if (!pricingData.isEligibleForDiscount) {
           alert(
             "You've already used your first-track discount.\n\n" +
-            "Regular pricing ($2.99) applies, but you can still create amazing tracks!"
+            `Regular pricing ($${(pricingData.pricing.basePrice / 100).toFixed(2)}) applies, but you can still create amazing tracks!`
           );
         }
       } else {
@@ -707,7 +722,7 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Background Music
-                <span className="text-gray-500 font-normal ml-2">(+$0.99 each)</span>
+                <span className="text-gray-500 font-normal ml-2">(included)</span>
               </label>
               <select
                 value={state.music?.id || 'none'}
@@ -733,7 +748,12 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-gray-700">
                   Solfeggio Frequencies
-                  <span className="text-gray-500 font-normal ml-2">(+$0.99)</span>
+                  {pricingInfo.solfeggioCents > 0 && (
+                    <span className="text-gray-500 font-normal ml-2">(+${(pricingInfo.solfeggioCents / 100).toFixed(2)})</span>
+                  )}
+                  {pricingInfo.solfeggioCents === 0 && (
+                    <span className="text-gray-500 font-normal ml-2">(included)</span>
+                  )}
                 </label>
                 <button
                   type="button"
@@ -775,7 +795,12 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-gray-700">
                   Binaural Beats
-                  <span className="text-gray-500 font-normal ml-2">(+$0.99)</span>
+                  {pricingInfo.binauralCents > 0 && (
+                    <span className="text-gray-500 font-normal ml-2">(+${(pricingInfo.binauralCents / 100).toFixed(2)})</span>
+                  )}
+                  {pricingInfo.binauralCents === 0 && (
+                    <span className="text-gray-500 font-normal ml-2">(included)</span>
+                  )}
                 </label>
                 <button
                   type="button"

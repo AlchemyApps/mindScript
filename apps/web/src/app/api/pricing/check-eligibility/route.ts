@@ -3,6 +3,7 @@ import { createClient } from "../../../../lib/supabase/server";
 import { z } from "zod";
 import { calculateAICost } from "../../../../lib/pricing/cost-calculator";
 import type { FFTier } from "../../../../lib/pricing/ff-tier";
+import { getPricingConfig } from "../../../../lib/pricing/pricing-service";
 
 // Response schema
 const EligibilityResponseSchema = z.object({
@@ -53,18 +54,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch pricing from DB with fallbacks
-    const { data: pricingRows } = await supabase
-      .from('pricing_configurations')
-      .select('key, value')
-      .in('key', ['base_intro_web_cents', 'base_standard_web_cents'])
-      .eq('is_active', true);
+    // Fetch all pricing from centralized service
+    const pricingConfig = await getPricingConfig();
 
-    const pricingMap = new Map(
-      (pricingRows || []).map((r: { key: string; value: unknown }) => [r.key, Number(r.value)])
-    );
-    const introPrice = pricingMap.get('base_intro_web_cents') ?? 99;
-    const standardPrice = pricingMap.get('base_standard_web_cents') ?? 299;
+    const introPrice = pricingConfig.baseIntroCents;
+    const standardPrice = pricingConfig.baseStandardCents;
 
     const basePrice = standardPrice;
     let discountedPrice = isEligibleForDiscount ? introPrice : standardPrice;
@@ -75,9 +69,7 @@ export async function GET(request: NextRequest) {
       discountedPrice = 0;
       savings = basePrice;
     } else if (ffTier === 'cost_pass') {
-      // Cost pass users see "at cost" — actual COGS depends on script, so show 0 base
-      // The real cost is calculated at checkout time based on script length
-      discountedPrice = 0; // Will be overridden at checkout
+      discountedPrice = 0;
       savings = basePrice;
     }
 
@@ -91,6 +83,13 @@ export async function GET(request: NextRequest) {
       },
       userStatus,
       ffTier,
+      // Extended pricing info for frontend
+      addons: {
+        solfeggioCents: pricingConfig.solfeggioCents,
+        binauralCents: pricingConfig.binauralCents,
+      },
+      voicePricingTiers: pricingConfig.voicePricingTiers,
+      voiceCloneFeeCents: pricingConfig.voiceCloneFeeCents,
     };
 
     return NextResponse.json(response);
@@ -143,18 +142,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch pricing from DB with fallbacks
-    const { data: pricingRows } = await supabase
-      .from('pricing_configurations')
-      .select('key, value')
-      .in('key', ['base_intro_web_cents', 'base_standard_web_cents'])
-      .eq('is_active', true);
-
-    const pricingMap = new Map(
-      (pricingRows || []).map((r: { key: string; value: unknown }) => [r.key, Number(r.value)])
-    );
-    const introPrice = pricingMap.get('base_intro_web_cents') ?? 99;
-    const standardPrice = pricingMap.get('base_standard_web_cents') ?? 299;
+    // Fetch pricing from centralized service
+    const pricingConfigPost = await getPricingConfig();
+    const introPrice = pricingConfigPost.baseIntroCents;
+    const standardPrice = pricingConfigPost.baseStandardCents;
 
     const correctPrice = isEligible ? introPrice : standardPrice;
     const priceChanged = currentPrice !== correctPrice;

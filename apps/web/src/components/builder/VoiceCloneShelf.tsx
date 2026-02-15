@@ -36,10 +36,11 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFF, setIsFF] = useState(false);
+  const [cloneFeeCents, setCloneFeeCents] = useState(2900);
 
   const { minimizeToPip, setPlayerMode, currentTrack } = usePlayerStore();
 
-  // Check F&F status
+  // Check F&F status and fetch dynamic pricing
   useEffect(() => {
     if (!isOpen) return;
     fetch('/api/pricing/check-eligibility')
@@ -47,6 +48,9 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
       .then(data => {
         if (data?.ffTier === 'inner_circle' || data?.ffTier === 'cost_pass') {
           setIsFF(true);
+        }
+        if (data?.voiceCloneFeeCents) {
+          setCloneFeeCents(data.voiceCloneFeeCents);
         }
       })
       .catch(() => {});
@@ -200,7 +204,7 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
               <div className="space-y-3">
                 <FeatureItem
                   icon={<Sparkles className="w-4 h-4 text-primary" />}
-                  title={isFF ? 'Free for Friends & Family' : 'One-time fee of $29'}
+                  title={isFF ? 'Free for Friends & Family' : `One-time fee of $${(cloneFeeCents / 100).toFixed(0)}`}
                   description="Create your voice once, use it on unlimited tracks"
                 />
                 <FeatureItem
@@ -220,12 +224,12 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
                   <>
                     <span className="text-2xl font-bold text-accent">FREE</span>
                     <span className="text-sm text-muted ml-2">
-                      <span className="line-through">$29</span> — Friends & Family
+                      <span className="line-through">${(cloneFeeCents / 100).toFixed(0)}</span> — Friends & Family
                     </span>
                   </>
                 ) : (
                   <>
-                    <span className="text-2xl font-bold text-primary">$29</span>
+                    <span className="text-2xl font-bold text-primary">${(cloneFeeCents / 100).toFixed(0)}</span>
                     <span className="text-sm text-muted ml-2">one-time fee</span>
                   </>
                 )}
@@ -320,11 +324,11 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
                     <span className="font-semibold text-text">Total</span>
                     {isFF ? (
                       <span className="font-bold text-accent text-lg">
-                        <span className="line-through text-muted text-sm mr-2">$29.00</span>
+                        <span className="line-through text-muted text-sm mr-2">${(cloneFeeCents / 100).toFixed(2)}</span>
                         $0.00
                       </span>
                     ) : (
-                      <span className="font-bold text-primary text-lg">$29.00</span>
+                      <span className="font-bold text-primary text-lg">${(cloneFeeCents / 100).toFixed(2)}</span>
                     )}
                   </div>
                 </div>
@@ -379,7 +383,7 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
                     ) : (
                       <>
                         <CreditCard className="w-4 h-4" />
-                        Pay $29 & Create Voice
+                        Pay ${(cloneFeeCents / 100).toFixed(0)} & Create Voice
                       </>
                     )}
                   </span>
