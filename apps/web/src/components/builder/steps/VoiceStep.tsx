@@ -30,6 +30,7 @@ interface VoiceStepProps {
   scriptLength?: number;
   isAuthenticated?: boolean;
   isFF?: boolean;
+  isFirstPurchase?: boolean;
   onVoiceChange: (voice: VoiceSelection) => void;
   onDurationChange: (duration: number) => void;
   onLoopChange: (enabled: boolean, pause: number) => void;
@@ -45,6 +46,7 @@ export function VoiceStep({
   scriptLength = 0,
   isAuthenticated = false,
   isFF,
+  isFirstPurchase = true,
   onVoiceChange,
   onDurationChange,
   onLoopChange,
@@ -85,6 +87,7 @@ export function VoiceStep({
         scriptLength={scriptLength}
         onOpenVoiceClone={onOpenVoiceClone}
         isFF={isFF}
+        isFirstPurchase={isFirstPurchase}
       />
 
       {/* Duration Selection */}

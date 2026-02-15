@@ -27,6 +27,7 @@ export async function GET() {
         'premium_voice_extended_max_chars',
         'elevenlabs_cost_per_char_millicents',
         'openai_tts_cost_per_char_millicents',
+        'standard_bg_track_cents',
       ])
       .eq('is_active', true)
 
@@ -66,6 +67,7 @@ export async function GET() {
       premium_voice_extended_max_chars: configMap.get('premium_voice_extended_max_chars') ?? 2000,
       elevenlabs_cost_per_char_millicents: configMap.get('elevenlabs_cost_per_char_millicents') ?? 30,
       openai_tts_cost_per_char_millicents: configMap.get('openai_tts_cost_per_char_millicents') ?? 1.5,
+      standard_bg_track_cents: configMap.get('standard_bg_track_cents') ?? 99,
     })
   } catch (error) {
     console.error('Failed to fetch global pricing:', error)
@@ -100,6 +102,7 @@ export async function PATCH(request: Request) {
       premium_voice_extended_max_chars: { table: 'pricing_configurations', key: 'premium_voice_extended_max_chars' },
       elevenlabs_cost_per_char_millicents: { table: 'pricing_configurations', key: 'elevenlabs_cost_per_char_millicents' },
       openai_tts_cost_per_char_millicents: { table: 'pricing_configurations', key: 'openai_tts_cost_per_char_millicents' },
+      standard_bg_track_cents: { table: 'pricing_configurations', key: 'standard_bg_track_cents' },
     }
 
     const updates: Promise<void>[] = []

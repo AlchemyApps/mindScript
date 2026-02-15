@@ -30,6 +30,8 @@ export interface PricingConfig {
     long: VoicePricingTier
     extended: VoicePricingTier
   }
+  // Background track pricing
+  standardBgTrackCents: number
   // COGS rates (millicents per char)
   elevenLabsCostPerCharMillicents: number
   openaiTtsCostPerCharMillicents: number
@@ -50,6 +52,7 @@ const DEFAULTS: PricingConfig = {
     long: { maxChars: VOICE_PRICING_TIERS.long.maxChars, priceCents: VOICE_PRICING_TIERS.long.priceCents },
     extended: { maxChars: VOICE_PRICING_TIERS.extended.maxChars, priceCents: VOICE_PRICING_TIERS.extended.priceCents },
   },
+  standardBgTrackCents: 99,
   elevenLabsCostPerCharMillicents: 30,
   openaiTtsCostPerCharMillicents: 1.5,
 }
@@ -117,6 +120,7 @@ export async function getPricingConfig(): Promise<PricingConfig> {
           priceCents: pMap.get('premium_voice_extended_cents') ?? DEFAULTS.voicePricingTiers.extended.priceCents,
         },
       },
+      standardBgTrackCents: pMap.get('standard_bg_track_cents') ?? DEFAULTS.standardBgTrackCents,
       elevenLabsCostPerCharMillicents: pMap.get('elevenlabs_cost_per_char_millicents') ?? DEFAULTS.elevenLabsCostPerCharMillicents,
       openaiTtsCostPerCharMillicents: pMap.get('openai_tts_cost_per_char_millicents') ?? DEFAULTS.openaiTtsCostPerCharMillicents,
     }

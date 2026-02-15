@@ -19,6 +19,7 @@ interface VoicePickerProps {
   scriptLength?: number;
   onOpenVoiceClone?: () => void;
   isFF?: boolean;
+  isFirstPurchase?: boolean;
   cloneFeeCents?: number;
   className?: string;
 }
@@ -60,6 +61,7 @@ export function VoicePicker({
   scriptLength = 0,
   onOpenVoiceClone,
   isFF,
+  isFirstPurchase = true,
   cloneFeeCents = 2900,
   className,
 }: VoicePickerProps) {
@@ -147,8 +149,12 @@ export function VoicePicker({
 
   // Handle voice selection
   const handleSelect = (voice: VoiceMetadata) => {
-    // For premium/custom voices, require authentication
-    if ((voice.tier === 'premium' || voice.tier === 'custom') && !isAuthenticated) {
+    // Block premium voices for unauthenticated or first-time buyers
+    if (voice.tier === 'premium' && (isFirstPurchase || !isAuthenticated)) {
+      return;
+    }
+    // Block custom voices for unauthenticated users
+    if (voice.tier === 'custom' && !isAuthenticated) {
       return;
     }
     onVoiceSelect(voice);
@@ -267,7 +273,7 @@ export function VoicePicker({
       {filteredVoicesByTier.premium.length > 0 && (
         <VoiceSection
           title="Premium Voices"
-          subtitle={premiumPrice ? `+${formatPrice(premiumPrice)}` : 'Ultra-realistic'}
+          subtitle={isFirstPurchase ? 'Available after first purchase' : premiumPrice ? `+${formatPrice(premiumPrice)}` : 'Ultra-realistic'}
           voices={filteredVoicesByTier.premium}
           selectedVoice={selectedVoice}
           playingVoiceId={playingVoiceId}
@@ -275,6 +281,8 @@ export function VoicePicker({
           onPreview={handlePreview}
           tier="premium"
           isAuthenticated={isAuthenticated}
+          isLocked={isFirstPurchase || !isAuthenticated}
+          lockMessage={!isAuthenticated ? 'Sign up to unlock premium voices' : 'Available after your first purchase'}
         />
       )}
 
@@ -338,6 +346,8 @@ interface VoiceSectionProps {
   onPreview: (voice: VoiceMetadata) => void;
   tier: VoiceTier;
   isAuthenticated: boolean;
+  isLocked?: boolean;
+  lockMessage?: string;
 }
 
 function VoiceSection({
@@ -350,8 +360,11 @@ function VoiceSection({
   onPreview,
   tier,
   isAuthenticated,
+  isLocked: isLockedProp,
+  lockMessage,
 }: VoiceSectionProps) {
-  const isLocked = (tier === 'premium' || tier === 'custom') && !isAuthenticated;
+  const isLocked = isLockedProp ?? ((tier === 'premium' || tier === 'custom') && !isAuthenticated);
+  const resolvedLockMessage = lockMessage ?? `Sign up to unlock ${tier} voices`;
 
   return (
     <div className="space-y-3">
@@ -384,6 +397,7 @@ function VoiceSection({
             isSelected={selectedVoice?.id === voice.id}
             isPlaying={playingVoiceId === voice.id}
             isLocked={isLocked}
+            lockMessage={resolvedLockMessage}
             onSelect={() => onSelect(voice)}
             onPreview={() => onPreview(voice)}
           />
@@ -394,7 +408,7 @@ function VoiceSection({
       {isLocked && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-50 text-xs text-muted">
           <Lock className="w-3 h-3" />
-          <span>Sign up to unlock {tier} voices</span>
+          <span>{resolvedLockMessage}</span>
         </div>
       )}
     </div>
@@ -406,6 +420,7 @@ interface VoiceCardProps {
   isSelected: boolean;
   isPlaying: boolean;
   isLocked: boolean;
+  lockMessage?: string;
   onSelect: () => void;
   onPreview: () => void;
 }
@@ -415,6 +430,7 @@ function VoiceCard({
   isSelected,
   isPlaying,
   isLocked,
+  lockMessage,
   onSelect,
   onPreview,
 }: VoiceCardProps) {
@@ -527,7 +543,7 @@ function VoiceCard({
         <div className="absolute inset-0 rounded-xl bg-white/60 backdrop-blur-[1px] flex items-center justify-center">
           <div className="flex flex-col items-center gap-1 text-center px-2">
             <Lock className="w-4 h-4 text-muted" />
-            <span className="text-[10px] text-muted font-medium">Sign up to unlock</span>
+            <span className="text-[10px] text-muted font-medium">{lockMessage ?? 'Sign up to unlock'}</span>
           </div>
         </div>
       )}

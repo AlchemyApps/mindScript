@@ -90,6 +90,8 @@ export async function GET(request: NextRequest) {
       },
       voicePricingTiers: pricingConfig.voicePricingTiers,
       voiceCloneFeeCents: pricingConfig.voiceCloneFeeCents,
+      standardBgTrackCents: pricingConfig.standardBgTrackCents,
+      isFirstPurchase: isEligibleForDiscount || ffTier !== null,
     };
 
     return NextResponse.json(response);

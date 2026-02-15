@@ -34,6 +34,7 @@ type GlobalPricing = {
   premium_voice_extended_max_chars: number
   elevenlabs_cost_per_char_millicents: number
   openai_tts_cost_per_char_millicents: number
+  standard_bg_track_cents: number
 }
 
 type Voice = {
@@ -299,7 +300,7 @@ export default function PricingPage() {
             <div className="space-y-8 max-w-2xl">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Track Pricing</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <CentsInput
                     label="First Track Price"
                     value={global.first_track_cents}
@@ -310,7 +311,15 @@ export default function PricingPage() {
                     value={global.standard_track_cents}
                     onChange={(v) => updateGlobalField('standard_track_cents', v)}
                   />
+                  <CentsInput
+                    label="Standard BG Track Price"
+                    value={global.standard_bg_track_cents}
+                    onChange={(v) => updateGlobalField('standard_bg_track_cents', v)}
+                  />
                 </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  First track includes: standard voice, standard BG track, solfeggio, binaural — all at the First Track Price. After first purchase, standard rates apply.
+                </p>
               </div>
 
               <div>

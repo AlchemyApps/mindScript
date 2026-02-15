@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Music, Waves, Headphones, Play, Pause, Check, Loader2 } from 'lucide-react';
+import { Music, Waves, Headphones, Play, Pause, Check, Loader2, Lock } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { useBackgroundMusic, type BackgroundTrack } from '../../../hooks/useBackgroundMusic';
 
@@ -62,6 +62,8 @@ interface EnhanceStepProps {
   onSolfeggioChange: (solfeggio: { enabled: boolean; frequency: number; price: number } | undefined) => void;
   onBinauralChange: (binaural: { enabled: boolean; band: BinauralBand; price: number } | undefined) => void;
   onMusicChange: (music: { id: string; name: string; price: number } | undefined) => void;
+  isFirstPurchase?: boolean;
+  standardBgTrackCents?: number;
   className?: string;
 }
 
@@ -72,6 +74,8 @@ export function EnhanceStep({
   onSolfeggioChange,
   onBinauralChange,
   onMusicChange,
+  isFirstPurchase = true,
+  standardBgTrackCents = 99,
   className,
 }: EnhanceStepProps) {
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -163,7 +167,7 @@ export function EnhanceStep({
             </div>
             <div>
               <h3 className="font-semibold text-text">Solfeggio Frequencies</h3>
-              <p className="text-sm text-muted">Ancient healing tones{addonPrices.solfeggio > 0 ? ` · +$${addonPrices.solfeggio.toFixed(2)}` : ' · included'}</p>
+              <p className="text-sm text-muted">Ancient healing tones{isFirstPurchase || addonPrices.solfeggio === 0 ? ' · included' : ` · +$${addonPrices.solfeggio.toFixed(2)}`}</p>
             </div>
           </div>
           <ToggleSwitch
@@ -228,7 +232,7 @@ export function EnhanceStep({
             </div>
             <div>
               <h3 className="font-semibold text-text">Binaural Beats</h3>
-              <p className="text-sm text-muted">Brainwave entrainment{addonPrices.binaural > 0 ? ` · +$${addonPrices.binaural.toFixed(2)}` : ' · included'}</p>
+              <p className="text-sm text-muted">Brainwave entrainment{isFirstPurchase || addonPrices.binaural === 0 ? ' · included' : ` · +$${addonPrices.binaural.toFixed(2)}`}</p>
             </div>
           </div>
           <ToggleSwitch
@@ -339,9 +343,14 @@ export function EnhanceStep({
                 </h4>
                 <div className="space-y-2">
                   {categoryTracks.map((track) => {
+                    const isPremium = track.tier === 'premium';
+                    const isLocked = isPremium && isFirstPurchase;
                     const isSelected = music?.id === track.slug;
                     const isPlaying = playingId === `music-${track.slug}`;
                     const gradientColor = CATEGORY_COLORS[category] || 'from-gray-400 to-gray-500';
+                    const displayPrice = isPremium
+                      ? track.price_cents
+                      : isFirstPurchase ? 0 : standardBgTrackCents;
 
                     return (
                       <MusicTrackCard
@@ -349,9 +358,12 @@ export function EnhanceStep({
                         track={track}
                         isSelected={isSelected}
                         isPlaying={isPlaying}
+                        isLocked={isLocked}
+                        isFirstPurchase={isFirstPurchase}
+                        displayPriceCents={displayPrice}
                         gradientColor={gradientColor}
-                        onSelect={() =>
-                          onMusicChange({ id: track.slug, name: track.title, price: track.price_cents / 100 })
+                        onSelect={isLocked ? undefined : () =>
+                          onMusicChange({ id: track.slug, name: track.title, price: displayPrice / 100 })
                         }
                         onPreview={() => handlePreview(`music-${track.slug}`, track.previewUrl)}
                       />
@@ -379,6 +391,9 @@ function MusicTrackCard({
   track,
   isSelected,
   isPlaying,
+  isLocked,
+  isFirstPurchase,
+  displayPriceCents,
   gradientColor,
   onSelect,
   onPreview,
@@ -386,14 +401,20 @@ function MusicTrackCard({
   track: BackgroundTrack;
   isSelected: boolean;
   isPlaying: boolean;
+  isLocked?: boolean;
+  isFirstPurchase?: boolean;
+  displayPriceCents: number;
   gradientColor: string;
-  onSelect: () => void;
+  onSelect?: () => void;
   onPreview: () => void;
 }) {
+  const handleSelect = onSelect || (() => {});
+
   return (
     <div
       className={cn(
         'relative rounded-xl border-2 transition-all duration-200 overflow-hidden',
+        isLocked ? 'border-gray-100 bg-gray-50/50 opacity-60' :
         isSelected ? 'border-primary bg-primary/5' : 'border-gray-100 bg-white hover:border-gray-200'
       )}
     >
@@ -404,25 +425,34 @@ function MusicTrackCard({
         {/* Selection radio */}
         <button
           type="button"
-          onClick={onSelect}
+          onClick={handleSelect}
+          disabled={isLocked}
           className="mt-0.5 flex-shrink-0"
         >
-          <div className={cn(
-            'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
-            isSelected ? 'border-primary bg-primary' : 'border-gray-300'
-          )}>
-            {isSelected && <Check className="w-3 h-3 text-white" />}
-          </div>
+          {isLocked ? (
+            <div className="w-5 h-5 rounded-full border-2 border-gray-300 flex items-center justify-center">
+              <Lock className="w-3 h-3 text-gray-400" />
+            </div>
+          ) : (
+            <div className={cn(
+              'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+              isSelected ? 'border-primary bg-primary' : 'border-gray-300'
+            )}>
+              {isSelected && <Check className="w-3 h-3 text-white" />}
+            </div>
+          )}
         </button>
 
         {/* Track info */}
         <button
           type="button"
-          onClick={onSelect}
+          onClick={handleSelect}
+          disabled={isLocked}
           className="flex-1 text-left min-w-0"
         >
-          <div className={cn('font-medium text-sm', isSelected ? 'text-primary' : 'text-text')}>
+          <div className={cn('font-medium text-sm', isLocked ? 'text-gray-400' : isSelected ? 'text-primary' : 'text-text')}>
             {track.title}
+            {isLocked && <span className="ml-1.5 text-[10px] font-normal text-gray-400">Available after first purchase</span>}
           </div>
           <div className="text-xs text-muted mt-0.5 line-clamp-2">
             {track.description}
@@ -440,7 +470,9 @@ function MusicTrackCard({
         {/* Price + Preview */}
         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
           <span className="text-xs text-muted">
-            {track.tier === 'premium' ? `+$${(track.price_cents / 100).toFixed(2)}` : 'Included'}
+            {isLocked ? `+$${(displayPriceCents / 100).toFixed(2)}` :
+             displayPriceCents === 0 ? 'Included' :
+             `+$${(displayPriceCents / 100).toFixed(2)}`}
           </span>
           <button
             type="button"

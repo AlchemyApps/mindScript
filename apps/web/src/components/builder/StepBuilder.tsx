@@ -94,6 +94,9 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     savings: 2.00,
     isEligibleForDiscount: true,
     ffTier: null as string | null,
+    isFirstPurchase: true,
+    standardBgTrackCents: 99,
+    voiceCloneFeeCents: 2900,
   });
 
   // Initialize Supabase client
@@ -141,6 +144,9 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
           savings: data.pricing.savings / 100,
           isEligibleForDiscount: data.isEligibleForDiscount,
           ffTier: data.ffTier || null,
+          isFirstPurchase: data.isFirstPurchase ?? data.isEligibleForDiscount,
+          standardBgTrackCents: data.standardBgTrackCents ?? 99,
+          voiceCloneFeeCents: data.voiceCloneFeeCents ?? 2900,
         });
       }
     } catch (error) {
@@ -348,6 +354,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             scriptLength={state.script.length}
             isAuthenticated={!!user}
             isFF={pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass'}
+            isFirstPurchase={pricingInfo.isFirstPurchase}
             onVoiceChange={(voice) => setState((prev) => ({ ...prev, voice, voiceExplicitlySelected: true }))}
             onDurationChange={(duration) => setState((prev) => ({ ...prev, duration }))}
             onLoopChange={(enabled, pause) =>
@@ -368,6 +375,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             onSolfeggioChange={(solfeggio) => setState((prev) => ({ ...prev, solfeggio }))}
             onBinauralChange={(binaural) => setState((prev) => ({ ...prev, binaural }))}
             onMusicChange={(music) => setState((prev) => ({ ...prev, music }))}
+            isFirstPurchase={pricingInfo.isFirstPurchase}
+            standardBgTrackCents={pricingInfo.standardBgTrackCents}
           />
         );
       case 4:
