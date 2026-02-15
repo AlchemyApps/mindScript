@@ -99,6 +99,12 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     voiceCloneFeeCents: 2900,
     solfeggioCents: 0,
     binauralCents: 0,
+    voicePricingTiers: {
+      short:    { maxChars: 200,  priceCents: 49 },
+      medium:   { maxChars: 500,  priceCents: 79 },
+      long:     { maxChars: 1000, priceCents: 99 },
+      extended: { maxChars: 2000, priceCents: 149 },
+    },
   });
 
   // Initialize Supabase client
@@ -139,7 +145,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
       const response = await fetch('/api/pricing/check-eligibility');
       if (response.ok) {
         const data = await response.json();
-        setPricingInfo({
+        setPricingInfo(prev => ({
           basePrice: data.pricing.basePrice / 100,
           discountedPrice: data.pricing.discountedPrice / 100,
           savings: data.pricing.savings / 100,
@@ -150,7 +156,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
           voiceCloneFeeCents: data.voiceCloneFeeCents ?? 2900,
           solfeggioCents: data.addons?.solfeggioCents ?? 0,
           binauralCents: data.addons?.binauralCents ?? 0,
-        });
+          voicePricingTiers: data.voicePricingTiers ?? prev.voicePricingTiers,
+        }));
       }
     } catch (error) {
       console.error('Error checking pricing:', error);
@@ -318,14 +325,17 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
     // F&F cost_pass only pays AI COGS (calculated server-side at checkout), no add-on fees
     if (pricingInfo.ffTier === 'cost_pass') return total;
 
-    if (state.music && state.music.id !== 'none') {
-      total += state.music.price;
-    }
-    if (state.solfeggio?.enabled) {
-      total += state.solfeggio.price;
-    }
-    if (state.binaural?.enabled) {
-      total += state.binaural.price;
+    // First purchase: addons (music, solfeggio, binaural) are included in the intro price
+    if (!pricingInfo.isFirstPurchase) {
+      if (state.music && state.music.id !== 'none') {
+        total += state.music.price;
+      }
+      if (state.solfeggio?.enabled) {
+        total += state.solfeggio.price;
+      }
+      if (state.binaural?.enabled) {
+        total += state.binaural.price;
+      }
     }
     return total;
   };
@@ -360,6 +370,8 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             isAuthenticated={!!user}
             isFF={pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass'}
             isFirstPurchase={pricingInfo.isFirstPurchase}
+            voicePricingTiers={pricingInfo.voicePricingTiers}
+            cloneFeeCents={pricingInfo.voiceCloneFeeCents}
             onVoiceChange={(voice) => setState((prev) => ({ ...prev, voice, voiceExplicitlySelected: true }))}
             onDurationChange={(duration) => setState((prev) => ({ ...prev, duration }))}
             onLoopChange={(enabled, pause) =>
@@ -437,6 +449,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
                       variant="sidebar"
                       hasClonedVoice={hasClonedVoice}
                       isFF={pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass'}
+                      cloneFeeCents={pricingInfo.voiceCloneFeeCents}
                       onClick={() => setShowCloneShelf(true)}
                     />
                   </div>
@@ -514,6 +527,7 @@ export function StepBuilder({ className, variant = 'card' }: StepBuilderProps) {
             setShowCloneShelf(false);
             window.location.reload();
           }}
+          cloneFeeCents={pricingInfo.voiceCloneFeeCents}
         />
       </div>
     );

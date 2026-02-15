@@ -7,10 +7,27 @@ import {
   type VoiceMetadata,
   type VoiceGender,
   type VoiceTier,
-  calculateVoiceFee,
-  VOICE_PRICING_TIERS,
 } from '@mindscript/schemas';
 import { VoiceCloneCTA } from './VoiceCloneCTA';
+
+interface VoicePricingTier {
+  maxChars: number;
+  priceCents: number;
+}
+
+type VoicePricingTiers = {
+  short: VoicePricingTier;
+  medium: VoicePricingTier;
+  long: VoicePricingTier;
+  extended: VoicePricingTier;
+};
+
+const DEFAULT_VOICE_PRICING_TIERS: VoicePricingTiers = {
+  short:    { maxChars: 200,  priceCents: 49 },
+  medium:   { maxChars: 500,  priceCents: 79 },
+  long:     { maxChars: 1000, priceCents: 99 },
+  extended: { maxChars: 2000, priceCents: 149 },
+};
 
 interface VoicePickerProps {
   selectedVoice: VoiceMetadata | null;
@@ -21,6 +38,7 @@ interface VoicePickerProps {
   isFF?: boolean;
   isFirstPurchase?: boolean;
   cloneFeeCents?: number;
+  voicePricingTiers?: VoicePricingTiers;
   className?: string;
 }
 
@@ -47,11 +65,19 @@ function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-function getPricingLabel(scriptLength: number): string {
-  if (scriptLength <= VOICE_PRICING_TIERS.short.maxChars) return 'Short script';
-  if (scriptLength <= VOICE_PRICING_TIERS.medium.maxChars) return 'Medium script';
-  if (scriptLength <= VOICE_PRICING_TIERS.long.maxChars) return 'Long script';
+function getPricingLabel(scriptLength: number, tiers: VoicePricingTiers): string {
+  if (scriptLength <= tiers.short.maxChars) return 'Short script';
+  if (scriptLength <= tiers.medium.maxChars) return 'Medium script';
+  if (scriptLength <= tiers.long.maxChars) return 'Long script';
   return 'Extended script';
+}
+
+function calculateVoiceFee(scriptLength: number, tier: string, tiers: VoicePricingTiers): number {
+  if (tier === 'included') return 0;
+  if (scriptLength <= tiers.short.maxChars) return tiers.short.priceCents;
+  if (scriptLength <= tiers.medium.maxChars) return tiers.medium.priceCents;
+  if (scriptLength <= tiers.long.maxChars) return tiers.long.priceCents;
+  return tiers.extended.priceCents;
 }
 
 export function VoicePicker({
@@ -63,6 +89,7 @@ export function VoicePicker({
   isFF,
   isFirstPurchase = true,
   cloneFeeCents = 2900,
+  voicePricingTiers = DEFAULT_VOICE_PRICING_TIERS,
   className,
 }: VoicePickerProps) {
   const [voices, setVoices] = useState<VoicesResponse | null>(null);
@@ -160,10 +187,10 @@ export function VoicePicker({
     onVoiceSelect(voice);
   };
 
-  // Calculate price for premium voice
+  // Calculate price for premium voice using dynamic tiers
   const getPremiumPrice = () => {
     if (scriptLength === 0) return null;
-    return calculateVoiceFee(scriptLength, 'premium');
+    return calculateVoiceFee(scriptLength, 'premium', voicePricingTiers);
   };
 
   const premiumPrice = getPremiumPrice();
@@ -249,7 +276,7 @@ export function VoicePicker({
           <Sparkles className="w-4 h-4 text-primary" />
           <span className="text-muted">
             Premium voices: <span className="font-medium text-text">{formatPrice(premiumPrice)}</span>
-            <span className="text-xs ml-1">({getPricingLabel(scriptLength)})</span>
+            <span className="text-xs ml-1">({getPricingLabel(scriptLength, voicePricingTiers)})</span>
           </span>
         </div>
       )}

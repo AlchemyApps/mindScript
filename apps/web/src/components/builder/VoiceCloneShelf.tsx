@@ -21,13 +21,14 @@ interface VoiceCloneShelfProps {
   isOpen: boolean;
   onClose: () => void;
   onComplete: () => void;
+  cloneFeeCents?: number;
 }
 
 type WizardStep = 'intro' | 'consent' | 'record' | 'review';
 
 const STEP_ORDER: WizardStep[] = ['intro', 'consent', 'record', 'review'];
 
-export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelfProps) {
+export function VoiceCloneShelf({ isOpen, onClose, onComplete, cloneFeeCents: cloneFeeCentsProp }: VoiceCloneShelfProps) {
   const [step, setStep] = useState<WizardStep>('intro');
   const [consent, setConsent] = useState<ConsentState>(EMPTY_CONSENT);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -36,7 +37,8 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isFF, setIsFF] = useState(false);
-  const [cloneFeeCents, setCloneFeeCents] = useState(2900);
+  const [cloneFeeCentsFetched, setCloneFeeCentsFetched] = useState<number | null>(null);
+  const cloneFeeCents = cloneFeeCentsProp ?? cloneFeeCentsFetched ?? 2900;
 
   const { minimizeToPip, setPlayerMode, currentTrack } = usePlayerStore();
 
@@ -50,7 +52,7 @@ export function VoiceCloneShelf({ isOpen, onClose, onComplete }: VoiceCloneShelf
           setIsFF(true);
         }
         if (data?.voiceCloneFeeCents) {
-          setCloneFeeCents(data.voiceCloneFeeCents);
+          setCloneFeeCentsFetched(data.voiceCloneFeeCents);
         }
       })
       .catch(() => {});

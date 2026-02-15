@@ -9,9 +9,10 @@ interface HeroSectionProps {
   className?: string;
   children?: React.ReactNode;
   pricingCta?: string;
+  firstTrackPrice?: string;
 }
 
-export function HeroSection({ className, children, pricingCta }: HeroSectionProps) {
+export function HeroSection({ className, children, pricingCta, firstTrackPrice }: HeroSectionProps) {
   const [showBuilderHint, setShowBuilderHint] = useState(false);
 
   useEffect(() => {
@@ -72,15 +73,25 @@ export function HeroSection({ className, children, pricingCta }: HeroSectionProp
               </div>
 
               {/* Pricing CTA */}
-              {pricingCta && (
+              {firstTrackPrice && (
                 <div className="pt-2">
+                  <p className="text-lg text-muted">
+                    Create your first track for only{' '}
+                    <span className="text-3xl font-bold text-primary">{firstTrackPrice}</span>
+                  </p>
                   <button
                     onClick={scrollToBuilder}
-                    className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-semibold text-lg hover:bg-primary/90 transition-all duration-300 glow-primary"
+                    className="mt-3 lg:hidden inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80 transition-colors"
                   >
-                    <Sparkles className="w-5 h-5" />
-                    {pricingCta}
+                    Start building below
+                    <ChevronDown className="w-4 h-4" />
                   </button>
+                </div>
+              )}
+              {/* Legacy pricingCta prop support */}
+              {!firstTrackPrice && pricingCta && (
+                <div className="pt-2">
+                  <p className="text-lg text-muted">{pricingCta}</p>
                 </div>
               )}
 

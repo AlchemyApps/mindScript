@@ -125,10 +125,11 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
     discountedPrice: number;
     savings: number;
     isEligibleForDiscount: boolean;
+    isFirstPurchase: boolean;
     solfeggioCents: number;
     binauralCents: number;
     voiceCloneFeeCents: number;
-  }>({ basePrice: 2.99, discountedPrice: 0.99, savings: 2.00, isEligibleForDiscount: true, solfeggioCents: 0, binauralCents: 0, voiceCloneFeeCents: 2900 });
+  }>({ basePrice: 2.99, discountedPrice: 0.99, savings: 2.00, isEligibleForDiscount: true, isFirstPurchase: true, solfeggioCents: 0, binauralCents: 0, voiceCloneFeeCents: 2900 });
   const [supabaseClient, setSupabaseClient] = useState<ReturnType<typeof getSupabaseBrowserClient> | null>(null);
   const [supabaseError, setSupabaseError] = useState<string | null>(null);
 
@@ -165,6 +166,7 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
         discountedPrice: pricingData.pricing.discountedPrice / 100,
         savings: pricingData.pricing.savings / 100,
         isEligibleForDiscount: pricingData.isEligibleForDiscount,
+        isFirstPurchase: pricingData.isFirstPurchase ?? pricingData.isEligibleForDiscount,
         solfeggioCents: solCents,
         binauralCents: binCents,
         voiceCloneFeeCents: pricingData.voiceCloneFeeCents ?? 2900,
@@ -211,14 +213,18 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
 
   const calculateTotal = () => {
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
-    if (state.music && state.music.id !== 'none') {
-      total += state.music.price;
-    }
-    if (state.solfeggio?.enabled) {
-      total += state.solfeggio.price;
-    }
-    if (state.binaural?.enabled) {
-      total += state.binaural.price;
+
+    // First purchase: addons are included in the intro price
+    if (!pricingInfo.isFirstPurchase) {
+      if (state.music && state.music.id !== 'none') {
+        total += state.music.price;
+      }
+      if (state.solfeggio?.enabled) {
+        total += state.solfeggio.price;
+      }
+      if (state.binaural?.enabled) {
+        total += state.binaural.price;
+      }
     }
     return total;
   };
@@ -354,6 +360,7 @@ export function GuestBuilder({ className }: GuestBuilderProps) {
           discountedPrice: pricingData.pricing.discountedPrice / 100,
           savings: pricingData.pricing.savings / 100,
           isEligibleForDiscount: pricingData.isEligibleForDiscount,
+          isFirstPurchase: pricingData.isFirstPurchase ?? pricingData.isEligibleForDiscount,
           solfeggioCents: pricingData.addons?.solfeggioCents ?? 0,
           binauralCents: pricingData.addons?.binauralCents ?? 0,
           voiceCloneFeeCents: pricingData.voiceCloneFeeCents ?? 2900,

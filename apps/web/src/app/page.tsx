@@ -29,7 +29,7 @@ export default function HomePage() {
 
       <main className="flex-1">
         {/* Hero Section with Builder */}
-        <HeroSection pricingCta={`Create your first track for only ${firstTrackPrice}`}>
+        <HeroSection firstTrackPrice={firstTrackPrice}>
           <StepBuilder variant="card" className="max-w-2xl mx-auto" />
         </HeroSection>
 

@@ -22,6 +22,11 @@ const DURATION_OPTIONS = [
   { value: 15, label: '15 min', description: 'Deep practice' },
 ];
 
+interface VoicePricingTier {
+  maxChars: number;
+  priceCents: number;
+}
+
 interface VoiceStepProps {
   selectedVoice: VoiceSelection;
   duration: number;
@@ -31,6 +36,13 @@ interface VoiceStepProps {
   isAuthenticated?: boolean;
   isFF?: boolean;
   isFirstPurchase?: boolean;
+  voicePricingTiers?: {
+    short: VoicePricingTier;
+    medium: VoicePricingTier;
+    long: VoicePricingTier;
+    extended: VoicePricingTier;
+  };
+  cloneFeeCents?: number;
   onVoiceChange: (voice: VoiceSelection) => void;
   onDurationChange: (duration: number) => void;
   onLoopChange: (enabled: boolean, pause: number) => void;
@@ -47,6 +59,8 @@ export function VoiceStep({
   isAuthenticated = false,
   isFF,
   isFirstPurchase = true,
+  voicePricingTiers,
+  cloneFeeCents,
   onVoiceChange,
   onDurationChange,
   onLoopChange,
@@ -88,6 +102,8 @@ export function VoiceStep({
         onOpenVoiceClone={onOpenVoiceClone}
         isFF={isFF}
         isFirstPurchase={isFirstPurchase}
+        voicePricingTiers={voicePricingTiers}
+        cloneFeeCents={cloneFeeCents}
       />
 
       {/* Duration Selection */}

@@ -2,11 +2,23 @@
 
 import { Check, Sparkles, Music, Waves, Clock, Mic2 } from 'lucide-react';
 import { Button } from '@mindscript/ui';
-import { calculateVoiceFee } from '@mindscript/schemas';
 import { cn } from '../../../lib/utils';
 import type { IntentionCategory } from './IntentionStep';
 import type { VoiceProvider } from './VoiceStep';
 import type { BinauralBand } from './EnhanceStep';
+
+interface VoicePricingTier {
+  maxChars: number;
+  priceCents: number;
+}
+
+function calculateVoiceFee(scriptLength: number, tier: string, tiers: CreateStepProps['pricingInfo']['voicePricingTiers']): number {
+  if (tier === 'included') return 0;
+  if (scriptLength <= tiers.short.maxChars) return tiers.short.priceCents;
+  if (scriptLength <= tiers.medium.maxChars) return tiers.medium.priceCents;
+  if (scriptLength <= tiers.long.maxChars) return tiers.long.priceCents;
+  return tiers.extended.priceCents;
+}
 
 interface CreateStepProps {
   title: string;
@@ -23,7 +35,14 @@ interface CreateStepProps {
     discountedPrice: number;
     savings: number;
     isEligibleForDiscount: boolean;
+    isFirstPurchase: boolean;
     ffTier: string | null;
+    voicePricingTiers: {
+      short: VoicePricingTier;
+      medium: VoicePricingTier;
+      long: VoicePricingTier;
+      extended: VoicePricingTier;
+    };
   };
   isProcessing: boolean;
   user: any;
@@ -48,9 +67,10 @@ export function CreateStep({
   className,
 }: CreateStepProps) {
   const isFF = pricingInfo.ffTier === 'inner_circle' || pricingInfo.ffTier === 'cost_pass';
+  const isFirstPurchase = pricingInfo.isFirstPurchase;
 
   const voiceFeeCents = voice.tier && voice.tier !== 'included'
-    ? calculateVoiceFee(script.length, voice.tier as any)
+    ? calculateVoiceFee(script.length, voice.tier, pricingInfo.voicePricingTiers)
     : 0;
   const voiceFeeDollars = voiceFeeCents / 100;
 
@@ -58,15 +78,21 @@ export function CreateStep({
     if (pricingInfo.ffTier === 'inner_circle') return 0;
     let total = pricingInfo.isEligibleForDiscount ? pricingInfo.discountedPrice : pricingInfo.basePrice;
     if (pricingInfo.ffTier === 'cost_pass') return total;
-    if (music && music.id !== 'none') {
-      total += music.price;
+
+    // First purchase: addons are included in the intro price
+    if (!isFirstPurchase) {
+      if (music && music.id !== 'none') {
+        total += music.price;
+      }
+      if (solfeggio?.enabled) {
+        total += solfeggio.price;
+      }
+      if (binaural?.enabled) {
+        total += binaural.price;
+      }
     }
-    if (solfeggio?.enabled) {
-      total += solfeggio.price;
-    }
-    if (binaural?.enabled) {
-      total += binaural.price;
-    }
+
+    // Premium voice fee always applies (not included in first purchase)
     if (voiceFeeCents > 0) {
       total += voiceFeeDollars;
     }
@@ -189,11 +215,8 @@ export function CreateStep({
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Background music</span>
               <span className="text-text">
-                {isFF ? (
-                  <>
-                    <span className="line-through text-muted mr-2">+${music.price.toFixed(2)}</span>
-                    <span className="text-accent font-medium">$0.00</span>
-                  </>
+                {isFF || isFirstPurchase ? (
+                  <span className="text-accent font-medium">Included</span>
                 ) : `+$${music.price.toFixed(2)}`}
               </span>
             </div>
@@ -203,11 +226,8 @@ export function CreateStep({
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Solfeggio frequency</span>
               <span className="text-text">
-                {isFF ? (
-                  <>
-                    <span className="line-through text-muted mr-2">+${solfeggio.price.toFixed(2)}</span>
-                    <span className="text-accent font-medium">$0.00</span>
-                  </>
+                {isFF || isFirstPurchase ? (
+                  <span className="text-accent font-medium">Included</span>
                 ) : `+$${solfeggio.price.toFixed(2)}`}
               </span>
             </div>
@@ -217,11 +237,8 @@ export function CreateStep({
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">Binaural beats</span>
               <span className="text-text">
-                {isFF ? (
-                  <>
-                    <span className="line-through text-muted mr-2">+${binaural.price.toFixed(2)}</span>
-                    <span className="text-accent font-medium">$0.00</span>
-                  </>
+                {isFF || isFirstPurchase ? (
+                  <span className="text-accent font-medium">Included</span>
                 ) : `+$${binaural.price.toFixed(2)}`}
               </span>
             </div>

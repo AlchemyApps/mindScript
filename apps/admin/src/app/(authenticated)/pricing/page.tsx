@@ -575,20 +575,37 @@ function CentsInput({ label, value, onChange }: {
   value: number
   onChange: (cents: number) => void
 }) {
+  const [display, setDisplay] = useState((value / 100).toFixed(2))
+  const [focused, setFocused] = useState(false)
+
+  // Sync display when value changes externally (not while focused)
+  useEffect(() => {
+    if (!focused) setDisplay((value / 100).toFixed(2))
+  }, [value, focused])
+
+  const commit = (raw: string) => {
+    const dollars = parseFloat(raw)
+    if (!Number.isNaN(dollars) && dollars >= 0) {
+      onChange(Math.round(dollars * 100))
+      setDisplay(dollars.toFixed(2))
+    } else {
+      setDisplay((value / 100).toFixed(2))
+    }
+  }
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
         <input
-          type="number"
-          value={(value / 100).toFixed(2)}
-          onChange={(e) => {
-            const dollars = parseFloat(e.target.value)
-            if (!Number.isNaN(dollars)) onChange(Math.round(dollars * 100))
-          }}
-          step="0.01"
-          min="0"
+          type="text"
+          inputMode="decimal"
+          value={display}
+          onChange={(e) => setDisplay(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={(e) => { setFocused(false); commit(e.target.value) }}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(display) }}
           className="w-full pl-8 pr-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
       </div>
@@ -601,18 +618,34 @@ function MillicentsInput({ label, value, onChange }: {
   value: number
   onChange: (millicents: number) => void
 }) {
+  const [display, setDisplay] = useState(String(value))
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => {
+    if (!focused) setDisplay(String(value))
+  }, [value, focused])
+
+  const commit = (raw: string) => {
+    const val = parseFloat(raw)
+    if (!Number.isNaN(val) && val >= 0) {
+      onChange(val)
+      setDisplay(String(val))
+    } else {
+      setDisplay(String(value))
+    }
+  }
+
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
       <input
-        type="number"
-        value={value}
-        onChange={(e) => {
-          const val = parseFloat(e.target.value)
-          if (!Number.isNaN(val)) onChange(val)
-        }}
-        step="0.1"
-        min="0"
+        type="text"
+        inputMode="decimal"
+        value={display}
+        onChange={(e) => setDisplay(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={(e) => { setFocused(false); commit(e.target.value) }}
+        onKeyDown={(e) => { if (e.key === 'Enter') commit(display) }}
         className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
       <p className="text-xs text-gray-500 mt-1">
