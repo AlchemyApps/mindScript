@@ -93,13 +93,17 @@ export async function POST(request: NextRequest) {
     const fileName = `${user.id}/${Date.now()}-voice-sample.${ext}`;
 
     // Direct REST upload to avoid EPIPE from supabase-js SDK + undici (storage-js#178)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const hasServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     console.log('[VOICE-CLONE] Upload starting', {
       fileName,
       contentType,
       size: audioBuffer.length,
+      supabaseUrl: supabaseUrl?.slice(0, 40),
+      hasServiceKey,
     });
 
-    const uploadUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/voice-samples/${fileName}`;
+    const uploadUrl = `${supabaseUrl}/storage/v1/object/voice-samples/${fileName}`;
     let uploadOk = false;
     let lastUploadError: string | null = null;
 
@@ -122,10 +126,10 @@ export async function POST(request: NextRequest) {
         }
 
         lastUploadError = `HTTP ${res.status}: ${await res.text()}`;
-        console.warn(`[VOICE-CLONE] Upload attempt ${attempt} failed:`, lastUploadError);
+        console.error(`[VOICE-CLONE] Upload attempt ${attempt} failed: ${lastUploadError}`);
       } catch (err) {
         lastUploadError = (err as Error).message;
-        console.warn(`[VOICE-CLONE] Upload attempt ${attempt} error:`, lastUploadError);
+        console.error(`[VOICE-CLONE] Upload attempt ${attempt} error: ${lastUploadError}`);
       }
 
       if (attempt < 3) {
@@ -135,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     if (!uploadOk) {
       console.error('[VOICE-CLONE] Upload failed after 3 attempts:', lastUploadError);
-      return NextResponse.json({ error: 'Failed to upload audio sample' }, { status: 500 });
+      return NextResponse.json({ error: `Failed to upload audio sample: ${lastUploadError}` }, { status: 500 });
     }
 
     // Get signed URL
