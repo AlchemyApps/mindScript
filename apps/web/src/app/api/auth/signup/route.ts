@@ -73,12 +73,17 @@ export async function POST(request: NextRequest) {
 
     // If email confirmation is required (no session)
     if (!data.session) {
-      const url = new URL("/auth/verify", siteUrl);
-      url.searchParams.set("email", email);
-      console.log('[SIGNUP] Email verification required, redirecting to:', url.toString());
+      console.log('[SIGNUP] Email verification required for:', email);
 
-      // Use 303 redirect to commit cookies properly
-      return NextResponse.redirect(url, { status: 303 });
+      return NextResponse.json({
+        success: true,
+        requiresVerification: true,
+        redirectUrl: `/auth/verify?email=${encodeURIComponent(email)}`,
+        user: {
+          id: data.user.id,
+          email: data.user.email,
+        },
+      });
     }
 
     // Session created - prepare redirect URL
