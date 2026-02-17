@@ -156,7 +156,7 @@ claude mcp add supabase-dev -s local \
 claude mcp add supabase-prod -s local \
   -e SUPABASE_ACCESS_TOKEN="sbp_YOUR_PROD_TOKEN" \
   -- npx -y @supabase/mcp-server-supabase@latest \
-  --read-only --project-ref="uykxlvsqbfnfhrgcpnvn"
+  --read-only --project-ref="tjuvcfiefebtanqlfalk"
 
 claude mcp add stripe-remote -s local \
   -- url https://mcp.stripe.com
@@ -189,7 +189,7 @@ npx @modelcontextprotocol/inspector
 
 ## Project References
 - Dev Project: `byicqjniboevzbhbfxui`
-- Prod Project: `uykxlvsqbfnfhrgcpnvn`
+- Prod Project: `tjuvcfiefebtanqlfalk`
 - Supabase Dashboard: https://supabase.com/dashboard
 - Stripe Dashboard: https://dashboard.stripe.com
 

@@ -1,5 +1,5 @@
 {
-  "generated": "2026-02-05T19:11:56.037Z",
+  "generated": "2026-02-17T11:17:29.205Z",
   "voices": {
     "openai": [
       {
@@ -202,20 +202,6 @@
       "name": "Peak Performance",
       "description": "30-100 Hz for peak mental activity",
       "previewUrl": "/audio-previews/binaural/binaural-gamma.mp3"
-    }
-  ],
-  "music": [
-    {
-      "id": "serene-spa-flow",
-      "name": "Serene Spa Flow",
-      "description": "Gentle ambient spa soundscape",
-      "previewUrl": "/audio-previews/music/serene-spa-flow.mp3"
-    },
-    {
-      "id": "tibetan-singing-bowls",
-      "name": "Tibetan Singing Bowls",
-      "description": "Resonant singing bowl soundscape",
-      "previewUrl": "/audio-previews/music/tibetan-singing-bowls.mp3"
     }
   ]
 }

@@ -146,6 +146,7 @@ async function generateOpenAIVoicePreviews() {
         voice: voice.id,
         input: PREVIEW_TEXT,
         response_format: 'mp3',
+        speed: 0.9,
       });
 
       const buffer = Buffer.from(await response.arrayBuffer());
@@ -209,6 +210,12 @@ async function generateElevenLabsVoicePreviews() {
 
       const buffer = Buffer.from(await response.arrayBuffer());
       fs.writeFileSync(outputPath, buffer);
+
+      // Apply 0.9x speed via ffmpeg atempo (ElevenLabs has no native speed param)
+      console.log(`   🔄 Applying 0.9x speed adjustment...`);
+      const tempPath = outputPath + '.tmp.mp3';
+      execSync(`ffmpeg -y -i "${outputPath}" -filter:a "atempo=0.9" "${tempPath}" 2>/dev/null`);
+      fs.renameSync(tempPath, outputPath);
 
       console.log(`   ✅ ${voice.displayName} saved`);
       await sleep(1000); // Rate limiting (ElevenLabs is stricter)

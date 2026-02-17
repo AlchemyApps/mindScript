@@ -20,9 +20,9 @@
     },
     "supabase-prod": {
       "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=uykxlvsqbfnfhrgcpnvn",
+      "url": "https://mcp.supabase.com/mcp?project_ref=tjuvcfiefebtanqlfalk",
       "headers": {
-        "Authorization": "Bearer sbp_68d6606a20a3a8a57fdf1241a778c83f6f3b5003"
+        "Authorization": "Bearer sbp_f0efc091a32d448b20d01309e43f5e91b92a5d38"
       }
     },
     "stripe": {

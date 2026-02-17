@@ -114,7 +114,7 @@ async function main() {
 
   // Extract project refs from URLs
   const devProjectRef = 'byicqjniboevzbhbfxui';
-  const prodProjectRef = 'uykxlvsqbfnfhrgcpnvn';
+  const prodProjectRef = 'tjuvcfiefebtanqlfalk';
 
   // Apply to DEV
   const devSuccess = await applyMigrationDirectly(

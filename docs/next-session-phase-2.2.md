@@ -13,7 +13,7 @@ Continue implementing MindScript Phase 2.2: Audio Engine & Core Features
    - `web-experience-engineer` for UI
    - `schema-rls-architect` for DB changes
    - `payments-payouts-engineer` for Stripe integration
-5. **DATABASE SYNC**: Apply ALL migrations to BOTH dev (`byicqjniboevzbhbfxui`) and prod (`uykxlvsqbfnfhrgcpnvn`)
+5. **DATABASE SYNC**: Apply ALL migrations to BOTH dev (`byicqjniboevzbhbfxui`) and prod (`tjuvcfiefebtanqlfalk`)
 
 ## Current Project Status
 

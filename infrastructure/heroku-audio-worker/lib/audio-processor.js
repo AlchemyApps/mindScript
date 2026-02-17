@@ -124,7 +124,7 @@ async function processAudioJob(job, envClient) {
         provider: payload.voice.provider || 'openai',
         voice: payload.voice.id || 'nova',
         model: payload.voice.model || 'tts-1',
-        speed: payload.voice.speed || 1.0,
+        speed: payload.voice.speed || 0.9,
         voiceId: payload.voice.id, // For ElevenLabs
       }, voiceRawPath);
 

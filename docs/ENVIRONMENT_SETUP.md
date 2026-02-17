@@ -19,7 +19,7 @@ cp .env.example .env.local
 
 You need TWO Supabase projects:
 - **DEV**: byicqjniboevzbhbfxui
-- **PROD**: *(create a new project — the old `uykxlvsqbfnfhrgcpnvn` was paused and is no longer available)*
+- **PROD**: `tjuvcfiefebtanqlfalk`
 
 For each project, obtain from Supabase Dashboard:
 - Project URL

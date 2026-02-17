@@ -274,7 +274,7 @@ async function main() {
   // Seed PROD (be very careful!)
   if (targetEnv === 'prod' || targetEnv === 'both') {
     const supabaseProd = createClient(
-      process.env.SUPABASE_PROD_URL || 'https://uykxlvsqbfnfhrgcpnvn.supabase.co',
+      process.env.SUPABASE_PROD_URL || 'https://tjuvcfiefebtanqlfalk.supabase.co',
       process.env.SUPABASE_PROD_SERVICE_ROLE_KEY,
       {
         auth: {

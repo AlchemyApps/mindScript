@@ -83,7 +83,7 @@ export function TrackEditor({
   className,
 }: TrackEditorProps) {
   // Voice speed state
-  const [voiceSpeed, setVoiceSpeed] = useState(config.voiceConfig?.settings?.speed ?? 1.0);
+  const [voiceSpeed, setVoiceSpeed] = useState(config.voiceConfig?.settings?.speed ?? 0.9);
 
   // Volume state
   const [voiceDb, setVoiceDb] = useState<number>(VOLUME_DEFAULTS.voice);
@@ -278,15 +278,15 @@ export function TrackEditor({
                 </span>
                 <button
                   type="button"
-                  onClick={() => setVoiceSpeed(1.0)}
+                  onClick={() => setVoiceSpeed(0.9)}
                   className={cn(
                     'p-1 rounded-md transition-all duration-200',
-                    voiceSpeed === 1.0
+                    voiceSpeed === 0.9
                       ? 'text-transparent pointer-events-none'
                       : 'text-muted/50 hover:text-primary hover:bg-primary/5'
                   )}
-                  aria-label="Reset speed to 1.0x"
-                  tabIndex={voiceSpeed === 1.0 ? -1 : 0}
+                  aria-label="Reset speed to 0.9x"
+                  tabIndex={voiceSpeed === 0.9 ? -1 : 0}
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                 </button>

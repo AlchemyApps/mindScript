@@ -49,7 +49,7 @@ async function synthesizeOpenAI(text, options, outputPath) {
 
   const voice = options.voice || 'nova';
   const model = options.model || 'tts-1';
-  const speed = options.speed || 1.0;
+  const speed = options.speed || 0.9;
 
   // Validate voice
   if (!OPENAI_VOICES[voice]) {
@@ -139,7 +139,7 @@ async function synthesizeElevenLabs(text, options, outputPath) {
   fs.writeFileSync(outputPath, buffer);
 
   // Apply speed adjustment via ffmpeg atempo filter (ElevenLabs has no native speed param)
-  const speed = options.speed || 1.0;
+  const speed = options.speed || 0.9;
   if (speed !== 1.0) {
     console.log(`[TTS] Applying speed adjustment: ${speed}x via ffmpeg atempo`);
     const tempPath = outputPath + '.tmp.mp3';

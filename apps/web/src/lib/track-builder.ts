@@ -22,7 +22,7 @@ function normalizeWorkerPayload(trackConfig: any): any {
     provider: trackConfig.voice.provider || 'openai',
     id: trackConfig.voice.voice_id || trackConfig.voice.id || 'nova',
     model: trackConfig.voice.model || 'tts-1',
-    speed: trackConfig.voice.speed || 1.0,
+    speed: trackConfig.voice.speed || 0.9,
   } : null;
 
   // Normalize solfeggio config

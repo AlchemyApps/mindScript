@@ -705,7 +705,7 @@ async function processTrackEditPurchase({
         provider: track.voice_config.provider || 'openai',
         id: track.voice_config.voice_id || 'nova',
         model: track.voice_config.model || 'tts-1',
-        speed: editData.voiceSpeed ?? track.voice_config.settings?.speed ?? 1.0,
+        speed: editData.voiceSpeed ?? track.voice_config.settings?.speed ?? 0.9,
       } : null,
       durationMin: updatedOutputConfig.durationMin,
       pauseSec: updatedOutputConfig.loop?.pause_seconds ?? 5,
