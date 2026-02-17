@@ -92,55 +92,26 @@ export async function POST(request: NextRequest) {
       : audioFile.name.split('.').pop() || 'wav';
     const fileName = `${user.id}/${Date.now()}-voice-sample.${ext}`;
 
-    // Direct REST upload to avoid EPIPE from supabase-js SDK + undici (storage-js#178)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const hasServiceKey = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
     console.log('[VOICE-CLONE] Upload starting', {
       fileName,
       contentType,
       size: audioBuffer.length,
-      supabaseUrl: supabaseUrl?.slice(0, 40),
-      hasServiceKey,
     });
 
-    const uploadUrl = `${supabaseUrl}/storage/v1/object/voice-samples/${fileName}`;
-    let uploadOk = false;
-    let lastUploadError: string | null = null;
+    // Use Uint8Array for Supabase SDK upload (Buffer can cause issues on Vercel)
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from('voice-samples')
+      .upload(fileName, new Uint8Array(audioBuffer), {
+        contentType,
+        upsert: true,
+      });
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const res = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-            'Content-Type': contentType,
-            'x-upsert': 'true',
-          },
-          body: audioBuffer,
-        });
-
-        if (res.ok) {
-          uploadOk = true;
-          console.log('[VOICE-CLONE] Upload succeeded on attempt', attempt);
-          break;
-        }
-
-        lastUploadError = `HTTP ${res.status}: ${await res.text()}`;
-        console.error(`[VOICE-CLONE] Upload attempt ${attempt} failed: ${lastUploadError}`);
-      } catch (err) {
-        lastUploadError = (err as Error).message;
-        console.error(`[VOICE-CLONE] Upload attempt ${attempt} error: ${lastUploadError}`);
-      }
-
-      if (attempt < 3) {
-        await new Promise(r => setTimeout(r, attempt * 1000));
-      }
+    if (uploadError) {
+      console.error('[VOICE-CLONE] Upload failed:', uploadError.message);
+      return NextResponse.json({ error: `Failed to upload audio sample: ${uploadError.message}` }, { status: 500 });
     }
 
-    if (!uploadOk) {
-      console.error('[VOICE-CLONE] Upload failed after 3 attempts:', lastUploadError);
-      return NextResponse.json({ error: `Failed to upload audio sample: ${lastUploadError}` }, { status: 500 });
-    }
+    console.log('[VOICE-CLONE] Upload succeeded');
 
     // Get signed URL
     const { data: urlData } = await supabaseAdmin.storage
