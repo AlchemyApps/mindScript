@@ -6,6 +6,7 @@
   "description": "MindScript AI audio content creation platform",
   "scripts": {
     "build": "turbo run build",
+    "heroku-postbuild": "turbo run build --filter='./packages/*'",
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,json,css,md}\"",
