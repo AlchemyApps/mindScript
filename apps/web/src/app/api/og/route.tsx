@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { TrackTemplate } from './templates/track';
 import { SellerTemplate } from './templates/seller';
 import { PlaylistTemplate } from './templates/playlist';
+import { ArticleTemplate } from './templates/article';
 
 export const runtime = 'edge';
 
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest) {
         break;
       case 'playlist':
         element = await generatePlaylistImage(request, { id, title, subtitle, image });
+        break;
+      case 'article':
+        element = await generateArticleImage(request, { title, subtitle });
         break;
       default:
         element = await generateDefaultImage({ title, subtitle });
@@ -213,6 +217,20 @@ async function generatePlaylistImage(request: NextRequest, { id, title, subtitle
       totalDuration={duration}
       author={author ?? undefined}
       coverImages={coverImages}
+    />
+  );
+}
+
+// Article template
+async function generateArticleImage(request: NextRequest, { title, subtitle }: any) {
+  const { searchParams } = new URL(request.url);
+  const author = searchParams.get('author') || 'MindScript';
+
+  return (
+    <ArticleTemplate
+      title={title || 'MindScript Blog'}
+      category={subtitle || 'Blog'}
+      author={author}
     />
   );
 }

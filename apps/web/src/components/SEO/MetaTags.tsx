@@ -235,6 +235,40 @@ export function generatePlaylistMetadata(params: {
 }
 
 /**
+ * Generate metadata for a blog post page
+ */
+export function generateBlogPostMetadata(params: {
+  title: string;
+  description: string;
+  keywords?: string[];
+  slug: string;
+  category: string;
+  author: string;
+  publishedAt: string;
+  updatedAt?: string;
+  tags?: string[];
+  coverImage?: string;
+}): Metadata {
+  const url = `/blog/${params.slug}`;
+  const ogImage = `${process.env.NEXT_PUBLIC_APP_URL || 'https://mindscript.studio'}/api/og?type=article&title=${encodeURIComponent(params.title)}&subtitle=${encodeURIComponent(params.category)}&author=${encodeURIComponent(params.author)}${params.coverImage ? `&image=${encodeURIComponent(params.coverImage)}` : ''}`;
+
+  return generateMetadata({
+    title: `${params.title} | MindScript Blog`,
+    description: params.description,
+    keywords: params.keywords,
+    url,
+    image: ogImage,
+    type: 'article',
+    author: params.author,
+    articleAuthor: params.author,
+    articlePublishedTime: params.publishedAt,
+    articleModifiedTime: params.updatedAt,
+    articleSection: params.category,
+    articleTag: params.tags,
+  });
+}
+
+/**
  * Generate metadata for marketplace category pages
  */
 export function generateCategoryMetadata(params: {

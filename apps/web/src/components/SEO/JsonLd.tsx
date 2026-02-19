@@ -181,3 +181,83 @@ export function WebSiteJsonLd({ name, url, description, searchUrl }: WebSiteJson
 
   return <JsonLd data={data} />;
 }
+
+// Article / BlogPosting schema
+interface ArticleJsonLdProps {
+  headline: string;
+  description: string;
+  image?: string;
+  datePublished: string;
+  dateModified?: string;
+  author: { name: string; url?: string };
+  publisher?: { name: string; logo?: string };
+  articleSection?: string;
+  keywords?: string[];
+  wordCount?: number;
+  url: string;
+}
+
+export function ArticleJsonLd({
+  headline,
+  description,
+  image,
+  datePublished,
+  dateModified,
+  author,
+  publisher = { name: 'MindScript', logo: 'https://mindscript.studio/images/logo-original.png' },
+  articleSection,
+  keywords,
+  wordCount,
+  url,
+}: ArticleJsonLdProps) {
+  const data: Record<string, any> = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline,
+    description,
+    url,
+    datePublished,
+    ...(dateModified && { dateModified }),
+    ...(image && { image }),
+    author: {
+      '@type': 'Person',
+      name: author.name,
+      ...(author.url && { url: author.url }),
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: publisher.name,
+      ...(publisher.logo && {
+        logo: { '@type': 'ImageObject', url: publisher.logo },
+      }),
+    },
+    ...(articleSection && { articleSection }),
+    ...(keywords?.length && { keywords: keywords.join(', ') }),
+    ...(wordCount && { wordCount }),
+    mainEntityOfPage: { '@type': 'WebPage', '@id': url },
+  };
+
+  return <JsonLd data={data} />;
+}
+
+// FAQPage schema — critical for AEO/GEO
+interface FAQPageJsonLdProps {
+  items: Array<{ question: string; answer: string }>;
+}
+
+export function FAQPageJsonLd({ items }: FAQPageJsonLdProps) {
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    mainEntity: items.map((item) => ({
+      '@type': 'Question',
+      name: item.question,
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: item.answer,
+      },
+    })),
+  };
+
+  return <JsonLd data={data} />;
+}

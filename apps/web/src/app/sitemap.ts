@@ -1,5 +1,6 @@
 import { MetadataRoute } from 'next';
 import { createClient } from '@supabase/supabase-js';
+import { getAllPublishedPosts } from '@/lib/blog/utils';
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://mindscript.app';
 
@@ -98,7 +99,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     };
   }) || [];
 
+  // Blog pages
+  const blogPosts = getAllPublishedPosts();
+
+  const blogIndexPage: MetadataRoute.Sitemap = [
+    {
+      url: `${SITE_URL}/blog`,
+      lastModified: new Date(),
+      changeFrequency: 'daily',
+      priority: 0.8,
+    },
+  ];
+
+  const blogPostPages: MetadataRoute.Sitemap = blogPosts.map((post) => ({
+    url: `${SITE_URL}/blog/${post.slug}`,
+    lastModified: new Date(post.updatedAt || post.publishedAt),
+    changeFrequency: 'monthly' as const,
+    priority: 0.7,
+  }));
+
   // Combine all pages
-  return [...staticPages, ...sellerPages, ...trackPages];
+  return [...staticPages, ...blogIndexPage, ...sellerPages, ...trackPages, ...blogPostPages];
 }
 
