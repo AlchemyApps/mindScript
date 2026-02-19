@@ -8,7 +8,7 @@ export async function configureAudioMode(): Promise<void> {
     await setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
-      interruptionMode: 'duckOthers',
+      interruptionMode: 'doNotMix',
     });
     configured = true;
   } catch (error) {

@@ -1,3 +1,40 @@
+# Session: Fix Background Audio on Lock Screen
+
+## Session Date: 2026-02-19
+
+## Branch
+`fix/background-audio-lock-screen` (merged to `dev`)
+
+## Status: COMPLETE
+
+---
+
+## Goal
+Fix audio playback stopping after 30-60 seconds when the phone screen locks on iOS.
+
+## What Was Accomplished
+
+### Root Cause
+`interruptionMode: 'duckOthers'` prevents iOS from treating the app as the exclusive "Now Playing" source. Without that designation, iOS suspends the audio session when the screen locks. Additionally, `setActiveForLockScreen()` was never called, so no Now Playing card appeared in Control Center.
+
+### Changes
+
+1. **Changed `interruptionMode` to `'doNotMix'`** — tells iOS to set AVAudioSession to exclusive `.playback` mode, required for background audio continuation.
+   - **File**: `apps/mobile/services/backgroundAudio.ts`
+
+2. **Added `setActiveForLockScreen()` call** — registers the app as Now Playing source with track metadata and enables lock screen/Control Center playback controls (play/pause, seek forward/backward).
+   - **File**: `apps/mobile/stores/playerStore.ts`
+
+3. **Added `FOREGROUND_SERVICE_MEDIA_PLAYBACK` Android permission** — required for Android 13+ (API 33+) background audio since `targetSdkVersion` is 35.
+   - **File**: `apps/mobile/app.json`
+
+## Next Session
+- Verify on physical device after EAS build
+- Test lock screen controls (play/pause, skip forward/backward)
+- Test on Android if possible
+
+---
+
 # Session: Mobile Fixes & Web Legal Page Redesign
 
 ## Session Date: 2026-02-14

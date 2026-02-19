@@ -71,6 +71,16 @@ function loadTrack(track: QueueItem, shouldPlay: boolean): void {
     p.play();
   }
 
+  // Register as Now Playing source for lock screen / Control Center controls
+  p.setActiveForLockScreen(true, {
+    title: track.title ?? 'MindScript',
+    artist: track.artist ?? 'MindScript',
+    artworkUrl: track.artwork,
+  }, {
+    showSeekBackward: true,
+    showSeekForward: true,
+  });
+
   // If loading from a local file with a streaming fallback, check after a delay
   // that the track actually loaded. If not, fall back to streaming URL.
   if (track.localPath && track.url && track.url !== track.localPath) {
