@@ -66,21 +66,15 @@ export default function BlogPage() {
           </h1>
           <p className="text-muted text-lg max-w-2xl mx-auto">
             The science behind subconscious reprogramming, healing frequencies, and
-            affirmation techniques — distilled into actionable guides.
+            affirmation techniques, distilled into actionable guides.
           </p>
         </div>
 
-        {/* Featured post hero */}
-        {featured && (
-          <div className="mb-12">
-            <BlogHero post={featured} />
-          </div>
-        )}
-
-        {/* All posts grid */}
+        {/* Filters, featured hero, and post grid */}
         <BlogGrid
           posts={posts}
           excludeSlugs={featured ? [featured.slug] : []}
+          heroSlot={featured ? <BlogHero post={featured} /> : undefined}
         />
       </div>
     </>

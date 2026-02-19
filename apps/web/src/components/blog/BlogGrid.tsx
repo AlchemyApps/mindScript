@@ -11,11 +11,13 @@ interface BlogGridProps {
   posts: BlogPostMeta[];
   /** Posts excluded from grid (e.g. featured hero) */
   excludeSlugs?: string[];
+  /** Rendered between filters and the card grid (e.g. featured hero) */
+  heroSlot?: React.ReactNode;
 }
 
 const POSTS_PER_PAGE = 9;
 
-export function BlogGrid({ posts, excludeSlugs = [] }: BlogGridProps) {
+export function BlogGrid({ posts, excludeSlugs = [], heroSlot }: BlogGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<BlogCategory | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -89,6 +91,9 @@ export function BlogGrid({ posts, excludeSlugs = [] }: BlogGridProps) {
           />
         </div>
       </div>
+
+      {/* Hero slot (featured post between filters and grid) */}
+      {heroSlot}
 
       {/* Grid */}
       {paginatedPosts.length > 0 ? (
