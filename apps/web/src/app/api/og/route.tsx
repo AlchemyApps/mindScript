@@ -150,7 +150,7 @@ async function generateDefaultImage({ title, subtitle }: any) {
           fontSize: 20,
         }}
       >
-        <span>mindscript.app</span>
+        <span>mindscript.studio</span>
         <span>•</span>
         <span>AI Meditation & Affirmations</span>
       </div>
@@ -222,7 +222,7 @@ async function generatePlaylistImage(request: NextRequest, { id, title, subtitle
 }
 
 // Article template
-async function generateArticleImage(request: NextRequest, { title, subtitle }: any) {
+async function generateArticleImage(request: NextRequest, { title, subtitle, image }: any) {
   const { searchParams } = new URL(request.url);
   const author = searchParams.get('author') || 'MindScript';
 
@@ -231,6 +231,7 @@ async function generateArticleImage(request: NextRequest, { title, subtitle }: a
       title={title || 'MindScript Blog'}
       category={subtitle || 'Blog'}
       author={author}
+      coverImage={image || undefined}
     />
   );
 }

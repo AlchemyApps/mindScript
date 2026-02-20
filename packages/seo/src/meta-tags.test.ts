@@ -154,7 +154,7 @@ describe('Meta Tags Generation', () => {
   describe('generateCanonicalUrl', () => {
     it('should generate canonical URL with default base', () => {
       const url = generateCanonicalUrl('/page/test');
-      expect(url).toBe('https://mindscript.app/page/test');
+      expect(url).toBe('https://mindscript.studio/page/test');
     });
 
     it('should use custom base URL', () => {
@@ -174,7 +174,7 @@ describe('Meta Tags Generation', () => {
 
     it('should preserve query parameters', () => {
       const url = generateCanonicalUrl('/page?id=123&sort=asc');
-      expect(url).toBe('https://mindscript.app/page?id=123&sort=asc');
+      expect(url).toBe('https://mindscript.studio/page?id=123&sort=asc');
     });
   });
 
@@ -191,10 +191,10 @@ describe('Meta Tags Generation', () => {
       });
 
       expect(tags).toEqual([
-        { hreflang: 'en', href: 'https://mindscript.app/page/test' },
-        { hreflang: 'es', href: 'https://mindscript.app/es/page/test' },
-        { hreflang: 'fr', href: 'https://mindscript.app/fr/page/test' },
-        { hreflang: 'x-default', href: 'https://mindscript.app/page/test' },
+        { hreflang: 'en', href: 'https://mindscript.studio/page/test' },
+        { hreflang: 'es', href: 'https://mindscript.studio/es/page/test' },
+        { hreflang: 'fr', href: 'https://mindscript.studio/fr/page/test' },
+        { hreflang: 'x-default', href: 'https://mindscript.studio/page/test' },
       ]);
     });
 
@@ -213,7 +213,7 @@ describe('Meta Tags Generation', () => {
       expect(tags).toHaveLength(5); // 4 languages + x-default
       expect(tags.find(t => t.hreflang === 'en-US')).toBeDefined();
       expect(tags.find(t => t.hreflang === 'en-GB')).toBeDefined();
-      expect(tags.find(t => t.hreflang === 'x-default')?.href).toBe('https://mindscript.app/page');
+      expect(tags.find(t => t.hreflang === 'x-default')?.href).toBe('https://mindscript.studio/page');
     });
 
     it('should use custom base URL', () => {

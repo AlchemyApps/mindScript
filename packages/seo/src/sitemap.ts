@@ -54,7 +54,7 @@ export interface SitemapIndexEntry {
   lastmod?: string;
 }
 
-const DEFAULT_BASE_URL = 'https://mindscript.app';
+const DEFAULT_BASE_URL = 'https://mindscript.studio';
 const MAX_URLS_PER_SITEMAP = 50000;
 const MAX_SITEMAP_SIZE_MB = 50;
 

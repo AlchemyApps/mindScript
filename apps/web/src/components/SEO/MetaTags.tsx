@@ -11,7 +11,7 @@ import {
 
 const DEFAULT_SITE_NAME = 'MindScript';
 const DEFAULT_TWITTER_SITE = '@mindscript';
-const DEFAULT_OG_IMAGE = 'https://mindscript.app/og-default.jpg';
+const DEFAULT_OG_IMAGE = 'https://mindscript.studio/og-default.jpg';
 
 interface GenerateMetadataParams {
   title: string;
@@ -138,7 +138,7 @@ export function generateMetadata(params: GenerateMetadataParams): Metadata {
     alternates: {
       canonical: canonicalUrl,
     },
-    metadataBase: new URL('https://mindscript.app'),
+    metadataBase: new URL('https://mindscript.studio'),
   };
 
   return metadata;

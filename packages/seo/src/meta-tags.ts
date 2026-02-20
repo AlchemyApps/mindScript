@@ -139,7 +139,7 @@ export interface HreflangTag {
 }
 
 // Default base URL for the application
-const DEFAULT_BASE_URL = 'https://mindscript.app';
+const DEFAULT_BASE_URL = 'https://mindscript.studio';
 
 export function generateMetaTags(config: MetaTagsConfig): MetaTags {
   const tags: MetaTags = {

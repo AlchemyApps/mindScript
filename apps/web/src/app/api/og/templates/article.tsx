@@ -4,9 +4,10 @@ interface ArticleTemplateProps {
   title: string;
   category: string;
   author: string;
+  coverImage?: string;
 }
 
-export function ArticleTemplate({ title, category, author }: ArticleTemplateProps) {
+export function ArticleTemplate({ title, category, author, coverImage }: ArticleTemplateProps) {
   return (
     <div
       style={{
@@ -19,13 +20,32 @@ export function ArticleTemplate({ title, category, author }: ArticleTemplateProp
         overflow: 'hidden',
       }}
     >
-      {/* Background gradient */}
+      {/* Cover image background */}
+      {coverImage && (
+        <img
+          src={coverImage}
+          alt=""
+          width={1200}
+          height={630}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+      )}
+
+      {/* Dark overlay for text readability */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #10B981 100%)',
-          opacity: 0.25,
+          background: coverImage
+            ? 'linear-gradient(to top, rgba(15, 15, 35, 0.95) 0%, rgba(15, 15, 35, 0.7) 50%, rgba(15, 15, 35, 0.5) 100%)'
+            : 'linear-gradient(135deg, #667eea 0%, #764ba2 50%, #10B981 100%)',
+          opacity: coverImage ? 1 : 0.25,
         }}
       />
 
