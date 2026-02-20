@@ -6,6 +6,259 @@ import type { BlogPostMeta } from './types';
  */
 export const blogPosts: BlogPostMeta[] = [
   {
+    slug: 'brainwave-entrainment-how-sound-trains-your-brain',
+    title: 'Brainwave Entrainment: How Sound Trains Your Brain',
+    excerpt:
+      'Your brain synchronizes with rhythmic sound. Brainwave entrainment uses this principle to guide your mental state toward focus, calm, creativity, or sleep using audio frequencies.',
+    category: 'subconscious-brain-training',
+    tags: [
+      'brainwave entrainment',
+      'brain training',
+      'neuroplasticity',
+      'audio training',
+      'binaural beats',
+      'focus',
+      'neuroscience',
+    ],
+    publishedAt: '2026-02-20T18:00:00Z',
+    readTimeMinutes: 10,
+    coverImage: '/images/blog/brainwave-entrainment-how-sound-trains-your-brain.png',
+    coverImageAlt: 'Sound waves transforming into neural pathways inside a brain, blue and purple frequency visualization',
+    author: {
+      name: 'MindScript',
+      role: 'Editorial Team',
+    },
+    relatedLandingPage: '/brain-training-audio',
+    relatedSlugs: ['what-are-binaural-beats', 'theta-state-subconscious-reprogramming'],
+    seo: {
+      metaTitle: 'Brainwave Entrainment: How Sound Trains Your Brain',
+      metaDescription:
+        'Learn how brainwave entrainment works, the science behind the frequency following response, and how to use audio to train your brain for focus, sleep, and creativity.',
+      keywords: [
+        'brainwave entrainment',
+        'brain training audio',
+        'frequency following response',
+        'neuroplasticity audio',
+        'sound brain training',
+        'how sound affects brainwaves',
+        'audio mental performance',
+      ],
+      focusKeyphrase: 'brainwave entrainment',
+    },
+    faq: [
+      {
+        question: 'Does brain training with audio actually work?',
+        answer:
+          'Yes. EEG research confirms that rhythmic auditory stimulation causes measurable shifts in brainwave activity, a phenomenon called the frequency following response. A 2019 meta-analysis in Psychological Research found consistent effects on anxiety, memory, and attention across 22 studies. The effects are modest but real, and they compound with consistent daily practice.',
+      },
+      {
+        question: 'What brainwave state is best for learning?',
+        answer:
+          'Alpha waves (8-14 Hz) are associated with relaxed, focused attention, which is ideal for absorbing new information. Low beta (14-20 Hz) supports active concentration and problem-solving. For creative learning, the alpha-theta border (7-10 Hz) encourages the free association that helps connect new concepts to existing knowledge.',
+      },
+      {
+        question: 'How does sound affect the brain?',
+        answer:
+          'Rhythmic sound triggers a physics principle called entrainment: your brain\'s electrical oscillations synchronize with the external rhythm. This frequency following response has been documented with EEG in multiple studies. Different frequencies guide the brain toward different states: theta for deep relaxation, alpha for calm focus, beta for alertness.',
+      },
+      {
+        question: 'How often should I use brain training audio?',
+        answer:
+          'Daily sessions of 15-30 minutes produce the best results. Neuroplasticity research shows that consistent repetition strengthens neural pathways over time. Commit to at least 30 days of daily practice before evaluating results. The effects compound: your brain becomes more efficient at entering target states with practice.',
+      },
+    ],
+  },
+  {
+    slug: 'create-your-own-guided-meditation',
+    title: 'How to Create Your Own Guided Meditation Audio',
+    excerpt:
+      'Pre-made meditation apps give you someone else\'s script in someone else\'s voice. Creating your own guided meditation puts your words, your intentions, and your voice into a track designed for you.',
+    category: 'how-to-guides',
+    tags: [
+      'guided meditation',
+      'custom meditation',
+      'meditation audio',
+      'personalized meditation',
+      'meditation creator',
+      'DIY meditation',
+      'audio creation',
+    ],
+    publishedAt: '2026-02-20T15:00:00Z',
+    readTimeMinutes: 9,
+    coverImage: '/images/blog/create-your-own-guided-meditation.png',
+    coverImageAlt: 'Person with headphones in a peaceful setting surrounded by soft sound waves and musical notes',
+    author: {
+      name: 'MindScript',
+      role: 'Editorial Team',
+    },
+    relatedLandingPage: '/custom-meditation-creator',
+    relatedSlugs: ['how-to-reprogram-your-subconscious-mind', 'how-affirmations-rewire-your-brain'],
+    seo: {
+      metaTitle: 'How to Create Your Own Guided Meditation Audio',
+      metaDescription:
+        'Learn how to create personalized guided meditation audio with your own voice, custom scripts, binaural beats, and background music. Step-by-step guide with research on why personalization matters.',
+      keywords: [
+        'create your own guided meditation',
+        'custom meditation audio',
+        'personalized meditation app',
+        'make your own meditation',
+        'guided meditation creator',
+        'record your own affirmations',
+        'AI meditation script',
+      ],
+      focusKeyphrase: 'create your own guided meditation',
+    },
+    faq: [
+      {
+        question: 'How do I create my own meditation audio?',
+        answer:
+          'Write a script with a grounding phase (1-2 minutes of breathing cues), core content (5-15 minutes of affirmations or visualization), and an integration phase (1-2 minutes of gentle return). Choose your voice or an AI voice, add background music and frequencies like binaural beats, then render the layered audio track. Modern creation tools handle the mixing automatically.',
+      },
+      {
+        question: 'Is personalized meditation more effective than generic apps?',
+        answer:
+          'Research suggests yes. A 2017 meta-analysis in Clinical Psychology Review found that personalized psychological interventions produced significantly larger effect sizes than standardized approaches. Custom meditation tracks address your specific challenges, use language that resonates with you, and can leverage the self-referential benefits of your own voice.',
+      },
+      {
+        question: 'Can I use my own voice for guided meditation?',
+        answer:
+          'Yes, and research in psycholinguistics suggests your brain processes self-generated speech differently than external voices. Your own voice carries an inherent self-recognition signal that may reduce resistance to positive suggestions. However, high-quality AI voices are also effective, especially if you find your recorded voice distracting.',
+      },
+      {
+        question: 'How long should a meditation track be?',
+        answer:
+          'For beginners, 10-minute tracks are ideal: long enough for the practice to take effect, short enough to maintain daily. Experienced practitioners may prefer 20-30 minute sessions. The most important factor is consistency. A 10-minute daily track is more effective than a 30-minute track you use sporadically.',
+      },
+    ],
+  },
+  {
+    slug: 'theta-state-subconscious-reprogramming',
+    title: 'Theta State and Subconscious Reprogramming: Your Brain\'s Open Window',
+    excerpt:
+      'Twice daily, your brain enters theta state, a narrow window when your subconscious is wide open. Understanding this timing changes how you approach affirmations and personal transformation.',
+    category: 'subconscious-brain-training',
+    tags: [
+      'theta state',
+      'subconscious reprogramming',
+      'brainwaves',
+      'theta waves',
+      'hypnagogic state',
+      'sleep affirmations',
+      'binaural beats',
+    ],
+    publishedAt: '2026-02-20T12:00:00Z',
+    readTimeMinutes: 9,
+    coverImage: '/images/blog/theta-state-subconscious-reprogramming.png',
+    coverImageAlt: 'Abstract brain visualization in theta state with flowing waves of purple and blue light',
+    author: {
+      name: 'MindScript',
+      role: 'Editorial Team',
+    },
+    relatedLandingPage: '/subconscious-reprogramming',
+    relatedSlugs: ['how-to-reprogram-your-subconscious-mind', 'what-are-binaural-beats'],
+    seo: {
+      metaTitle: 'Theta State & Subconscious Reprogramming: Your Brain\'s Open Window',
+      metaDescription:
+        'Learn how theta brainwave state creates a window for subconscious reprogramming. Discover the science behind theta waves, optimal timing, and how to use binaural beats to extend the effect.',
+      keywords: [
+        'theta state subconscious reprogramming',
+        'theta brainwaves',
+        'reprogram subconscious mind while sleeping',
+        'hypnagogic state affirmations',
+        'theta binaural beats',
+        'subconscious mind training',
+        'theta meditation',
+      ],
+      focusKeyphrase: 'theta state subconscious reprogramming',
+    },
+    faq: [
+      {
+        question: 'What is theta state?',
+        answer:
+          'Theta state refers to brainwave activity between 4 and 8 Hz, occurring during light sleep, deep meditation, and the transitions between waking and sleeping (hypnagogic and hypnopompic states). During theta, the conscious critical filter is less active, making the subconscious more receptive to new information and positive suggestions.',
+      },
+      {
+        question: 'When does your brain enter theta state naturally?',
+        answer:
+          'Your brain enters theta state naturally twice daily: during the first 15-20 minutes after waking (hypnopompic state) and the last 15-20 minutes before falling asleep (hypnagogic state). These transition windows are when brainwave activity shifts from delta through theta into alpha, creating optimal conditions for subconscious absorption.',
+      },
+      {
+        question: 'Can binaural beats create theta state?',
+        answer:
+          'Yes. Binaural beats in the theta range (4-8 Hz) can guide brainwave activity toward theta frequencies through neural entrainment. A 2020 eLife study confirmed with EEG that binaural beats cause measurable shifts in brainwave patterns. This allows you to create additional theta windows beyond the natural transitions around sleep.',
+      },
+      {
+        question: 'How long should I listen to theta audio for reprogramming?',
+        answer:
+          'A 10-20 minute session is ideal. This allows 2-3 minutes for brainwave entrainment to take effect, 5-15 minutes of affirmation delivery, and 2-3 minutes of integration. Use during the natural theta windows (morning wake-up or pre-sleep) for maximum effect, as your brain is already transitioning toward theta during these times.',
+      },
+    ],
+  },
+  {
+    slug: 'how-to-reprogram-your-subconscious-mind',
+    title: 'How to Reprogram Your Subconscious Mind with Audio',
+    excerpt:
+      'Your subconscious runs 95% of your daily behavior. Reprogramming it with audio combines personalized affirmations, brainwave-guiding frequencies, and strategic timing for real neural change.',
+    category: 'subconscious-brain-training',
+    tags: [
+      'subconscious reprogramming',
+      'audio affirmations',
+      'neuroplasticity',
+      'binaural beats',
+      'self-talk',
+      'brain rewiring',
+      'subconscious mind',
+    ],
+    publishedAt: '2026-02-20T09:00:00Z',
+    readTimeMinutes: 10,
+    coverImage: '/images/blog/how-to-reprogram-your-subconscious-mind.png',
+    coverImageAlt: 'Layers of audio waves merging with neural network patterns, warm gradient from purple to gold',
+    author: {
+      name: 'MindScript',
+      role: 'Editorial Team',
+    },
+    featured: false,
+    relatedLandingPage: '/subconscious-reprogramming',
+    relatedSlugs: ['theta-state-subconscious-reprogramming', 'how-affirmations-rewire-your-brain'],
+    seo: {
+      metaTitle: 'How to Reprogram Your Subconscious Mind with Audio',
+      metaDescription:
+        'Learn the science-backed method for reprogramming your subconscious mind using audio. Covers personalized affirmations, binaural beats, optimal timing, and script-writing techniques.',
+      keywords: [
+        'how to reprogram your subconscious mind',
+        'subconscious reprogramming audio',
+        'reprogram subconscious with affirmations',
+        'audio subconscious beliefs',
+        'subconscious mind training',
+        'neuroplasticity audio',
+        'change subconscious patterns',
+      ],
+      focusKeyphrase: 'how to reprogram your subconscious mind',
+    },
+    faq: [
+      {
+        question: 'How do you reprogram your subconscious mind?',
+        answer:
+          'Effective subconscious reprogramming combines three elements: personalized affirmations (graduated statements your brain can accept), brainwave-guiding frequencies like theta binaural beats (to reduce the conscious critical filter), and consistent daily timing (especially during the theta windows around sleep). Audio makes this practical by delivering all three layers simultaneously.',
+      },
+      {
+        question: 'How long does subconscious reprogramming take?',
+        answer:
+          'Research on neuroplasticity and habit formation suggests approximately 66 days of consistent daily practice for new thought patterns to become automatic. Early shifts in self-talk often appear within 2-3 weeks. The key is daily consistency: 10-20 minute sessions every day are more effective than longer but sporadic sessions.',
+      },
+      {
+        question: 'Why is your own voice effective for subconscious reprogramming?',
+        answer:
+          'Research in psycholinguistics shows the brain processes self-generated speech through different neural pathways than external voices. Your own voice carries an implicit self-recognition signal that may reduce resistance to positive statements. However, high-quality AI voices are also effective, and the best choice is whichever voice you will listen to consistently.',
+      },
+      {
+        question: 'What are graduated affirmations?',
+        answer:
+          'Graduated affirmations are statements calibrated to be believable to your current self-concept. Instead of "I am fearless" (which your brain may reject), a graduated version would be "Each day, I handle challenges with a little more confidence." This approach works with your brain rather than against it, allowing positive statements to bypass the conscious critical filter.',
+      },
+    ],
+  },
+  {
     slug: 'how-affirmations-rewire-your-brain',
     title: 'How Affirmations Rewire Your Brain: The Neuroscience of Positive Self-Talk',
     excerpt:
@@ -28,8 +281,8 @@ export const blogPosts: BlogPostMeta[] = [
       name: 'MindScript',
       role: 'Editorial Team',
     },
-    relatedLandingPage: '/',
-    relatedSlugs: ['what-are-binaural-beats'],
+    relatedLandingPage: '/subconscious-reprogramming',
+    relatedSlugs: ['what-are-binaural-beats', 'how-to-reprogram-your-subconscious-mind'],
     seo: {
       metaTitle: 'How Affirmations Rewire Your Brain: Neuroscience of Positive Self-Talk',
       metaDescription:
@@ -92,8 +345,8 @@ export const blogPosts: BlogPostMeta[] = [
       name: 'MindScript',
       role: 'Editorial Team',
     },
-    relatedLandingPage: '/',
-    relatedSlugs: ['what-are-binaural-beats'],
+    relatedLandingPage: '/solfeggio-frequencies',
+    relatedSlugs: ['what-are-binaural-beats', 'brainwave-entrainment-how-sound-trains-your-brain'],
     seo: {
       metaTitle: 'Solfeggio Frequencies Explained: Complete Guide to All 9 Healing Tones',
       metaDescription:
@@ -157,8 +410,8 @@ export const blogPosts: BlogPostMeta[] = [
       role: 'Editorial Team',
     },
     featured: true,
-    relatedLandingPage: '/',
-    relatedSlugs: ['solfeggio-frequencies-explained', 'how-affirmations-rewire-your-brain'],
+    relatedLandingPage: '/binaural-beats-affirmations',
+    relatedSlugs: ['solfeggio-frequencies-explained', 'brainwave-entrainment-how-sound-trains-your-brain'],
     seo: {
       metaTitle: 'What Are Binaural Beats? Science, Benefits & How to Use Them',
       metaDescription:
