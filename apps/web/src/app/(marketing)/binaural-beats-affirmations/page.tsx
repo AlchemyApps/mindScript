@@ -5,6 +5,7 @@ import { generateMetadata as generateSeoMetadata } from '@/components/SEO/MetaTa
 import { FAQPageJsonLd, BreadcrumbJsonLd } from '@/components/SEO/JsonLd';
 import { LandingFAQ } from '@/components/marketing/LandingFAQ';
 import { LandingCTA } from '@/components/marketing/LandingCTA';
+import { LandingHeroWithBuilder } from '@/components/marketing/LandingHeroWithBuilder';
 
 export const metadata: Metadata = generateSeoMetadata({
   title: 'Binaural Beats with Affirmations | MindScript',
@@ -61,40 +62,24 @@ export default function BinauralBeatsAffirmationsPage() {
         ]}
       />
 
-      {/* Hero */}
-      <section className="pt-12 pb-16 px-4">
-        <div className="container mx-auto max-w-4xl text-center">
-          <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <Headphones className="w-4 h-4 mr-2" />
-            Brainwave Entrainment Technology
-          </div>
-          <h1 className="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-tight mb-6">
+      {/* Hero with Builder */}
+      <LandingHeroWithBuilder
+        badge={{ icon: <Headphones className="w-4 h-4" />, text: 'Brainwave Entrainment Technology' }}
+        headline={
+          <>
             <span className="text-text">Custom </span>
             <span className="text-gradient">binaural beats</span>
             <span className="text-text"> with affirmations</span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted max-w-2xl mx-auto leading-relaxed mb-8">
-            Build personalized binaural beats audio layered with your own affirmations. Choose your
-            target frequency, add background music, and create headphone-optimized tracks for focus,
-            sleep, or manifestation.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/builder"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors glow-primary text-lg"
-            >
-              Create Your Binaural Track
-            </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-white/60 backdrop-blur-sm border border-white/30 text-text font-semibold hover:bg-white/80 transition-colors"
-            >
-              How Binaural Beats Work
-            </a>
-          </div>
-          <p className="text-sm text-muted mt-4">First track starting at $0.99</p>
-        </div>
-      </section>
+          </>
+        }
+        description="Build personalized binaural beats audio layered with your own affirmations. Choose your target frequency, add background music, and create headphone-optimized tracks for focus, sleep, or manifestation."
+        pricingLabel="Create Your Binaural Track for only"
+        featurePills={[
+          { icon: <Waves className="w-4 h-4" />, label: 'Custom Frequencies' },
+          { icon: <AudioLines className="w-4 h-4" />, label: 'Layered Affirmations' },
+          { icon: <Moon className="w-4 h-4" />, label: 'Sleep & Focus' },
+        ]}
+      />
 
       {/* How It Works */}
       <section id="how-it-works" className="py-16 px-4 bg-white/50">
@@ -330,7 +315,6 @@ export default function BinauralBeatsAffirmationsPage() {
       <LandingCTA
         heading="Create Your Custom Binaural Beats Track"
         description="Combine binaural beats with personalized affirmations, background music, and the perfect frequency for your goal. Build your first track in minutes."
-        landingPage="/binaural-beats-affirmations"
       />
     </>
   );

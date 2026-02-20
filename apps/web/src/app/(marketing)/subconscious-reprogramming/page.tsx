@@ -5,6 +5,7 @@ import { generateMetadata as generateSeoMetadata } from '@/components/SEO/MetaTa
 import { FAQPageJsonLd, BreadcrumbJsonLd } from '@/components/SEO/JsonLd';
 import { LandingFAQ } from '@/components/marketing/LandingFAQ';
 import { LandingCTA } from '@/components/marketing/LandingCTA';
+import { LandingHeroWithBuilder } from '@/components/marketing/LandingHeroWithBuilder';
 
 export const metadata: Metadata = generateSeoMetadata({
   title: 'Subconscious Reprogramming Audio | MindScript',
@@ -60,40 +61,24 @@ export default function SubconsciousReprogrammingPage() {
         ]}
       />
 
-      {/* Hero */}
-      <section className="pt-12 pb-16 px-4">
-        <div className="container mx-auto max-w-4xl text-center">
-          <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <Brain className="w-4 h-4 mr-2" />
-            Science-Backed Audio Tools
-          </div>
-          <h1 className="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-tight mb-6">
+      {/* Hero with Builder */}
+      <LandingHeroWithBuilder
+        badge={{ icon: <Brain className="w-4 h-4" />, text: 'Science-Backed Audio Tools' }}
+        headline={
+          <>
             <span className="text-text">Reprogram your </span>
             <span className="text-gradient">subconscious mind</span>
             <span className="text-text"> with audio</span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted max-w-2xl mx-auto leading-relaxed mb-8">
-            Create personalized subconscious reprogramming audio that combines your own voice with
-            binaural beats, solfeggio frequencies, and curated background music. Your words, your
-            voice, your transformation.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/builder"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors glow-primary text-lg"
-            >
-              Start Building Your Track
-            </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-white/60 backdrop-blur-sm border border-white/30 text-text font-semibold hover:bg-white/80 transition-colors"
-            >
-              Learn How It Works
-            </a>
-          </div>
-          <p className="text-sm text-muted mt-4">First track starting at $0.99</p>
-        </div>
-      </section>
+          </>
+        }
+        description="Create personalized subconscious reprogramming audio that combines your own voice with binaural beats, solfeggio frequencies, and curated background music. Your words, your voice, your transformation."
+        pricingLabel="Start Reprogramming Your Mind for only"
+        featurePills={[
+          { icon: <AudioLines className="w-4 h-4" />, label: 'Studio Voices' },
+          { icon: <Headphones className="w-4 h-4" />, label: 'Binaural Beats' },
+          { icon: <Sparkles className="w-4 h-4" />, label: 'Solfeggio Tones' },
+        ]}
+      />
 
       {/* How It Works */}
       <section id="how-it-works" className="py-16 px-4 bg-white/50">
@@ -260,7 +245,6 @@ export default function SubconsciousReprogrammingPage() {
       <LandingCTA
         heading="Start Reprogramming Your Subconscious"
         description="Create your first personalized audio track in minutes. Combine your voice, frequencies, and music into a daily practice that rewires your brain."
-        landingPage="/subconscious-reprogramming"
       />
     </>
   );

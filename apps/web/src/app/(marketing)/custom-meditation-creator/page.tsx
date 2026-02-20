@@ -5,6 +5,7 @@ import { generateMetadata as generateSeoMetadata } from '@/components/SEO/MetaTa
 import { FAQPageJsonLd, BreadcrumbJsonLd } from '@/components/SEO/JsonLd';
 import { LandingFAQ } from '@/components/marketing/LandingFAQ';
 import { LandingCTA } from '@/components/marketing/LandingCTA';
+import { LandingHeroWithBuilder } from '@/components/marketing/LandingHeroWithBuilder';
 
 export const metadata: Metadata = generateSeoMetadata({
   title: 'Custom Meditation Audio Creator | MindScript',
@@ -61,40 +62,24 @@ export default function CustomMeditationCreatorPage() {
         ]}
       />
 
-      {/* Hero */}
-      <section className="pt-12 pb-16 px-4">
-        <div className="container mx-auto max-w-4xl text-center">
-          <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <PenTool className="w-4 h-4 mr-2" />
-            Build Your Own Meditation Audio
-          </div>
-          <h1 className="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-tight mb-6">
+      {/* Hero with Builder */}
+      <LandingHeroWithBuilder
+        badge={{ icon: <PenTool className="w-4 h-4" />, text: 'Build Your Own Meditation Audio' }}
+        headline={
+          <>
             <span className="text-text">Create </span>
             <span className="text-gradient">your own meditation</span>
             <span className="text-text"> audio</span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted max-w-2xl mx-auto leading-relaxed mb-8">
-            Stop listening to someone else{`'`}s words in someone else{`'`}s voice. Write your
-            script, choose your voice, layer in music and frequencies, and build a meditation
-            track that is entirely yours.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/builder"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors glow-primary text-lg"
-            >
-              Start Creating Your Track
-            </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-white/60 backdrop-blur-sm border border-white/30 text-text font-semibold hover:bg-white/80 transition-colors"
-            >
-              See How It Works
-            </a>
-          </div>
-          <p className="text-sm text-muted mt-4">First track starting at $0.99</p>
-        </div>
-      </section>
+          </>
+        }
+        description="Stop listening to someone else's words in someone else's voice. Write your script, choose your voice, layer in music and frequencies, and build a meditation track that is entirely yours."
+        pricingLabel="Create Your Custom Meditation for only"
+        featurePills={[
+          { icon: <Mic className="w-4 h-4" />, label: 'Voice Cloning' },
+          { icon: <Music className="w-4 h-4" />, label: 'Background Music' },
+          { icon: <Sparkles className="w-4 h-4" />, label: 'AI Script Help' },
+        ]}
+      />
 
       {/* How It Works */}
       <section id="how-it-works" className="py-16 px-4 bg-white/50">
@@ -324,7 +309,6 @@ export default function CustomMeditationCreatorPage() {
       <LandingCTA
         heading="Create Your Own Meditation Audio"
         description="Build a personalized meditation track in minutes. Write your script, choose your voice, layer in frequencies and music, and start listening today."
-        landingPage="/custom-meditation-creator"
       />
     </>
   );

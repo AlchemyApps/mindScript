@@ -1,40 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { GradientButton } from '@/components/ui/GradientButton';
 import { FloatingOrbs } from '@/components/landing/FloatingOrbs';
-import { getSupabaseBrowserClient } from '@mindscript/auth/client';
 
 interface LandingCTAProps {
   heading?: string;
   description?: string;
-  landingPage?: string;
 }
 
 export function LandingCTA({
   heading = 'Ready to Transform Your Mindset?',
   description = 'Create personalized affirmation audio with studio-quality voices, healing frequencies, and ambient soundscapes.',
-  landingPage,
 }: LandingCTAProps) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const supabase = getSupabaseBrowserClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        setIsLoggedIn(!!user);
-      } catch {
-        // Not logged in
-      }
-    };
-    checkAuth();
-  }, []);
-
-  const href = isLoggedIn ? '/builder' : (landingPage || '/');
-  const label = isLoggedIn ? 'Start Building Your Track' : 'Create Your First Track';
-
   return (
     <section className="py-20 px-4 relative overflow-hidden bg-hero-gradient">
       <FloatingOrbs variant="vibrant" />
@@ -45,11 +22,13 @@ export function LandingCTA({
         <p className="text-lg text-muted mb-8 max-w-xl mx-auto">
           {description}
         </p>
-        <Link href={href}>
-          <GradientButton size="lg" glow>
-            {label}
-          </GradientButton>
-        </Link>
+        <GradientButton
+          size="lg"
+          glow
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+        >
+          Start Building Your Track
+        </GradientButton>
       </div>
     </section>
   );

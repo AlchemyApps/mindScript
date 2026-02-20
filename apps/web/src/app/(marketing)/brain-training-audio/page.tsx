@@ -5,6 +5,7 @@ import { generateMetadata as generateSeoMetadata } from '@/components/SEO/MetaTa
 import { FAQPageJsonLd, BreadcrumbJsonLd } from '@/components/SEO/JsonLd';
 import { LandingFAQ } from '@/components/marketing/LandingFAQ';
 import { LandingCTA } from '@/components/marketing/LandingCTA';
+import { LandingHeroWithBuilder } from '@/components/marketing/LandingHeroWithBuilder';
 
 export const metadata: Metadata = generateSeoMetadata({
   title: 'Brain Training Audio | MindScript',
@@ -61,39 +62,23 @@ export default function BrainTrainingAudioPage() {
         ]}
       />
 
-      {/* Hero */}
-      <section className="pt-12 pb-16 px-4">
-        <div className="container mx-auto max-w-4xl text-center">
-          <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium mb-6">
-            <Brain className="w-4 h-4 mr-2" />
-            A Gym for Your Mind
-          </div>
-          <h1 className="font-heading font-bold text-4xl md:text-5xl lg:text-6xl leading-tight mb-6">
+      {/* Hero with Builder */}
+      <LandingHeroWithBuilder
+        badge={{ icon: <Brain className="w-4 h-4" />, text: 'A Gym for Your Mind' }}
+        headline={
+          <>
             <span className="text-text">Train your brain with </span>
             <span className="text-gradient">sound frequencies</span>
-          </h1>
-          <p className="text-lg md:text-xl text-muted max-w-2xl mx-auto leading-relaxed mb-8">
-            Create personalized brain training audio that combines brainwave entrainment, targeted
-            affirmations, and neuroplasticity-optimized repetition. Daily audio practice that
-            strengthens neural pathways and sharpens mental performance.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              href="/builder"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-primary text-white font-semibold hover:bg-primary/90 transition-colors glow-primary text-lg"
-            >
-              Start Training Your Brain
-            </Link>
-            <a
-              href="#how-it-works"
-              className="inline-flex items-center justify-center px-8 py-4 rounded-xl bg-white/60 backdrop-blur-sm border border-white/30 text-text font-semibold hover:bg-white/80 transition-colors"
-            >
-              Learn How It Works
-            </a>
-          </div>
-          <p className="text-sm text-muted mt-4">First track starting at $0.99</p>
-        </div>
-      </section>
+          </>
+        }
+        description="Create personalized brain training audio that combines brainwave entrainment, targeted affirmations, and neuroplasticity-optimized repetition. Daily audio practice that strengthens neural pathways and sharpens mental performance."
+        pricingLabel="Start Training Your Brain for only"
+        featurePills={[
+          { icon: <Target className="w-4 h-4" />, label: 'Brainwave Targeting' },
+          { icon: <Zap className="w-4 h-4" />, label: 'Focus Frequencies' },
+          { icon: <Repeat className="w-4 h-4" />, label: 'Daily Training' },
+        ]}
+      />
 
       {/* How It Works */}
       <section id="how-it-works" className="py-16 px-4 bg-white/50">
@@ -258,7 +243,6 @@ export default function BrainTrainingAudioPage() {
       <LandingCTA
         heading="Start Training Your Brain Today"
         description="Create your first personalized brain training audio in minutes. Combine targeted frequencies, your own voice, and neuroplasticity-backed repetition into a daily practice that strengthens your mind."
-        landingPage="/brain-training-audio"
       />
     </>
   );
